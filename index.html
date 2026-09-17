@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Zeilrace dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, sans-serif; }
+    body { display: flex; flex-direction: column; background: #0b1622; color: #e8eef5; }
+
+    /* ---- Tabbladen ---- */
+    #tabbar { display: flex; flex: none; background: #0e1c2e; border-bottom: 1px solid #1d3350; }
+    #tabbar button { flex: 0 0 auto; padding: 14px 22px; background: none; border: none;
+      color: #7f9bbb; font-weight: 600; font-size: .92rem; cursor: pointer;
+      border-bottom: 2px solid transparent; }
+    #tabbar button:hover { color: #cfe0f2; }
+    #tabbar button.actief { color: #e8eef5; border-bottom-color: #3a7bd5; }
+    .tab { flex: 1; min-height: 0; display: none; }
+    #tabLive.actief { display: flex; }
+    #tabRegels.actief, #tabUitslagen.actief { display: block; overflow-y: auto; padding: 26px; }
+
+    /* ---- Live tab ---- */
+    #kaart { flex: 1; }
+    #paneel { width: 340px; background: #0e1c2e; border-left: 1px solid #1d3350;
+      padding: 18px; overflow-y: auto; }
+    h1 { font-size: 1.15rem; margin: 0 0 2px; }
+    .race { color: #7f9bbb; font-size: .8rem; margin-bottom: 18px; }
+    h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em;
+         color: #7f9bbb; margin: 22px 0 10px; }
+    .boot { padding: 10px 12px; background: #12233a; border-radius: 10px; margin-bottom: 8px; }
+    .boot .boot-top { display: flex; align-items: center; gap: 10px; }
+    .boot .kleur { width: 14px; height: 14px; border-radius: 50%; flex: none; }
+    .boot .naam { font-weight: 700; }
+    .boot .meta { margin-left: auto; text-align: right; font-size: .78rem;
+                  color: #9fb4cd; font-variant-numeric: tabular-nums; }
+    .boot .boot-data { color: #9fb4cd; font-variant-numeric: tabular-nums; margin-top: 5px; font-size: .8rem; }
+    .boot.offline { opacity: .45; }
+    .boten-legenda { font-size: .66rem; color: #6f8aa8; text-transform: uppercase;
+      letter-spacing: .04em; margin: -4px 0 10px; }
+    table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #1d3350;
+             font-variant-numeric: tabular-nums; }
+    th { color: #7f9bbb; font-weight: 600; font-size: .72rem; text-transform: uppercase; }
+    td.tijd { text-align: right; }
+    td.rank { width: 1.4em; color: #7f9bbb; text-align: center; }
+    .leaflet-container { background: #0b1622; }
+    .boot-label { background: rgba(10,20,32,.85); border: 1px solid #24405e; border-radius: 6px;
+      padding: 2px 6px; font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap; }
+    .lijn-label { background: transparent; border: none; box-shadow: none;
+      color: #fff; font-weight: 800; font-size: 11px; text-shadow: 0 0 4px #000, 0 0 4px #000; }
+    .boei { width: 22px; height: 22px; border-radius: 50%; background: #f0932b;
+      border: 2px solid #fff; color: #241300; font-weight: 800; font-size: 12px;
+      display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px #0008; }
+    .windwidget { background: rgba(10,20,32,.88); border: 1px solid #24405e; border-radius: 12px;
+      padding: 8px 13px; display: flex; align-items: center; gap: 11px; color: #e8eef5;
+      font-variant-numeric: tabular-nums; box-shadow: 0 2px 8px #0007; }
+    .windpijl { font-size: 26px; line-height: 1; color: #7ec8ff; transition: transform .6s ease; }
+    .windwidget .spd { font-size: 1.15rem; font-weight: 800; }
+    .windwidget .windsub { font-size: .72rem; color: #9fb4cd; }
+    .windwidget .kop { font-size: .6rem; letter-spacing: .08em; color: #6f8aa8; text-transform: uppercase; }
+    .windwidget.fout .windpijl { opacity: .25; }
+    .banner { background:#7a1f22; color:#ffd7d7; padding:10px 12px; border-radius:10px;
+              font-size:.8rem; line-height:1.4; margin-bottom:14px; display:none; }
+    .btn { display:block; width:100%; padding:11px; margin-bottom:8px; border:none;
+           border-radius:10px; background:#1c3a5e; color:#fff; font-weight:600;
+           font-size:.9rem; cursor:pointer; }
+    .btn:hover { background:#244a76; }
+    .btn.gun { background:#b5561e; } .btn.gun:hover { background:#d1641f; }
+    .btn.reset { background:#3a2436; color:#f0b4c8; } .btn.reset:hover { background:#50314a; }
+    .btn.archief { background:#1f6b3a; } .btn.archief:hover { background:#26814698; }
+    .btnrow { display:flex; gap:8px; }
+    .btnrow .btn { flex:1; }
+    .wlstatus { font-size:.78rem; color:#9fb4cd; margin:4px 0 10px; min-height:1.1em; }
+    .badge { display:inline-block; font-size:.64rem; padding:1px 7px; border-radius:20px;
+             margin-left:6px; vertical-align:middle; }
+    .badge.onderweg { background:#1c4a2e; color:#7ee0a1; }
+    .badge.finish { background:#3a2a12; color:#f0c674; }
+    .hint { color:#55708c; font-size:.75rem; margin-top:8px; line-height:1.4; }
+    .aftel { background:#12233a; border:1px solid #2a4a6e; border-radius:12px;
+      padding:10px 14px; margin-bottom:16px; text-align:center; }
+    .aftel .lbl { color:#8ba3bd; font-size:.7rem; letter-spacing:.1em; }
+    .aftel .groot { font-size:1.7rem; font-weight:800; font-variant-numeric:tabular-nums;
+      color:#7ec8ff; line-height:1.15; }
+    .aftel.urgent { border-color:#d1641f; }
+    .aftel.urgent .groot { color:#ffb454; }
+    .aftel.gestart { border-color:#1f6b3a; }
+    .aftel.gestart .groot { color:#7ee0a1; font-size:1.2rem; }
+
+    /* ---- Regels & Uitslagen ---- */
+    .inhoud { max-width: 780px; margin: 0 auto; }
+    .inhoud h1 { font-size: 1.5rem; margin-bottom: 4px; }
+    .inhoud .lead { color: #9fb4cd; margin-bottom: 24px; }
+    .kaartje { background: #0e1c2e; border: 1px solid #1d3350; border-radius: 14px;
+      padding: 16px 18px; margin-bottom: 14px; }
+    .kaartje h3 { margin: 0 0 6px; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+    .kaartje p { margin: 0; color: #c4d3e4; font-size: .9rem; line-height: 1.5; }
+    .kaartje .em { color: #7ee0a1; font-weight: 600; }
+    .disclaimer { color:#55708c; font-size:.78rem; margin-top:18px; line-height:1.5; }
+    .u-tabel { background:#0e1c2e; border:1px solid #1d3350; border-radius:14px;
+      padding:6px 16px 12px; margin-bottom:20px; }
+    .u-tabel h3 { font-size:1rem; margin:14px 2px 6px; }
+    .wis-race, .hernoem-race { background:#3a2436; color:#f0b4c8; border:none; border-radius:8px;
+      padding:2px 8px; font-size:.85rem; cursor:pointer; vertical-align:middle; }
+    .hernoem-race { background:#1c3a5e; color:#cfe0f2; }
+    .wis-race:hover { background:#50314a; }
+    .hernoem-race:hover { background:#244a76; }
+    .u-tabel .sub { color:#7f9bbb; font-size:.75rem; margin:0 2px 8px; }
+    td.pt, th.pt { text-align:center; }
+    tr.winnaar td { color:#ffe08a; font-weight:700; }
+    .leeg { color:#55708c; font-style:italic; padding:20px 2px; }
+  </style>
+</head>
+<body>
+  <nav id="tabbar">
+    <button data-tab="tabLive" class="actief">📍 Live</button>
+    <button data-tab="tabRegels">📖 Regels</button>
+    <button data-tab="tabUitslagen">🏆 Uitslagen</button>
+  </nav>
+
+  <!-- ================= LIVE ================= -->
+  <div id="tabLive" class="tab actief">
+    <div id="kaart"></div>
+    <aside id="paneel">
+      <h1>⛵ Zeilrace</h1>
+      <div class="race" id="raceNaam"></div>
+      <div class="banner" id="banner"></div>
+      <div class="aftel" id="aftel" style="display:none"></div>
+
+      <section id="wedstrijdleiding" style="display:none">
+        <h2>Wedstrijdleiding</h2>
+        <div class="btnrow">
+          <button class="btn" id="btnStart">📍 Startlijn</button>
+          <button class="btn" id="btnFinish">🏁 Finishlijn</button>
+        </div>
+        <div class="btnrow">
+          <button class="btn" id="btnBoei">🟠 Boei toevoegen</button>
+          <button class="btn reset" id="btnBoeienWis">🗑 Boeien wissen</button>
+        </div>
+        <button class="btn gun" id="btnSein">🔫 Startsein geven</button>
+        <button class="btn archief" id="btnArchief">✅ Race afronden &amp; opslaan</button>
+        <button class="btn reset" id="btnReset">♻︎ Live tijden resetten</button>
+        <div class="wlstatus" id="wlStatus"></div>
+      </section>
+
+      <h2>Boten — live data</h2>
+      <div class="boten-legenda">per boot: snelheid · VMG · volgend doel · afstand · tijd</div>
+      <div id="botenlijst"></div>
+
+      <h2>Scorebord — huidige race</h2>
+      <table>
+        <thead>
+          <tr><th class="rank">#</th><th>Boot</th>
+              <th class="tijd">Tijd</th><th class="tijd">Gecorr.</th></tr>
+        </thead>
+        <tbody id="scorebord"></tbody>
+      </table>
+      <div class="hint">De tijd loopt vanaf het startsein (voor iedereen gelijk).
+        Gecorrigeerde tijd = verzeilde tijd × rating; voor de Valken staat rating op 1.0,
+        dus beide kolommen zijn gelijk.</div>
+    </aside>
+  </div>
+
+  <!-- ================= REGELS ================= -->
+  <div id="tabRegels" class="tab">
+    <div class="inhoud">
+      <h1>📖 Zeilwedstrijd­regels — in het kort</h1>
+      <div class="lead">De belangrijkste regels om samen veilig en eerlijk te racen.
+        Dit is een vereenvoudigde uitleg, geen vervanging van de officiële
+        <em>Racing Rules of Sailing</em>.</div>
+
+      <div class="kaartje">
+        <h3>🚦 De start</h3>
+        <p>De race begint met een <span class="em">startsein</span> op een vast klokmoment;
+          op de dashboards telt een klok ernaartoe af. Je mag de startlijn pas ná het sein in
+          de juiste richting kruisen — ben je te vroeg over, dan moet je terug en opnieuw starten.
+          <span class="em">De tijd loopt voor iedereen vanaf het startsein</span>, dus hoe later je
+          de lijn kruist, hoe meer tijd het je kost. Zorg dat je vlak na het sein met snelheid
+          over de lijn gaat.</p>
+      </div>
+
+      <div class="kaartje">
+        <h3>➡️ Stuurboord heeft voorrang</h3>
+        <p>Een boot met de wind van <span class="em">stuurboord</span> (giek aan bakboord,
+          wind van rechts) heeft voorrang op een boot over bakboord. De bakboordboot moet
+          uitwijken. Bij twijfel: hou stuurboord aan.</p>
+      </div>
+
+      <div class="kaartje">
+        <h3>⬆️ Loef wijkt voor lij</h3>
+        <p>Liggen twee boten aan dezelfde kant (zelfde overstag)? Dan moet de
+          <span class="em">loefboot</span> (dichtst bij de wind, bovenwinds) uitwijken voor
+          de <span class="em">lijboot</span> (benedenwinds). Oploeven mag, maar geef de ander
+          ruimte om vrij te blijven.</p>
+      </div>
+
+      <div class="kaartje">
+        <h3>🟠 Boeien ronden</h3>
+        <p>Rond de boeien in de <span class="em">juiste volgorde</span>. Bij elke boei hoort een
+          (onzichtbare) <span class="em">rondingslijn</span> die vanaf de boei naar buiten loopt,
+          in de richting van de bocht die de baan daar maakt. Je hebt de boei gerond zodra je die
+          lijn <span class="em">oversteekt</span> — of dat aan bakboord of stuurboord is, volgt
+          vanzelf uit de baan. Kom je met twee boten tegelijk bij een boei, dan heeft de
+          binnenboot (die overlap heeft) recht op ruimte om te ronden.</p>
+      </div>
+
+      <div class="kaartje">
+        <h3>🔄 Wie manoeuvreert, wijkt</h3>
+        <p>Een boot die <span class="em">overstag gaat of gijpt</span> moet vrij blijven van
+          boten die hun koers varen. Rond je manoeuvre af vóórdat je een ander in gevaar
+          brengt.</p>
+      </div>
+
+      <div class="kaartje">
+        <h3>🏁 De finish</h3>
+        <p>Je bent gefinisht zodra je de finishlijn kruist — maar pas nádat je álle boeien
+          hebt gerond. Je verzeilde tijd is de tijd <span class="em">van het startsein tot je
+          finish</span>, en wordt met je rating omgerekend naar de
+          <span class="em">gecorrigeerde tijd</span>, waarmee boten van verschillende
+          snelheid eerlijk vergeleken worden.</p>
+      </div>
+
+      <div class="disclaimer">Veiligheid gaat altijd vóór de regels: voorkom aanvaringen,
+        ook als je voorrang hebt. Twijfel je? Wijk uit en bespreek het na afloop.</div>
+    </div>
+  </div>
+
+  <!-- ================= UITSLAGEN ================= -->
+  <div id="tabUitslagen" class="tab">
+    <div class="inhoud">
+      <h1>🏆 Uitslagen &amp; klassement</h1>
+      <div class="lead">Overall klassement (low-point: laagste totaal wint) en de uitslag
+        van elke afgeronde race.</div>
+      <div id="uitslagenInhoud"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="config.js"></script>
+  <script src="shared.js"></script>
+  <script>
+    document.getElementById('raceNaam').textContent = 'Race: ' + RACE_ID;
+
+    if (firebaseConfig.apiKey.startsWith('PLAK')) {
+      const b = document.getElementById('banner');
+      b.style.display = 'block';
+      b.textContent = 'config.js is nog niet ingevuld met je Firebase-gegevens. ' +
+        'Zie README.md — zonder die gegevens komt er nog geen live data binnen.';
+    }
+
+    const kaart = L.map('kaart').setView([52.4, 5.4], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '© OpenStreetMap'
+    }).addTo(kaart);
+
+    const markers = {}, sporen = {}, laatsteTs = {}, botData = {};
+    let eersteFix = true;
+    let timesData = {};    // races/.../times (huidige race)
+    let raceStart = null;  // startsein-tijd
+    let boeien = [];       // races/.../marks
+    let rondingData = {};  // races/.../rounded
+    let resultsData = {};  // races/.../results (afgeronde races)
+    let namen = {};        // races/.../names  { boot: 'gekozen naam' }
+    const FLEET = Object.keys(BOTEN);
+
+    // Weergavenaam van een boot (gekozen naam, anders het slot Valk1/2/3)
+    function naamVan(boot) {
+      return (namen[boot] && String(namen[boot]).trim()) ? namen[boot] : boot;
+    }
+
+    // =========================================================
+    //  Tabbladen
+    // =========================================================
+    function toonTab(id) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('actief', t.id === id));
+      document.querySelectorAll('#tabbar button').forEach(b => b.classList.toggle('actief', b.dataset.tab === id));
+      if (id === 'tabLive') setTimeout(() => kaart.invalidateSize(), 30);
+      if (id === 'tabUitslagen') renderUitslagen();
+    }
+    document.querySelectorAll('#tabbar button').forEach(b =>
+      b.addEventListener('click', () => toonTab(b.dataset.tab)));
+
+    // =========================================================
+    //  Boten (live) — statuslijst
+    // =========================================================
+    function verversLijst() {
+      const lijst = document.getElementById('botenlijst');
+      lijst.innerHTML = '';
+      const nu = Date.now();
+      FLEET.forEach(naam => {
+        const ts = laatsteTs[naam];
+        const online = ts && (nu - ts < 30000);
+        const t = timesData[naam] || {};
+        const s = Object.assign({}, botData[naam], { start: t.start, finish: t.finish, gerond: rondingData[naam] });
+        const div = document.createElement('div');
+        div.className = 'boot' + (online ? '' : ' offline');
+        div.innerHTML =
+          `<div class="boot-top">` +
+          `<span class="kleur" style="background:${BOTEN[naam].kleur}"></span>` +
+          `<span class="naam">${naamVan(naam)}</span>` +
+          `<span class="meta">${online ? 'LIVE' : (ts ? Math.round((nu - ts) / 1000) + 's' : 'offline')}</span></div>` +
+          `<div class="boot-data">${bootDataTekst(s, lijnData, boeien)}</div>`;
+        lijst.appendChild(div);
+      });
+    }
+
+    // =========================================================
+    //  Scorebord — huidige race
+    // =========================================================
+    function berekenUitslag(times) {
+      // -> array {naam, gefinisht, elapsed, corrected} met live 'onderweg'-tijd.
+      // De verzeilde tijd loopt vanaf het startsein (gun) — voor iedereen gelijk,
+      // dus een late start kost tijd. Is er (nog) geen sein gezet, dan valt het
+      // terug op de eigen startlijn-kruising (handig bij losse tests).
+      const nu = Date.now();
+      return FLEET.map(naam => {
+        const t = times[naam] || {};
+        const ref = (raceStart != null) ? raceStart : t.start;
+        let elapsed = null, gefinisht = false, onderweg = false;
+        if (t.start != null && ref != null) {
+          if (t.finish != null) { elapsed = t.finish - ref; gefinisht = true; }
+          else { elapsed = nu - ref; onderweg = true; }
+        }
+        const corrected = elapsed != null ? elapsed * BOTEN[naam].rating : null;
+        return { naam, gefinisht, onderweg, elapsed, corrected };
+      });
+    }
+
+    function renderScorebord() {
+      const rijen = berekenUitslag(timesData);
+      rijen.sort((a, b) => {
+        if (a.corrected == null && b.corrected == null) return 0;
+        if (a.corrected == null) return 1;
+        if (b.corrected == null) return -1;
+        return a.corrected - b.corrected;
+      });
+      const tb = document.getElementById('scorebord');
+      tb.innerHTML = '';
+      let rang = 0;
+      rijen.forEach(r => {
+        const heeftTijd = r.corrected != null;
+        if (heeftTijd) rang++;
+        const status = r.gefinisht ? 'finish' : (r.onderweg ? 'onderweg' : null);
+        const voortgang = (boeien.length && status === 'onderweg')
+          ? ` ${Object.keys(rondingData[r.naam] || {}).length}/${boeien.length}` : '';
+        const badge = status
+          ? `<span class="badge ${status}">${status === 'finish' ? 'finish' : 'onderweg' + voortgang}</span>` : '';
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          `<td class="rank">${heeftTijd ? rang : '–'}</td>` +
+          `<td><span class="kleur" style="display:inline-block;width:9px;height:9px;` +
+          `border-radius:50%;background:${BOTEN[r.naam].kleur};margin-right:6px"></span>` +
+          `${naamVan(r.naam)}${badge}</td>` +
+          `<td class="tijd">${formatDuur(r.elapsed)}</td>` +
+          `<td class="tijd">${formatDuur(r.corrected)}</td>`;
+        tb.appendChild(tr);
+      });
+    }
+
+    db.ref(`races/${RACE_ID}/times`).on('value', s => { timesData = s.val() || {}; renderScorebord(); });
+
+    // Gekozen bootnamen live meelezen en overal doorvoeren
+    db.ref(`races/${RACE_ID}/names`).on('value', s => {
+      namen = s.val() || {};
+      verversLijst(); renderScorebord();
+      FLEET.forEach(n => { if (markers[n]) markers[n].setTooltipContent(naamVan(n)); });
+      if (document.getElementById('tabUitslagen').classList.contains('actief')) renderUitslagen();
+    });
+
+    // =========================================================
+    //  Uitslagen & overall klassement
+    // =========================================================
+    const DNF_PUNTEN = FLEET.length + 1; // niet-gefinisht = aantal boten + 1
+
+    db.ref(`races/${RACE_ID}/results`).on('value', s => {
+      resultsData = s.val() || {};
+      if (document.getElementById('tabUitslagen').classList.contains('actief')) renderUitslagen();
+    });
+    // Oude race verwijderen (knop verschijnt alleen met ?wl)
+    document.getElementById('uitslagenInhoud').addEventListener('click', e => {
+      const wis = e.target.closest('.wis-race');
+      if (wis) {
+        const nr = wis.dataset.nr;
+        if (confirm(`Race ${nr} definitief verwijderen uit de uitslagen?`))
+          db.ref(`races/${RACE_ID}/results/${nr}`).remove();
+        return;
+      }
+      const hern = e.target.closest('.hernoem-race');
+      if (hern) {
+        const nr = hern.dataset.nr;
+        const huidig = (resultsData[nr] && resultsData[nr].naam) || '';
+        const naam = prompt(`Naam voor race ${nr} (leeg = geen naam):`, huidig);
+        if (naam !== null) db.ref(`races/${RACE_ID}/results/${nr}/naam`).set(naam.trim() || null);
+      }
+    });
+
+    function renderUitslagen() {
+      const houder = document.getElementById('uitslagenInhoud');
+      const magWissen = new URLSearchParams(location.search).has('wl');
+      const nummers = Object.keys(resultsData).map(Number).sort((a, b) => a - b);
+      if (!nummers.length) {
+        houder.innerHTML = '<div class="leeg">Nog geen races afgerond. ' +
+          'Rond een race af via de wedstrijdleiding (▸ Live-tab met ?wl).</div>';
+        return;
+      }
+
+      // Punten per boot per race
+      const punten = {};        // punten[boot][nr]
+      FLEET.forEach(n => punten[n] = {});
+      nummers.forEach(nr => {
+        const uit = resultsData[nr].uitslag || {};
+        FLEET.forEach(naam => {
+          const r = uit[naam];
+          punten[naam][nr] = (r && r.gefinisht && r.positie) ? r.positie : DNF_PUNTEN;
+        });
+      });
+      const totaal = {};
+      FLEET.forEach(n => totaal[n] = nummers.reduce((sum, nr) => sum + punten[n][nr], 0));
+      const volgorde = [...FLEET].sort((a, b) => {
+        if (totaal[a] !== totaal[b]) return totaal[a] - totaal[b];
+        // Gelijkspel: de meest recente race beslist (lagere punten wint)
+        for (let k = nummers.length - 1; k >= 0; k--) {
+          const nr = nummers[k];
+          if (punten[a][nr] !== punten[b][nr]) return punten[a][nr] - punten[b][nr];
+        }
+        return 0;
+      });
+
+      // -- Overall tabel --
+      let html = '<div class="u-tabel"><h3>Overall klassement</h3>' +
+        '<div class="sub">Low-point — laagste totaal wint. Niet gefinisht = ' + DNF_PUNTEN + ' punten.</div>' +
+        '<table><thead><tr><th class="rank">#</th><th>Boot</th>' +
+        nummers.map(nr => `<th class="pt">R${nr}</th>`).join('') +
+        '<th class="pt">Totaal</th></tr></thead><tbody>';
+      volgorde.forEach((naam, i) => {
+        const win = i === 0 ? ' class="winnaar"' : '';
+        html += `<tr${win}><td class="rank">${i + 1}</td>` +
+          `<td><span class="kleur" style="display:inline-block;width:9px;height:9px;` +
+          `border-radius:50%;background:${BOTEN[naam].kleur};margin-right:6px"></span>${naamVan(naam)}</td>` +
+          nummers.map(nr => `<td class="pt">${punten[naam][nr]}</td>`).join('') +
+          `<td class="pt"><b>${totaal[naam]}</b></td></tr>`;
+      });
+      html += '</tbody></table></div>';
+
+      // -- Per race --
+      [...nummers].reverse().forEach(nr => {
+        const res = resultsData[nr];
+        const rijen = FLEET.map(naam => ({ naam, ...(res.uitslag[naam] || {}) }))
+          .sort((a, b) => {
+            if (a.gefinisht && b.gefinisht) return a.positie - b.positie;
+            if (a.gefinisht) return -1; if (b.gefinisht) return 1; return 0;
+          });
+        const wanneer = res.ts ? new Date(res.ts).toLocaleString('nl-NL',
+          { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+        const rNaam = res.naam ? ': ' + res.naam : '';
+        html += `<div class="u-tabel"><h3>Race ${nr}${rNaam}` +
+          (magWissen ? ` <button class="hernoem-race" data-nr="${nr}" title="Naam wijzigen">✏️</button>` +
+                       ` <button class="wis-race" data-nr="${nr}" title="Verwijder deze race">🗑</button>` : '') +
+          `</h3><div class="sub">${wanneer}</div>` +
+          '<table><thead><tr><th class="rank">#</th><th>Boot</th>' +
+          '<th class="tijd">Tijd</th><th class="tijd">Gecorr.</th></tr></thead><tbody>';
+        rijen.forEach(r => {
+          html += `<tr><td class="rank">${r.gefinisht ? r.positie : 'DNF'}</td>` +
+            `<td><span class="kleur" style="display:inline-block;width:9px;height:9px;` +
+            `border-radius:50%;background:${BOTEN[r.naam].kleur};margin-right:6px"></span>${naamVan(r.naam)}</td>` +
+            `<td class="tijd">${r.gefinisht ? formatDuur(r.elapsed) : '—'}</td>` +
+            `<td class="tijd">${r.gefinisht ? formatDuur(r.corrected) : '—'}</td></tr>`;
+        });
+        html += '</tbody></table></div>';
+      });
+
+      houder.innerHTML = html;
+    }
+
+    // =========================================================
+    //  Start-/finishlijnen + boeien + geplande route tekenen
+    // =========================================================
+    const lijnLagen = { start: null, finish: null };
+    let lijnData = {};
+    const boeiLagen = [];
+    let routeLaag = null;
+
+    function midden(ln) { return { lat: (ln.a.lat + ln.b.lat) / 2, lng: (ln.a.lng + ln.b.lng) / 2 }; }
+
+    db.ref(`races/${RACE_ID}/lines`).on('value', s => {
+      lijnData = s.val() || {};
+      ['start', 'finish'].forEach(type => {
+        if (lijnLagen[type]) { kaart.removeLayer(lijnLagen[type]); lijnLagen[type] = null; }
+        const ln = lijnData[type];
+        if (ln && ln.a && ln.b) {
+          const kleur = type === 'start' ? '#2ea043' : '#e6194b';
+          lijnLagen[type] = L.polyline(
+            [[ln.a.lat, ln.a.lng], [ln.b.lat, ln.b.lng]],
+            { color: kleur, weight: 4, dashArray: '7 7' }
+          ).addTo(kaart).bindTooltip(type === 'start' ? 'START' : 'FINISH',
+            { permanent: true, direction: 'center', className: 'lijn-label' });
+        }
+      });
+      tekenBoeien();
+    });
+
+    function tekenBoeien() {
+      boeiLagen.forEach(l => kaart.removeLayer(l));
+      boeiLagen.length = 0;
+      const wlZichtbaar = new URLSearchParams(location.search).has('wl');
+      boeien.forEach((boei, i) => {
+        // Rondingslijn (bissectrice) — alleen voor de wedstrijdleiding (?wl)
+        if (wlZichtbaar) {
+          const { prev, next } = boeiPrevNext(i, boeien, lijnData);
+          const rl = rondingsLijn(boei, prev, next, 6, 150);   // korter getekend dan gemeten (10 km)
+          if (rl) boeiLagen.push(L.polyline([[rl.a.lat, rl.a.lng], [rl.b.lat, rl.b.lng]],
+            { color: '#e05fd8', weight: 3, dashArray: '4 6' }).addTo(kaart)
+            .bindTooltip('rondingslijn boei ' + (i + 1), { direction: 'top' }));
+        }
+        boeiLagen.push(L.marker([boei.lat, boei.lng], {
+          icon: L.divIcon({ className: 'boei-icoon',
+            html: `<div class="boei">${i + 1}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] })
+        }).addTo(kaart).bindTooltip(boei.naam || ('Boei ' + (i + 1)),
+          { direction: 'top', offset: [0, -10] }));
+      });
+      tekenRoute();
+    }
+
+    function tekenRoute() {
+      if (routeLaag) { kaart.removeLayer(routeLaag); routeLaag = null; }
+      const punten = [];
+      if (lijnData.start && lijnData.start.a) { const m = midden(lijnData.start); punten.push([m.lat, m.lng]); }
+      boeien.forEach(b => punten.push([b.lat, b.lng]));
+      if (lijnData.finish && lijnData.finish.a) { const m = midden(lijnData.finish); punten.push([m.lat, m.lng]); }
+      if (punten.length >= 2) {
+        routeLaag = L.polyline(punten, { color: '#9fb4cd', weight: 2, dashArray: '3 8', opacity: .8 }).addTo(kaart);
+      }
+    }
+
+    db.ref(`races/${RACE_ID}/marks`).on('value', s => { boeien = s.val() || []; tekenBoeien(); renderScorebord(); });
+    db.ref(`races/${RACE_ID}/rounded`).on('value', s => { rondingData = s.val() || {}; renderScorebord(); });
+
+    // =========================================================
+    //  Live posities + sporen
+    // =========================================================
+    FLEET.forEach(naam => {
+      const kleur = BOTEN[naam].kleur;
+      db.ref(`races/${RACE_ID}/positions/${naam}`).on('value', snap => {
+        const d = snap.val();
+        if (!d) return;
+        laatsteTs[naam] = d.ts;
+        botData[naam] = { lat: d.lat, lng: d.lng, speed: d.speed, heading: d.heading, ts: d.ts };
+        const ll = [d.lat, d.lng];
+        if (!markers[naam]) {
+          markers[naam] = L.circleMarker(ll, {
+            radius: 8, color: '#fff', weight: 2, fillColor: kleur, fillOpacity: 1
+          }).addTo(kaart).bindTooltip(naamVan(naam), {
+            permanent: true, direction: 'top', className: 'boot-label', offset: [0, -6] });
+        } else { markers[naam].setLatLng(ll); }
+        if (eersteFix) { kaart.setView(ll, 14); eersteFix = false; }
+        verversLijst();
+      });
+      sporen[naam] = L.polyline([], { color: kleur, weight: 3, opacity: .7 }).addTo(kaart);
+      db.ref(`races/${RACE_ID}/tracks/${naam}`).on('child_added', snap => {
+        const d = snap.val();
+        if (d && d.lat != null) sporen[naam].addLatLng([d.lat, d.lng]);
+      });
+    });
+
+    // Sporen wissen als een race wordt afgerond/gereset (gen verandert)
+    let vorigeGen;
+    db.ref(`races/${RACE_ID}/gen`).on('value', s => {
+      const g = s.val();
+      if (vorigeGen !== undefined && g !== vorigeGen) Object.values(sporen).forEach(p => p.setLatLngs([]));
+      vorigeGen = g;
+    });
+
+    // =========================================================
+    //  Live wind (Open-Meteo) — widget op de kaart
+    // =========================================================
+    const windControl = L.control({ position: 'bottomleft' });
+    windControl.onAdd = function () {
+      const div = L.DomUtil.create('div', 'windwidget');
+      div.id = 'windwidget';
+      div.innerHTML =
+        '<div class="windpijl" id="windPijl" title="wijst mee met de wind">↑</div>' +
+        '<div><div class="kop">Wind</div>' +
+        '<div class="spd" id="windSpd">– kn</div>' +
+        '<div class="windsub" id="windDir">laden…</div></div>';
+      L.DomEvent.disableClickPropagation(div);
+      return div;
+    };
+    windControl.addTo(kaart);
+
+    function kompas(deg) {
+      const r = ['N','NNO','NO','ONO','O','OZO','ZO','ZZO','Z','ZZW','ZW','WZW','W','WNW','NW','NNW'];
+      return r[Math.round(deg / 22.5) % 16];
+    }
+    function windLocatie() {
+      if (lijnData.start && lijnData.start.a) return midden(lijnData.start);
+      for (const n of FLEET) { if (markers[n]) { const ll = markers[n].getLatLng(); return { lat: ll.lat, lng: ll.lng }; } }
+      const c = kaart.getCenter(); return { lat: c.lat, lng: c.lng };
+    }
+    async function haalWind() {
+      const w = document.getElementById('windwidget');
+      try {
+        const p = windLocatie();
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${p.lat.toFixed(4)}` +
+          `&longitude=${p.lng.toFixed(4)}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn`;
+        const j = await (await fetch(url)).json();
+        const c = j.current;
+        document.getElementById('windSpd').textContent = Math.round(c.wind_speed_10m) + ' kn';
+        document.getElementById('windDir').textContent =
+          `uit ${kompas(c.wind_direction_10m)} (${Math.round(c.wind_direction_10m)}°) · vlagen ${Math.round(c.wind_gusts_10m)} kn`;
+        // Pijl wijst met de wind mee (naar waar hij waait): meteo-richting + 180°
+        document.getElementById('windPijl').style.transform = `rotate(${c.wind_direction_10m + 180}deg)`;
+        w.classList.remove('fout');
+      } catch (e) {
+        document.getElementById('windDir').textContent = 'wind niet beschikbaar';
+        w.classList.add('fout');
+      }
+    }
+    haalWind();
+    setInterval(haalWind, 5 * 60 * 1000);
+
+    // =========================================================
+    //  Wedstrijdleiding (alleen met ?wl in de URL)
+    // =========================================================
+    const isLeiding = new URLSearchParams(location.search).has('wl');
+    const wlStatusEl = document.getElementById('wlStatus');
+
+    db.ref(`races/${RACE_ID}/raceStart`).on('value', s => { raceStart = s.val() || null; toonWlStatus(); updateAftel(); });
+
+    // --- Aftelklok naar de start (zichtbaar voor iedereen) ---
+    const aftelEl = document.getElementById('aftel');
+    function klokHM(ts) { return new Date(ts).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }); }
+    function updateAftel() {
+      if (!raceStart) { aftelEl.style.display = 'none'; return; }
+      aftelEl.style.display = 'block';
+      const rem = raceStart - Date.now();
+      if (rem > 0) {
+        aftelEl.className = 'aftel' + (rem <= 60000 ? ' urgent' : '');
+        aftelEl.innerHTML = `<div class="lbl">START OVER</div>` +
+          `<div class="groot">${formatDuur(rem)}</div><div class="lbl">om ${klokHM(raceStart)}</div>`;
+      } else {
+        aftelEl.className = 'aftel gestart';
+        aftelEl.innerHTML = `<div class="lbl">GESTART om ${klokHM(raceStart)}</div>` +
+          `<div class="groot">${formatDuur(-rem)}</div><div class="lbl">geleden</div>`;
+      }
+    }
+
+    // Eerstvolgende 5-minuten-klokmoment, minimaal 5 min vanaf nu
+    function volgendeStartTijd() {
+      const stap = 5 * 60 * 1000;
+      return Math.ceil((Date.now() + stap) / stap) * stap;
+    }
+
+    function toonWlStatus(bericht) {
+      if (bericht) { wlStatusEl.textContent = bericht; return; }
+      if (!raceStart) { wlStatusEl.textContent = 'Nog geen start gepland.'; return; }
+      wlStatusEl.textContent = (raceStart > Date.now() ? '🔫 Start gepland om ' : '🔫 Gestart om ')
+        + klokHM(raceStart);
+    }
+
+    if (isLeiding) {
+      document.getElementById('wedstrijdleiding').style.display = 'block';
+      toonWlStatus();
+
+      let instelModus = null;
+      let punten = [], tijdMarkers = [];
+      function wisTijdelijk() { tijdMarkers.forEach(m => kaart.removeLayer(m)); tijdMarkers = []; punten = []; }
+
+      function beginInstellen(type) {
+        instelModus = type; wisTijdelijk();
+        toonWlStatus(`Tik 2 punten voor de ${type === 'start' ? 'startlijn' : 'finishlijn'} op de kaart…`);
+      }
+      document.getElementById('btnStart').onclick = () => beginInstellen('start');
+      document.getElementById('btnFinish').onclick = () => beginInstellen('finish');
+
+      kaart.on('click', e => {
+        if (!instelModus) return;
+        if (instelModus === 'boei') {
+          const nieuw = [...boeien, { lat: e.latlng.lat, lng: e.latlng.lng }];
+          db.ref(`races/${RACE_ID}/marks`).set(nieuw);
+          toonWlStatus(`Boei ${nieuw.length} geplaatst — tik nog een boei, of klik nogmaals op de knop om te stoppen.`);
+          return;
+        }
+        punten.push({ lat: e.latlng.lat, lng: e.latlng.lng });
+        tijdMarkers.push(L.circleMarker(e.latlng, {
+          radius: 5, color: '#fff', weight: 2, fillColor: '#f0b429', fillOpacity: 1 }).addTo(kaart));
+        if (punten.length === 2) {
+          db.ref(`races/${RACE_ID}/lines/${instelModus}`).set({ a: punten[0], b: punten[1] });
+          toonWlStatus(`${instelModus === 'start' ? 'Startlijn' : 'Finishlijn'} opgeslagen ✓`);
+          instelModus = null; wisTijdelijk();
+        }
+      });
+
+      document.getElementById('btnBoei').onclick = () => {
+        if (instelModus === 'boei') { instelModus = null; toonWlStatus('Klaar met boeien plaatsen.'); }
+        else { instelModus = 'boei'; wisTijdelijk();
+          toonWlStatus('Tik boeien op de kaart in de te varen volgorde. Klik nogmaals op de knop om te stoppen.'); }
+      };
+      document.getElementById('btnBoeienWis').onclick = () => {
+        if (!confirm('Alle boeien verwijderen?')) return;
+        db.ref(`races/${RACE_ID}/marks`).remove();
+        db.ref(`races/${RACE_ID}/rounded`).remove();
+        instelModus = null; toonWlStatus('Boeien verwijderd.');
+      };
+
+      document.getElementById('btnSein').onclick = () => {
+        const t = volgendeStartTijd();
+        const min = Math.round((t - Date.now()) / 60000);
+        if (!confirm(`Start plannen op ${klokHM(t)} (over ~${min} min)? ` +
+          'De racers zien een aftelklok tot dat moment.')) return;
+        db.ref(`races/${RACE_ID}/raceStart`).set(t);
+      };
+
+      document.getElementById('btnArchief').onclick = () => {
+        const rijen = berekenUitslag(timesData);
+        const finishers = rijen.filter(r => r.gefinisht).sort((a, b) => a.corrected - b.corrected);
+        if (!finishers.length && !confirm('Nog geen enkele boot gefinisht. Toch een lege race opslaan?')) return;
+        if (finishers.length && !confirm(`Race afronden met ${finishers.length} finisher(s)? ` +
+          'De uitslag wordt opgeslagen en de live tijden gereset.')) return;
+        finishers.forEach((r, i) => r.positie = i + 1);
+        const uitslag = {};
+        rijen.forEach(r => { uitslag[r.naam] = {
+          gefinisht: r.gefinisht,
+          elapsed: r.gefinisht ? r.elapsed : null,
+          corrected: r.gefinisht ? r.corrected : null,
+          positie: r.positie || null }; });
+        const nr = (Object.keys(resultsData).map(Number).reduce((m, n) => Math.max(m, n), 0)) + 1;
+        db.ref(`races/${RACE_ID}/results/${nr}`).set({ nr, ts: Date.now(), uitslag });
+        db.ref(`races/${RACE_ID}/times`).remove();
+        db.ref(`races/${RACE_ID}/rounded`).remove();
+        db.ref(`races/${RACE_ID}/raceStart`).remove();
+        db.ref(`races/${RACE_ID}/tracks`).remove();          // getrackte routes wissen
+        db.ref(`races/${RACE_ID}/gen`).set(Date.now());      // open schermen laten wissen
+        toonWlStatus(`Race ${nr} opgeslagen ✓ — klaar voor de volgende start.`);
+      };
+
+      document.getElementById('btnReset').onclick = () => {
+        if (!confirm('Live tijden, boei-rondingen, sporen én startsein wissen zónder op te slaan? ' +
+          '(lijnen en boeien blijven staan)')) return;
+        db.ref(`races/${RACE_ID}/times`).remove();
+        db.ref(`races/${RACE_ID}/rounded`).remove();
+        db.ref(`races/${RACE_ID}/raceStart`).remove();
+        db.ref(`races/${RACE_ID}/tracks`).remove();
+        db.ref(`races/${RACE_ID}/gen`).set(Date.now());
+      };
+    }
+
+    verversLijst();
+    setInterval(() => { verversLijst(); renderScorebord(); updateAftel(); }, 1000);
+  </script>
+</body>
+</html>

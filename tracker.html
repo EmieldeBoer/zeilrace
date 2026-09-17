@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Zeilrace tracker</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, sans-serif;
+      background: #0b1622; color: #e8eef5;
+      display: flex; flex-direction: column; min-height: 100vh;
+      padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+    }
+    h1 { font-size: 1.2rem; margin: 20px 0 4px; }
+    .sub { color: #8ba3bd; font-size: .85rem; margin-bottom: 20px; }
+    label { display: block; font-size: .85rem; color: #8ba3bd; margin: 14px 0 6px; }
+    select, button, input[type=text] {
+      width: 100%; padding: 14px; border-radius: 12px; border: 1px solid #24405e;
+      background: #12233a; color: #e8eef5; font-size: 1.1rem;
+    }
+    input[type=text]::placeholder { color: #5b7791; }
+    button {
+      border: none; font-weight: 700; margin-top: 22px; cursor: pointer;
+    }
+    button.start { background: #2ea043; }
+    button.stop  { background: #d13438; }
+    button:disabled { opacity: .5; }
+    .status {
+      margin-top: 24px; padding: 16px; border-radius: 14px; background: #12233a;
+      border: 1px solid #24405e;
+    }
+    .status.live { border-color: #2ea043; box-shadow: 0 0 0 2px #2ea04333; }
+    .dot {
+      display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+      background: #567; margin-right: 8px; vertical-align: middle;
+    }
+    .dot.on { background: #2ea043; animation: pulse 1.4s infinite; }
+    @keyframes pulse { 50% { opacity: .3; } }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+    .cell .k { font-size: .72rem; color: #8ba3bd; }
+    .cell .v { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+    .warn { color: #f0b429; font-size: .8rem; margin-top: 16px; line-height: 1.4; }
+    .aftel { margin: 18px 0 4px; padding: 16px; border-radius: 16px; background: #12233a;
+      border: 1px solid #2a4a6e; text-align: center; }
+    .aftel .lbl { font-size: .72rem; letter-spacing: .12em; color: #8ba3bd; }
+    .aftel .groot { font-size: 2.6rem; font-weight: 800; font-variant-numeric: tabular-nums;
+      color: #7ec8ff; line-height: 1.1; margin: 2px 0; }
+    .aftel.urgent { border-color: #d1641f; background: #241a12; }
+    .aftel.urgent .groot { color: #ffb454; }
+    .aftel.gestart { border-color: #1f6b3a; }
+    .aftel.gestart .groot { color: #7ee0a1; font-size: 1.8rem; }
+    .nav { margin-top: 16px; padding: 14px 16px; border-radius: 14px; background: #12233a;
+      border: 1px solid #2a4a6e; }
+    .navdoel { font-size: .95rem; font-weight: 700; color: #7ec8ff; margin-bottom: 4px; }
+    .nav .v#navVmg.neg { color: #e0736e; }
+    .andere { margin-top: 16px; }
+    .ab-kop { font-size: .72rem; letter-spacing: .06em; color: #8ba3bd; text-transform: uppercase; margin-bottom: 8px; }
+    .ab-legenda { padding: 0 2px 8px; font-size: .66rem; color: #6f8aa8;
+      text-transform: uppercase; letter-spacing: .04em; }
+    .ab-rij { padding: 9px 12px; background: #12233a; border-radius: 10px; margin-bottom: 7px; }
+    .ab-rij.off { opacity: .45; }
+    .ab-naam { font-weight: 700; display: flex; align-items: center; gap: 6px; font-size: .9rem; }
+    .ab-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+    .ab-data { color: #9fb4cd; font-variant-numeric: tabular-nums; margin-top: 3px; font-size: .8rem; }
+    .ab-leeg { color: #55708c; font-size: .8rem; }
+    #kaart { flex: 1 1 auto; min-height: 300px; margin-top: 16px; border-radius: 14px;
+      overflow: hidden; border: 1px solid #24405e; }
+    .leaflet-container { background: #0b1622; }
+    .boei { width: 22px; height: 22px; border-radius: 50%; background: #f0932b;
+      border: 2px solid #fff; color: #241300; font-weight: 800; font-size: 12px;
+      display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px #0008; }
+    .lijn-label { background: transparent; border: none; box-shadow: none;
+      color: #fff; font-weight: 800; font-size: 11px; text-shadow: 0 0 4px #000, 0 0 4px #000; }
+    .boot-label { background: rgba(10,20,32,.85); border: 1px solid #24405e; border-radius: 6px;
+      padding: 2px 6px; font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap; }
+    .windwidget { background: rgba(10,20,32,.88); border: 1px solid #24405e; border-radius: 12px;
+      padding: 8px 13px; display: flex; align-items: center; gap: 11px; color: #e8eef5;
+      font-variant-numeric: tabular-nums; box-shadow: 0 2px 8px #0007; }
+    .windpijl { font-size: 26px; line-height: 1; color: #7ec8ff; transition: transform .6s ease; }
+    .windwidget .spd { font-size: 1.15rem; font-weight: 800; }
+    .windwidget .windsub { font-size: .72rem; color: #9fb4cd; }
+    .windwidget .kop { font-size: .6rem; letter-spacing: .08em; color: #6f8aa8; text-transform: uppercase; }
+    .windwidget.fout .windpijl { opacity: .25; }
+    footer { padding: 16px 0; color: #55708c; font-size: .75rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <h1>⛵ Zeilrace tracker</h1>
+  <div class="sub">Houd deze pagina open op de boot. Scherm aan, telefoon aan de lader.</div>
+
+  <div class="aftel" id="aftel" style="display:none"></div>
+
+  <div id="setup">
+    <label for="boot">Welke boot ben jij?</label>
+    <select id="boot"></select>
+
+    <label for="naam">Naam van je boot</label>
+    <input id="naam" type="text" maxlength="24" autocomplete="off" placeholder="bijv. De Zeearend">
+  </div>
+
+  <button id="knop" class="start">▶︎ Start tracking</button>
+
+  <div class="nav" id="nav">
+    <div class="navdoel" id="navDoel">Volgend doel: —</div>
+    <div class="grid">
+      <div class="cell"><div class="k">Afstand</div><div class="v" id="navAfstand">—</div></div>
+      <div class="cell"><div class="k">Snelheid</div><div class="v" id="navSpd">—</div></div>
+      <div class="cell"><div class="k">VMG naar doel</div><div class="v" id="navVmg">—</div></div>
+      <div class="cell"><div class="k">Tijd tot doel</div><div class="v" id="navEta">—</div></div>
+    </div>
+  </div>
+
+  <div id="kaart"></div>
+
+  <div class="status" id="status">
+    <span><span class="dot" id="dot"></span><b id="statustekst">Nog niet gestart</b></span>
+    <div class="grid">
+      <div class="cell"><div class="k">Positie</div><div class="v" id="pos">—</div></div>
+      <div class="cell"><div class="k">Nauwkeurigheid</div><div class="v" id="acc">—</div></div>
+      <div class="cell"><div class="k">Snelheid</div><div class="v" id="spd">—</div></div>
+      <div class="cell"><div class="k">Verzonden</div><div class="v" id="cnt">0</div></div>
+    </div>
+    <div class="warn" id="warn"></div>
+  </div>
+
+  <div class="andere">
+    <div class="ab-kop">Andere boten</div>
+    <div class="ab-legenda">per boot: snelheid · VMG · volgend doel · afstand · tijd</div>
+    <div id="andereLijst"></div>
+  </div>
+
+  <footer id="race"></footer>
+
+  <!-- Firebase (compat SDK via CDN) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="config.js"></script>
+  <script src="shared.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // Bootkeuze vullen (evt. voorselecteren via ?boot=Valk1)
+    const bootSelect = document.getElementById('boot');
+    Object.keys(BOTEN).forEach(naam => {
+      const o = document.createElement('option');
+      o.value = naam; o.textContent = naam;
+      bootSelect.appendChild(o);
+    });
+    const vooraf = new URLSearchParams(location.search).get('boot');
+    if (vooraf && BOTEN[vooraf]) bootSelect.value = vooraf;
+    document.getElementById('race').textContent = 'Race: ' + RACE_ID;
+
+    // Eigen bootnaam kiezen (weergavenaam; het slot Valk1/2/3 blijft de identiteit)
+    const naamInput = document.getElementById('naam');
+    function laadNaam() {
+      db.ref(`races/${RACE_ID}/names/${bootSelect.value}`).get()
+        .then(s => { naamInput.value = s.val() || ''; });
+    }
+    function bewaarNaam() {
+      const n = naamInput.value.trim();
+      db.ref(`races/${RACE_ID}/names/${bootSelect.value}`).set(n || null);
+    }
+    bootSelect.addEventListener('change', laadNaam);
+    naamInput.addEventListener('change', bewaarNaam);
+    laadNaam();
+
+    const knop = document.getElementById('knop');
+    const el = {
+      status: document.getElementById('status'), dot: document.getElementById('dot'),
+      tekst: document.getElementById('statustekst'), pos: document.getElementById('pos'),
+      acc: document.getElementById('acc'), spd: document.getElementById('spd'),
+      cnt: document.getElementById('cnt'), warn: document.getElementById('warn')
+    };
+
+    // =========================================================
+    //  Geluiden (Web Audio — pieptonen, geen bestanden nodig)
+    // =========================================================
+    let audioCtx = null;
+    function initAudio() {
+      if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    }
+    function toon(freq, start, duur, vol) {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = freq;
+      g.gain.setValueAtTime(0, start);
+      g.gain.linearRampToValueAtTime(vol, start + 0.01);
+      g.gain.setValueAtTime(vol, start + Math.max(0.02, duur - 0.03));
+      g.gain.linearRampToValueAtTime(0, start + duur);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(start); o.stop(start + duur);
+    }
+    function speel(noten) {                 // noten = [[freq, duur, offset], ...]
+      initAudio(); if (!audioCtx) return;
+      const t0 = audioCtx.currentTime + 0.02;
+      noten.forEach(([f, d, dt]) => toon(f, t0 + dt, d, 0.3));
+    }
+    const GELUID = {
+      vijfmin:   [[660, 0.18, 0], [660, 0.18, 0.28]],
+      eenmin:    [[880, 0.16, 0], [880, 0.16, 0.24], [880, 0.16, 0.48]],
+      start:     [[430, 0.9, 0]],
+      startlijn: [[1000, 0.14, 0]],
+      boei:      [[1200, 0.13, 0], [1500, 0.16, 0.15]],
+      finish:    [[600, 0.16, 0], [800, 0.16, 0.2], [1046, 0.42, 0.4]]
+    };
+    // Audio ontgrendelen bij de eerste aanraking (autoplay-beleid)
+    document.addEventListener('pointerdown', initAudio, { once: true });
+
+    let watchId = null, wakeLock = null, teller = 0, laatsteSchrijf = 0;
+    const SCHRIJF_INTERVAL = 3000; // max 1x per 3 sec naar de database
+
+    // --- Start/finish-detectie (Fase 2) + boei-ronding ---
+    let lijnen = { start: null, finish: null }; // elk: {a:{lat,lng}, b:{lat,lng}}
+    let raceStart = null;                        // tijdstip van het startsein (ms)
+    let mijnTijden = { start: null, finish: null };
+    let vorigeRuwe = null;                        // vorige GPS-positie voor kruisingstest
+    let boeien = [];                             // [{lat,lng,naam,side}, ...] in volgorde
+    let mijnGerond = {};                         // { markIndex: ts }
+
+    // =========================================================
+    //  Kaart: waar moet ik heen? (course + alle boten)
+    // =========================================================
+    const kaart = L.map('kaart').setView([52.4, 5.4], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(kaart);
+
+    let kNamen = {}, kMarkers = {}, kSporen = {}, kBoeiLagen = [], kRoute = null, kGefit = false;
+    const botStatus = {};   // per boot: {lat,lng,speed,ts,start,finish,gerond} voor "Andere boten"
+    const kLijn = { start: null, finish: null };
+    function kNaam(b) { return (kNamen[b] && String(kNamen[b]).trim()) ? kNamen[b] : b; }
+    function kMid(ln) { return [(ln.a.lat + ln.b.lat) / 2, (ln.a.lng + ln.b.lng) / 2]; }
+
+    function fitEen() {
+      if (kGefit) return;
+      const lagen = [...kBoeiLagen, ...Object.values(kMarkers), kLijn.start, kLijn.finish].filter(Boolean);
+      if (!lagen.length) return;
+      const b = L.featureGroup(lagen).getBounds();
+      if (b.isValid()) { kaart.fitBounds(b, { padding: [40, 40], maxZoom: 16 }); kGefit = true; }
+    }
+
+    function tekenCourse() {
+      ['start', 'finish'].forEach(t => {
+        if (kLijn[t]) { kaart.removeLayer(kLijn[t]); kLijn[t] = null; }
+        const ln = lijnen[t];
+        if (ln && ln.a && ln.b) {
+          kLijn[t] = L.polyline([[ln.a.lat, ln.a.lng], [ln.b.lat, ln.b.lng]],
+            { color: t === 'start' ? '#2ea043' : '#e6194b', weight: 4, dashArray: '7 7' })
+            .addTo(kaart).bindTooltip(t === 'start' ? 'START' : 'FINISH',
+              { permanent: true, direction: 'center', className: 'lijn-label' });
+        }
+      });
+      kBoeiLagen.forEach(l => kaart.removeLayer(l)); kBoeiLagen = [];
+      boeien.forEach((boei, i) => {
+        kBoeiLagen.push(L.marker([boei.lat, boei.lng],
+          { icon: L.divIcon({ className: '', html: `<div class="boei">${i + 1}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] }) })
+          .addTo(kaart).bindTooltip(boei.naam || ('Boei ' + (i + 1)), { direction: 'top', offset: [0, -10] }));
+      });
+      if (kRoute) { kaart.removeLayer(kRoute); kRoute = null; }
+      const pts = [];
+      if (lijnen.start && lijnen.start.a) pts.push(kMid(lijnen.start));
+      boeien.forEach(b => pts.push([b.lat, b.lng]));
+      if (lijnen.finish && lijnen.finish.a) pts.push(kMid(lijnen.finish));
+      if (pts.length >= 2) kRoute = L.polyline(pts, { color: '#9fb4cd', weight: 2, dashArray: '3 8', opacity: .8 }).addTo(kaart);
+      fitEen();
+    }
+
+    // Lijnen, startsein en boeien live meelezen (voor iedereen gelijk uit Firebase)
+    db.ref(`races/${RACE_ID}/lines`).on('value', s => { lijnen = s.val() || { start: null, finish: null }; tekenCourse(); });
+    db.ref(`races/${RACE_ID}/raceStart`).on('value', s => { raceStart = s.val() || null; updateAftel(); });
+    db.ref(`races/${RACE_ID}/marks`).on('value', s => { boeien = s.val() || []; tekenCourse(); });
+    db.ref(`races/${RACE_ID}/names`).on('value', s => {
+      kNamen = s.val() || {};
+      Object.keys(kMarkers).forEach(n => kMarkers[n].setTooltipContent(kNaam(n)));
+    });
+    // Alle bootposities live op de kaart (eigen boot met gouden rand)
+    Object.keys(BOTEN).forEach(naam => {
+      // Spoor (afgelegde weg) — onder de bootjes
+      kSporen[naam] = L.polyline([], { color: BOTEN[naam].kleur, weight: 3, opacity: .7 }).addTo(kaart);
+      db.ref(`races/${RACE_ID}/tracks/${naam}`).on('child_added', snap => {
+        const d = snap.val();
+        if (d && d.lat != null) kSporen[naam].addLatLng([d.lat, d.lng]);
+      });
+      db.ref(`races/${RACE_ID}/times/${naam}`).on('value', s => {
+        const t = s.val() || {}; botStatus[naam] = botStatus[naam] || {};
+        botStatus[naam].start = t.start; botStatus[naam].finish = t.finish;
+      });
+      db.ref(`races/${RACE_ID}/rounded/${naam}`).on('value', s => {
+        botStatus[naam] = botStatus[naam] || {}; botStatus[naam].gerond = s.val() || {};
+      });
+      db.ref(`races/${RACE_ID}/positions/${naam}`).on('value', snap => {
+        const d = snap.val(); if (!d) return;
+        botStatus[naam] = Object.assign(botStatus[naam] || {}, { lat: d.lat, lng: d.lng, speed: d.speed, heading: d.heading, ts: d.ts });
+        const eigen = naam === bootSelect.value;
+        if (!kMarkers[naam]) {
+          kMarkers[naam] = L.circleMarker([d.lat, d.lng],
+            { radius: eigen ? 9 : 7, color: eigen ? '#ffe08a' : '#fff', weight: eigen ? 3 : 2,
+              fillColor: BOTEN[naam].kleur, fillOpacity: 1 })
+            .addTo(kaart).bindTooltip(kNaam(naam),
+              { permanent: true, direction: 'top', className: 'boot-label', offset: [0, -6] });
+        } else { kMarkers[naam].setLatLng([d.lat, d.lng]); }
+        fitEen();
+      });
+    });
+
+    // Sporen wissen als een race wordt afgerond/gereset (gen verandert)
+    let vorigeGen;
+    db.ref(`races/${RACE_ID}/gen`).on('value', s => {
+      const g = s.val();
+      if (vorigeGen !== undefined && g !== vorigeGen) Object.values(kSporen).forEach(p => p.setLatLngs([]));
+      vorigeGen = g;
+    });
+
+    // =========================================================
+    //  Live wind op de kaart (Open-Meteo)
+    // =========================================================
+    let mijnPositie = null;
+    const windControl = L.control({ position: 'bottomleft' });
+    windControl.onAdd = function () {
+      const div = L.DomUtil.create('div', 'windwidget');
+      div.id = 'windwidget';
+      div.innerHTML = '<div class="windpijl" id="windPijl" title="wijst mee met de wind">↑</div>' +
+        '<div><div class="kop">Wind</div><div class="spd" id="windSpd">– kn</div>' +
+        '<div class="windsub" id="windDir">laden…</div></div>';
+      L.DomEvent.disableClickPropagation(div);
+      return div;
+    };
+    windControl.addTo(kaart);
+    function kompas(deg) {
+      const r = ['N','NNO','NO','ONO','O','OZO','ZO','ZZO','Z','ZZW','ZW','WZW','W','WNW','NW','NNW'];
+      return r[Math.round(deg / 22.5) % 16];
+    }
+    function windLocatie() {
+      if (mijnPositie) return mijnPositie;
+      if (lijnen.start && lijnen.start.a)
+        return { lat: (lijnen.start.a.lat + lijnen.start.b.lat) / 2, lng: (lijnen.start.a.lng + lijnen.start.b.lng) / 2 };
+      const c = kaart.getCenter(); return { lat: c.lat, lng: c.lng };
+    }
+    async function haalWind() {
+      const w = document.getElementById('windwidget');
+      try {
+        const p = windLocatie();
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${p.lat.toFixed(4)}` +
+          `&longitude=${p.lng.toFixed(4)}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn`;
+        const j = await (await fetch(url)).json();
+        const c = j.current;
+        document.getElementById('windSpd').textContent = Math.round(c.wind_speed_10m) + ' kn';
+        document.getElementById('windDir').textContent =
+          `uit ${kompas(c.wind_direction_10m)} (${Math.round(c.wind_direction_10m)}°) · vlagen ${Math.round(c.wind_gusts_10m)} kn`;
+        document.getElementById('windPijl').style.transform = `rotate(${c.wind_direction_10m + 180}deg)`;
+        w.classList.remove('fout');
+      } catch (e) {
+        document.getElementById('windDir').textContent = 'wind niet beschikbaar';
+        w.classList.add('fout');
+      }
+    }
+    haalWind();
+    setInterval(haalWind, 5 * 60 * 1000);
+
+    // =========================================================
+    //  Navigatie naar het volgende doel (voor de zeiler)
+    // =========================================================
+    let doelLijn = null, navVorige = null;
+    const navEl = {
+      doel: document.getElementById('navDoel'), afstand: document.getElementById('navAfstand'),
+      spd: document.getElementById('navSpd'), vmg: document.getElementById('navVmg'),
+      eta: document.getElementById('navEta')
+    };
+
+    function volgendDoel(pos) { return doelVanBoot(pos, mijnTijden.start, mijnTijden.finish, mijnGerond, lijnen, boeien); }
+    function volgendDoelLabel() {
+      if (mijnTijden.finish != null) return null;
+      if (mijnTijden.start == null) return 'de startlijn';
+      const v = boeien.findIndex((_, i) => mijnGerond[i] == null);
+      return v !== -1 ? 'boei ' + (v + 1) : 'de finish';
+    }
+
+    function updateNav(lat, lng, speedMps, heading, nu) {
+      const spdKn = (speedMps != null) ? speedMps * 1.94384 : null;
+      navEl.spd.textContent = spdKn != null ? spdKn.toFixed(1) + ' kn' : '—';
+
+      const pos = { lat, lng };
+      const doel = volgendDoel(pos);
+      if (!doel) {
+        navEl.doel.textContent = mijnTijden.finish != null ? 'Gefinisht 🏁' : 'Volgend doel: —';
+        navEl.afstand.textContent = navEl.vmg.textContent = navEl.eta.textContent = '—';
+        if (doelLijn) { kaart.removeLayer(doelLijn); doelLijn = null; }
+        navVorige = { pos, ts: nu };
+        return;
+      }
+      const dist = afstandMeter(pos, doel.punt);
+      const bearing = peiling(pos, doel.punt);
+
+      // VMG naar het doel: via GPS-koers, anders uit de afname van de afstand
+      let vmg = null;
+      if (speedMps != null && heading != null) {
+        vmg = speedMps * Math.cos((bearing - heading) * Math.PI / 180);
+      } else if (navVorige) {
+        const dt = (nu - navVorige.ts) / 1000;
+        if (dt > 0) vmg = (afstandMeter(navVorige.pos, doel.punt) - dist) / dt;
+      }
+      navVorige = { pos, ts: nu };
+
+      const eta = (speedMps != null && speedMps > 0.3) ? dist / speedMps : null; // afstand / snelheid
+
+      navEl.doel.textContent = 'Volgend doel: ' + doel.label;
+      navEl.afstand.textContent = formatAfstand(dist);
+      if (vmg != null) {
+        navEl.vmg.textContent = (vmg * 1.94384).toFixed(1) + ' kn';
+        navEl.vmg.classList.toggle('neg', vmg < 0);
+      } else { navEl.vmg.textContent = '—'; navEl.vmg.classList.remove('neg'); }
+      navEl.eta.textContent = eta != null ? formatDuur(eta * 1000) : '—';
+
+      const pad = [[lat, lng], [doel.punt.lat, doel.punt.lng]];
+      if (!doelLijn) doelLijn = L.polyline(pad, { color: '#38d9c8', weight: 3, dashArray: '2 8' }).addTo(kaart);
+      else doelLijn.setLatLngs(pad);
+    }
+
+    function wisNav() {
+      navEl.doel.textContent = 'Volgend doel: —';
+      navEl.afstand.textContent = navEl.spd.textContent = navEl.vmg.textContent = navEl.eta.textContent = '—';
+      navEl.vmg.classList.remove('neg');
+      if (doelLijn) { kaart.removeLayer(doelLijn); doelLijn = null; }
+      navVorige = null;
+    }
+
+    // Auto-reset: wist de wedstrijdleiding de race (times weg), dan wist de
+    // tracker zijn eigen voortgang zodat de volgende race schoon telt.
+    let timesRef = null;
+    function onTimesReset(s) {
+      if (s.val() == null && (mijnTijden.start != null || mijnTijden.finish != null)) {
+        mijnTijden = { start: null, finish: null };
+        mijnGerond = {};
+        vorigeRuwe = null;
+        el.warn.style.color = '#7ec8ff';
+        el.warn.textContent = 'Nieuwe race — je tijden zijn automatisch gereset.';
+      }
+    }
+
+    // --- Aftelklok naar de start ---
+    const aftelEl = document.getElementById('aftel');
+    function klokHM(ts) { return new Date(ts).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }); }
+    let vorigeRem = null;
+    function updateAftel() {
+      if (!raceStart) { aftelEl.style.display = 'none'; vorigeRem = null; return; }
+      aftelEl.style.display = 'block';
+      const rem = raceStart - Date.now();
+      // Geluidssignalen bij het passeren van 5 min, 1 min en de start
+      if (vorigeRem != null) {
+        if (vorigeRem > 300000 && rem <= 300000) speel(GELUID.vijfmin);
+        if (vorigeRem > 60000  && rem <= 60000)  speel(GELUID.eenmin);
+        if (vorigeRem > 0       && rem <= 0)      speel(GELUID.start);
+      }
+      vorigeRem = rem;
+      if (rem > 0) {
+        aftelEl.className = 'aftel' + (rem <= 60000 ? ' urgent' : '');
+        aftelEl.innerHTML = `<div class="lbl">START OVER</div>` +
+          `<div class="groot">${formatDuur(rem)}</div><div class="lbl">om ${klokHM(raceStart)}</div>`;
+      } else {
+        aftelEl.className = 'aftel gestart';
+        const doel = volgendDoelLabel();
+        aftelEl.innerHTML = `<div class="lbl">GESTART</div>` +
+          `<div class="groot">${formatDuur(-rem)}</div>` +
+          `<div class="lbl">${doel ? '➜ volgend doel: ' + doel : 'gefinisht 🏁'}</div>`;
+      }
+    }
+    setInterval(updateAftel, 500);
+    updateAftel();
+
+    // --- Andere boten: snelheid + volgend doel + afstand + ETA ---
+    function renderAndereBoten() {
+      const lijst = document.getElementById('andereLijst');
+      const nu = Date.now();
+      let html = '';
+      Object.keys(BOTEN).forEach(naam => {
+        if (naam === bootSelect.value) return;
+        const s = botStatus[naam] || {};
+        const online = s.ts && (nu - s.ts < 30000);
+        const dot = `<span class="ab-dot" style="background:${BOTEN[naam].kleur}"></span>`;
+        html += `<div class="ab-rij${online ? '' : ' off'}">` +
+          `<div class="ab-naam">${dot}${kNaam(naam)}</div>` +
+          `<div class="ab-data">${bootDataTekst(s, lijnen, boeien)}</div></div>`;
+      });
+      lijst.innerHTML = html || '<div class="ab-leeg">geen andere boten</div>';
+    }
+    setInterval(renderAndereBoten, 1000);
+    renderAndereBoten();
+
+    // Rond de eerstvolgende boei = de "rondingslijn" oversteken.
+    // Die lijn loopt vanaf de boei naar buiten (bissectrice van de hoek
+    // vorige-boei-volgende); een GPS-marge verlengt 'm iets naar binnen.
+    function checkBoei(huidig, boot) {
+      if (mijnTijden.start == null || mijnTijden.finish != null || !boeien.length || !vorigeRuwe) return;
+      const v = boeien.findIndex((_, i) => mijnGerond[i] == null);
+      if (v === -1) return;
+      const { prev, next } = boeiPrevNext(v, boeien, lijnen);
+      const marge = Math.min(huidig.acc || 10, RONDINGS_MARGE_MAX_M);
+      const lijn = rondingsLijn(boeien[v], prev, next, marge, RONDINGS_LIJN_M);
+      if (!lijn) return;
+      if (lijnstukkenKruisen(vorigeRuwe, huidig, lijn.a, lijn.b)) {
+        mijnGerond[v] = huidig.ts;
+        db.ref(`races/${RACE_ID}/rounded/${boot}/${v}`).set(huidig.ts);
+        speel(GELUID.boei);
+        el.warn.style.color = '#2ea043';
+        el.warn.textContent = `🟠 Boei ${v + 1} gerond om ` + formatKlok(huidig.ts);
+      }
+    }
+
+    function checkKruising(huidig) {
+      const boot = bootSelect.value;
+      if (!vorigeRuwe) { vorigeRuwe = huidig; return; }
+      const spoorA = vorigeRuwe, spoorB = huidig;
+
+      // Startlijn: eerste kruising ná het startsein (of, als geen sein gezet, meteen)
+      if (lijnen.start && mijnTijden.start == null) {
+        const naSein = !raceStart || huidig.ts >= raceStart;
+        if (naSein && lijnstukkenKruisen(spoorA, spoorB, lijnen.start.a, lijnen.start.b)) {
+          mijnTijden.start = huidig.ts;
+          db.ref(`races/${RACE_ID}/times/${boot}/start`).set(huidig.ts);
+          speel(GELUID.startlijn);
+          el.warn.style.color = '#2ea043';
+          el.warn.textContent = '✓ Startlijn gepasseerd om ' + formatKlok(huidig.ts);
+        }
+      }
+      // Boeien: rond aan de voorgeschreven kant (op draairichting)
+      checkBoei(huidig, boot);
+
+      // Finishlijn: pas nadat er een starttijd is én alle boeien gerond zijn
+      const alleGerond = boeien.length === 0 || boeien.every((_, i) => mijnGerond[i] != null);
+      if (lijnen.finish && mijnTijden.start != null && mijnTijden.finish == null && alleGerond) {
+        if (lijnstukkenKruisen(spoorA, spoorB, lijnen.finish.a, lijnen.finish.b)) {
+          mijnTijden.finish = huidig.ts;
+          db.ref(`races/${RACE_ID}/times/${boot}/finish`).set(huidig.ts);
+          speel(GELUID.finish);
+          el.warn.style.color = '#2ea043';
+          el.warn.textContent = '🏁 Gefinisht om ' + formatKlok(huidig.ts);
+        }
+      }
+      vorigeRuwe = huidig;
+    }
+
+    async function start() {
+      if (!('geolocation' in navigator)) {
+        el.warn.textContent = 'Deze telefoon/browser ondersteunt geen GPS.'; return;
+      }
+      initAudio();   // geluid ontgrendelen (deze klik is een gebruikersactie)
+      const boot = bootSelect.value;
+      teller = 0; el.cnt.textContent = '0';
+      vorigeRuwe = null;
+      // Al eerder geregistreerde tijden/boeien ophalen (bv. na herladen), niet opnieuw tellen
+      const snap = await db.ref(`races/${RACE_ID}/times/${boot}`).get();
+      mijnTijden = { start: null, finish: null, ...(snap.val() || {}) };
+      const grondSnap = await db.ref(`races/${RACE_ID}/rounded/${boot}`).get();
+      mijnGerond = grondSnap.val() || {};
+      // Auto-reset koppelen aan deze boot
+      timesRef = db.ref(`races/${RACE_ID}/times/${boot}`);
+      timesRef.on('value', onTimesReset);
+      bewaarNaam();
+      bootSelect.disabled = true; naamInput.disabled = true;
+      document.getElementById('setup').style.display = 'none';
+      document.querySelector('.sub').style.display = 'none';
+      setTimeout(() => kaart.invalidateSize(), 250);
+      knop.textContent = '■ Stop tracking'; knop.className = 'stop';
+      el.status.classList.add('live'); el.dot.classList.add('on');
+      el.tekst.textContent = 'Live — ' + (naamInput.value.trim() || boot);
+      el.warn.textContent = '';
+
+      // Scherm aan houden (waar ondersteund)
+      try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+
+      watchId = navigator.geolocation.watchPosition(onPositie, onFout, {
+        enableHighAccuracy: true, maximumAge: 0, timeout: 15000
+      });
+    }
+
+    function stop() {
+      if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      if (wakeLock) { wakeLock.release(); wakeLock = null; }
+      if (timesRef) { timesRef.off('value', onTimesReset); timesRef = null; }
+      wisNav();
+      bootSelect.disabled = false; naamInput.disabled = false;
+      document.getElementById('setup').style.display = '';
+      document.querySelector('.sub').style.display = '';
+      setTimeout(() => kaart.invalidateSize(), 250);
+      knop.textContent = '▶︎ Start tracking'; knop.className = 'start';
+      el.status.classList.remove('live'); el.dot.classList.remove('on');
+      el.tekst.textContent = 'Gestopt';
+    }
+
+    function onPositie(p) {
+      const { latitude, longitude, accuracy, speed, heading } = p.coords;
+      mijnPositie = { lat: latitude, lng: longitude };
+      el.pos.textContent = latitude.toFixed(5) + ', ' + longitude.toFixed(5);
+      el.acc.textContent = Math.round(accuracy) + ' m';
+      el.spd.textContent = (speed != null && !isNaN(speed))
+        ? (speed * 1.94384).toFixed(1) + ' kn' : '—';
+
+      const nu = Date.now();
+      // Kruising-detectie + navigatie-info op ELKE fix
+      checkKruising({ lat: latitude, lng: longitude, ts: nu, acc: accuracy });
+      updateNav(latitude, longitude,
+        (speed != null && !isNaN(speed)) ? speed : null,
+        (heading != null && !isNaN(heading)) ? heading : null, nu);
+
+      if (nu - laatsteSchrijf < SCHRIJF_INTERVAL) return; // throttle (alleen voor DB-schrijven)
+      laatsteSchrijf = nu;
+
+      const boot = bootSelect.value;
+      const data = {
+        lat: latitude, lng: longitude, ts: nu,
+        acc: accuracy,
+        speed: (speed != null && !isNaN(speed)) ? speed : null,
+        heading: (heading != null && !isNaN(heading)) ? heading : null
+      };
+      // Huidige positie altijd (voor de live stip); spoor alleen tijdens een
+      // race (er staat een startsein) — zo blijft de kaart schoon na 'afronden'.
+      db.ref(`races/${RACE_ID}/positions/${boot}`).set(data);
+      if (raceStart != null) {
+        db.ref(`races/${RACE_ID}/tracks/${boot}`).push({ lat: latitude, lng: longitude, ts: nu });
+      }
+      teller++; el.cnt.textContent = teller;
+    }
+
+    function onFout(err) {
+      el.warn.textContent = 'GPS-fout: ' + err.message +
+        '. Geef de site toestemming voor locatie en probeer opnieuw.';
+    }
+
+    knop.addEventListener('click', () => watchId === null ? start() : stop());
+
+    // Wake lock opnieuw aanvragen als je terugkomt in de app
+    document.addEventListener('visibilitychange', async () => {
+      if (document.visibilityState === 'visible' && watchId !== null && !wakeLock) {
+        try { wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+      }
+    });
+  </script>
+</body>
+</html>
