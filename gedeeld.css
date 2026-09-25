@@ -1,0 +1,161 @@
+/* ============================================================
+   Zeilrace — gedeelde stijlen (dashboard + tracker)
+   Thema: piratenschip — donker scheepshout, vergeeld perkament,
+   messing beslag, ossenbloedrood en verdigris.
+   ============================================================ */
+:root {
+  color-scheme: dark;
+  /* hout */
+  --hout-1: #0f0a06; --hout-2: #1a120b; --hout-3: #251a10; --hout-lijn: #3b2a18;
+  /* perkament + inkt */
+  --perkament: #ead8ae; --perkament-2: #dcc592; --perkament-rand: #8a6a3a;
+  --inkt: #2b1b0d; --inkt-zacht: #6b5130;
+  /* messing / goud */
+  --messing: #c9a24a; --messing-licht: #f1d488; --messing-donker: #7a5a1e; --goud: #f0c75e;
+  /* tekst op hout */
+  --ivoor: #efe3c6; --ivoor-zacht: #bfae88;
+  /* signaalkleuren */
+  --bloed: #8b1e12; --bloed-licht: #ff9a85; --verdigris: #2f6b52; --verdigris-licht: #a8dcb4;
+  --oranje: #d98b2b;
+
+  --font-titel: "Pirata One", "Luminari", fantasy, serif;
+  --font-kap: "Cinzel", "Trajan Pro", Georgia, serif;
+  --font-tekst: "EB Garamond", Garamond, Georgia, "Times New Roman", serif;
+
+  --hout-bg:
+    repeating-linear-gradient(92deg, rgba(255,220,160,.018) 0 2px, transparent 2px 9px),
+    repeating-linear-gradient(88deg, rgba(0,0,0,.18) 0 1px, transparent 1px 23px),
+    linear-gradient(180deg, var(--hout-2), var(--hout-1));
+  --perkament-bg:
+    radial-gradient(ellipse at 15% 10%, rgba(255,250,230,.55), transparent 55%),
+    radial-gradient(ellipse at 85% 95%, rgba(140,90,30,.22), transparent 60%),
+    radial-gradient(ellipse at 95% 5%, rgba(140,90,30,.15), transparent 40%),
+    linear-gradient(180deg, var(--perkament), var(--perkament-2));
+  --perkament-schaduw: inset 0 0 28px rgba(110,70,20,.35), 0 3px 10px rgba(0,0,0,.55);
+}
+[hidden] { display: none !important; }
+
+/* Cijfers altijd even hoog en even breed (Garamond heeft anders 'oude' cijfers) */
+body { font-variant-numeric: lining-nums tabular-nums; }
+
+/* ---- Bouwstenen ---- */
+.perkament { background: var(--perkament-bg); color: var(--inkt); border: 1px solid var(--perkament-rand);
+  box-shadow: var(--perkament-schaduw); }
+.plaquette { background: linear-gradient(180deg, rgba(37,26,16,.96), rgba(15,10,6,.96));
+  border: 2px solid var(--messing); box-shadow: inset 0 0 0 3px rgba(15,10,6,.9), inset 0 0 0 4px var(--messing-donker), 0 6px 20px rgba(0,0,0,.7);
+  color: var(--ivoor); }
+
+/* ---- Kaart: oude zeekaart ---- */
+.leaflet-container { background: #cdb88c; font: inherit; }
+.leaflet-tile-pane { filter: sepia(.6) saturate(.75) hue-rotate(-10deg) contrast(1.03) brightness(.96); }
+.leaflet-bar { border: 2px solid var(--messing-donker) !important; box-shadow: 0 2px 8px rgba(0,0,0,.6) !important; }
+.leaflet-bar a { width: 40px; height: 40px; line-height: 40px; font-size: 20px;
+  background: linear-gradient(#e0bb62, #b08734); color: var(--inkt); border-bottom-color: var(--messing-donker); }
+.leaflet-bar a:hover { background: linear-gradient(#f1d488, #c9a24a); color: var(--inkt); }
+.leaflet-control-attribution { background: rgba(234,216,174,.85) !important; color: var(--inkt-zacht); font-family: var(--font-tekst); }
+.leaflet-control-attribution a { color: var(--bloed); }
+
+.boei { width: 26px; height: 26px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f3b35a, var(--oranje) 60%, #9a5a14);
+  border: 2px solid var(--inkt); color: var(--inkt); font-weight: 700; font-size: 13px; font-family: var(--font-kap);
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px rgba(234,216,174,.8), 0 2px 5px #000a; }
+.boei.concept { background: var(--goud); border-color: var(--messing-donker); box-shadow: 0 0 0 4px rgba(240,199,94,.45); cursor: move; }
+.lijn-label { background: transparent; border: none; box-shadow: none; font-family: var(--font-kap);
+  color: var(--inkt); font-weight: 700; font-size: 12px; text-shadow: 0 0 3px var(--perkament), 0 0 3px var(--perkament), 0 0 5px var(--perkament); }
+.boot-label { background: rgba(26,18,11,.92); border: 1px solid var(--messing); border-radius: 4px;
+  padding: 2px 7px; font-size: 13px; font-weight: 700; color: var(--ivoor); white-space: nowrap; font-family: var(--font-tekst); }
+.boot-label::before { border-top-color: var(--messing) !important; }
+
+/* Windwidget linksonder op de kaart */
+.windwidget { background: linear-gradient(180deg, rgba(37,26,16,.95), rgba(15,10,6,.95)); border: 2px solid var(--messing);
+  border-radius: 10px; padding: 7px 13px; display: flex; align-items: center; gap: 11px; color: var(--ivoor);
+  box-shadow: inset 0 0 0 2px rgba(15,10,6,.9), inset 0 0 0 3px var(--messing-donker), 0 3px 10px #000a; font-family: var(--font-tekst); }
+.windpijl { font-size: 28px; line-height: 1; color: var(--goud); transition: transform .6s ease; text-shadow: 0 0 6px rgba(240,199,94,.4); }
+.windwidget .spd { font-size: 1.3rem; font-weight: 700; font-family: var(--font-kap); color: var(--goud); }
+.windwidget .windsub { font-size: .85rem; color: var(--ivoor-zacht); }
+.windwidget .kop { font-size: .66rem; letter-spacing: .14em; color: var(--ivoor-zacht); text-transform: uppercase; font-family: var(--font-kap); }
+.windwidget.fout .windpijl { opacity: .25; }
+
+/* Kaartknoppen (zoom naar boot, overzicht) */
+.kaartknoppen a { width: 46px !important; height: 46px !important; line-height: 46px !important;
+  font-size: 22px; text-align: center; background: linear-gradient(#e0bb62, #b08734) !important; color: var(--inkt) !important; text-decoration: none; }
+.kaartknoppen a:hover { background: linear-gradient(#f1d488, #c9a24a) !important; }
+.kaartknoppen a.actief { background: linear-gradient(#4f9a74, var(--verdigris)) !important; color: #fff !important;
+  box-shadow: inset 0 0 0 2px var(--verdigris-licht); }
+
+/* Live data per boot: raster met labels (staat op perkament) */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(62px, 1fr)); gap: 6px 10px; margin-top: 8px;
+  border-top: 1px dashed rgba(107,81,48,.45); padding-top: 8px; }
+.stats > div { display: flex; flex-direction: column; min-width: 0; }
+.stats .k { font-size: .68rem; color: var(--inkt-zacht); text-transform: uppercase; letter-spacing: .08em; font-family: var(--font-kap); font-weight: 700; }
+.stats .v { font-size: 1.15rem; font-weight: 700; color: var(--inkt);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stats .neg .v { color: var(--bloed); }
+.stats-finish { align-self: end; color: var(--bloed); font-weight: 700; font-family: var(--font-kap); }
+.stats-leeg { margin-top: 6px; color: var(--inkt-zacht); font-size: .95rem; font-style: italic; }
+
+.banner { background: linear-gradient(180deg, #7a1d12, #5a130b); color: #ffe9dc; border: 1px solid var(--bloed-licht); padding: 10px 12px;
+  border-radius: 6px; font-size: .95rem; line-height: 1.4; margin: 10px 0; box-shadow: 0 2px 8px #0008; }
+
+@keyframes knipper { 50% { opacity: .3; } }
+
+/* Feest bij de finish: confetti + vuurwerk */
+.feest-canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 4000; pointer-events: none; }
+.feest-paneel { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 4001;
+  width: min(92vw, 430px); text-align: center; padding: 22px 20px 18px; border-radius: 8px;
+  background: linear-gradient(180deg, rgba(37,26,16,.93), rgba(15,10,6,.93)); border: 3px solid var(--messing);
+  box-shadow: inset 0 0 0 4px rgba(15,10,6,.9), inset 0 0 0 5px var(--messing-donker), 0 16px 50px #000c;
+  animation: feestIn .5s cubic-bezier(.2,1.6,.4,1); font-family: var(--font-tekst); }
+.feest-titel { font-family: var(--font-titel); font-size: clamp(2rem, 9vw, 2.9rem); color: var(--goud); line-height: 1.05;
+  text-shadow: 0 2px 0 #000, 0 0 14px rgba(240,199,94,.35); }
+.feest-sub { margin-top: 8px; font-size: 1.15rem; color: var(--ivoor); }
+.feest-knoppen { display: flex; gap: 10px; margin-top: 16px; }
+.feest-knoppen button { flex: 1; min-height: 52px; border-radius: 6px; font-family: var(--font-kap);
+  font-weight: 700; font-size: 1rem; cursor: pointer; }
+.feest-meer { background: linear-gradient(#e7c26a, #a67c2e); color: var(--inkt); border: 1px solid var(--messing-donker);
+  box-shadow: inset 0 1px 0 #f7e2a6, 0 2px 0 #3d2a0e; font-size: 1.05rem !important; }
+.feest-meer:active { transform: scale(.96); }
+.feest-sluit { background: linear-gradient(#3a2a1a, #221810); color: var(--ivoor); border: 1px solid var(--messing-donker); flex: 0 0 34% !important; }
+@keyframes feestIn { from { transform: translate(-50%, -50%) scale(.5); opacity: 0; }
+                     to   { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+
+/* ---- Piratenschepen op de kaart ---- */
+.schip { background: none; border: none; }
+.schip-draai { transition: transform .8s ease; }   /* maat + draaipunt per model: zie maakSchip() */
+.schip-svg { display: block; filter: drop-shadow(0 2px 2px rgba(0,0,0,.55)); }
+.schip-svg.piraat, .schip.spel .schip-svg.kaart { display: none; }    /* standaard: eenvoudig kaartscheepje */
+.schip.spel .schip-svg.piraat { display: block; }                      /* tijdens de zeeslag: piratenschip */
+.schip-svg.kaart { filter: saturate(.8) sepia(.15) drop-shadow(0 1px 1px rgba(43,27,13,.45)); }   /* verbleekte inkt */
+.schip.eigen .schip-svg { filter: drop-shadow(0 0 3px #f0c75e) drop-shadow(0 0 6px #f0c75e) drop-shadow(0 2px 2px rgba(0,0,0,.55)); }
+.schip.gekozen .schip-svg { filter: drop-shadow(0 0 4px #fff) drop-shadow(0 2px 2px rgba(0,0,0,.55)); }
+.schip.wrak .schip-svg { filter: grayscale(1) brightness(.55) drop-shadow(0 1px 1px rgba(0,0,0,.6)); opacity: .8; }
+
+/* ---- Het piratenspel ---- */
+.spel { margin-top: 14px; padding: 12px 14px; border-radius: 4px; background: var(--perkament-bg); color: var(--inkt);
+  border: 2px solid var(--bloed); box-shadow: var(--perkament-schaduw); }
+.spel-kop { font-family: var(--font-titel); font-size: 1.7rem; color: var(--bloed); line-height: 1.1; }
+.spel-status { font-style: italic; color: var(--inkt-zacht); margin: 2px 0 8px; }
+.spel-mijn { font-family: var(--font-kap); font-weight: 700; font-size: 1.05rem; margin: 6px 0 4px; }
+.spel-leeg { font-style: italic; color: var(--inkt-zacht); }
+.spel-waarschuwing { background: linear-gradient(180deg, #7a1d12, #5a130b); color: #ffe9dc; border: 2px solid var(--bloed-licht);
+  border-radius: 6px; padding: 10px 12px; margin: 8px 0; font-weight: 700; text-align: center; animation: knipper 1s steps(2, start) infinite; }
+.spel-tabel { width: 100%; border-collapse: collapse; margin-top: 8px; color: var(--inkt); }
+.spel-tabel th, .spel-tabel td { padding: 7px 5px; border-bottom: 1px solid rgba(107,81,48,.35); text-align: left; }
+.spel-tabel th { font-family: var(--font-kap); font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--inkt-zacht); }
+.spel-tabel td.tijd, .spel-tabel th.tijd { text-align: right; }
+.spel-tabel .boot-cel { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spel-tabel .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; border: 1.5px solid var(--inkt); }
+.spel-tabel tr.wrak td { opacity: .55; text-decoration: line-through; }
+.spel-tabel tr.eigen td { font-weight: 700; }
+.vuur-knop { display: block; width: 100%; min-height: 70px; margin: 10px 0 4px; border-radius: 8px; cursor: pointer;
+  font-family: var(--font-titel); font-size: 2rem; letter-spacing: .02em; color: #fff4e2;
+  background: radial-gradient(ellipse at 50% 30%, #d0542f, #8b1e12 70%); border: 2px solid #3d0d07;
+  box-shadow: inset 0 2px 0 #f0a070, 0 4px 0 #2a0804, 0 6px 16px rgba(0,0,0,.5); text-shadow: 0 2px 0 #000; }
+.vuur-knop:active:not(:disabled) { transform: translateY(3px); box-shadow: inset 0 2px 0 #f0a070, 0 1px 0 #2a0804; }
+.vuur-knop:disabled { filter: grayscale(.8); opacity: .6; cursor: default; }
+.kanon-raak { font-size: 40px; line-height: 44px; text-align: center; animation: kanonRaak 2.6s ease-out forwards; }
+@keyframes kanonRaak { 0% { transform: scale(.3); opacity: 1; } 20% { transform: scale(1.4); } 100% { transform: scale(1); opacity: 0; } }
+
+/* Messing knoppen (gedeeld) */
+.messing-knop { background: linear-gradient(#e7c26a, #a67c2e); color: var(--inkt); border: 1px solid var(--messing-donker);
+  box-shadow: inset 0 1px 0 #f7e2a6, 0 2px 0 #3d2a0e; font-family: var(--font-kap); font-weight: 700; cursor: pointer; }
+.messing-knop:hover { background: linear-gradient(#f1d488, #b8903a); }

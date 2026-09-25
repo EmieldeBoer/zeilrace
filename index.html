@@ -2,754 +2,494 @@
 <html lang="nl">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://unpkg.com https://www.gstatic.com https://apis.google.com https://*.firebasedatabase.app; style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https://tile.openstreetmap.org https://unpkg.com; connect-src 'self' https://*.firebasedatabase.app wss://*.firebasedatabase.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://api.open-meteo.com; frame-src https://*.firebaseapp.com https://*.firebasedatabase.app; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="theme-color" content="#1a120b">
   <title>Zeilrace dashboard</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=EB+Garamond:ital,wght@0,500;0,700;1,500&family=Pirata+One&display=swap">
+  <link rel="stylesheet" href="gedeeld.css">
   <style>
-    :root { color-scheme: dark; }
     * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, sans-serif; }
-    body { display: flex; flex-direction: column; background: #0b1622; color: #e8eef5; }
+    html, body { margin: 0; height: 100%; font-family: var(--font-tekst); font-size: 17px; }
+    body { display: flex; flex-direction: column; background: var(--hout-bg); background-color: var(--hout-1); color: var(--ivoor); }
 
     /* ---- Tabbladen ---- */
-    #tabbar { display: flex; flex: none; background: #0e1c2e; border-bottom: 1px solid #1d3350; }
-    #tabbar button { flex: 0 0 auto; padding: 14px 22px; background: none; border: none;
-      color: #7f9bbb; font-weight: 600; font-size: .92rem; cursor: pointer;
-      border-bottom: 2px solid transparent; }
-    #tabbar button:hover { color: #cfe0f2; }
-    #tabbar button.actief { color: #e8eef5; border-bottom-color: #3a7bd5; }
+    #tabbar { display: flex; flex: none; background: linear-gradient(180deg, #120c07, #0a0704);
+      border-bottom: 2px solid var(--messing-donker); box-shadow: 0 2px 0 #000, 0 3px 10px #000a;
+      padding-top: env(safe-area-inset-top); }
+    #tabbar button { flex: 0 0 auto; min-height: 52px; padding: 12px 22px; background: none; border: none;
+      color: var(--ivoor-zacht); font-family: var(--font-kap); font-weight: 700; font-size: .95rem; letter-spacing: .06em;
+      cursor: pointer; border-bottom: 3px solid transparent; }
+    #tabbar button:hover { color: var(--goud); }
+    #tabbar button.actief { color: var(--goud); border-bottom-color: var(--messing); text-shadow: 0 0 10px rgba(240,199,94,.35); }
     .tab { flex: 1; min-height: 0; display: none; }
     #tabLive.actief { display: flex; }
-    #tabRegels.actief, #tabUitslagen.actief { display: block; overflow-y: auto; padding: 26px; }
+    #tabRegels.actief, #tabUitslagen.actief { display: block; overflow-y: auto; padding: 24px; }
 
-    /* ---- Live tab ---- */
-    #kaart { flex: 1; }
-    #paneel { width: 340px; background: #0e1c2e; border-left: 1px solid #1d3350;
-      padding: 18px; overflow-y: auto; }
-    h1 { font-size: 1.15rem; margin: 0 0 2px; }
-    .race { color: #7f9bbb; font-size: .8rem; margin-bottom: 18px; }
-    h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .05em;
-         color: #7f9bbb; margin: 22px 0 10px; }
-    .boot { padding: 10px 12px; background: #12233a; border-radius: 10px; margin-bottom: 8px; }
-    .boot .boot-top { display: flex; align-items: center; gap: 10px; }
-    .boot .kleur { width: 14px; height: 14px; border-radius: 50%; flex: none; }
-    .boot .naam { font-weight: 700; }
-    .boot .meta { margin-left: auto; text-align: right; font-size: .78rem;
-                  color: #9fb4cd; font-variant-numeric: tabular-nums; }
-    .boot .boot-data { color: #9fb4cd; font-variant-numeric: tabular-nums; margin-top: 5px; font-size: .8rem; }
-    .boot.offline { opacity: .45; }
-    .boten-legenda { font-size: .66rem; color: #6f8aa8; text-transform: uppercase;
-      letter-spacing: .04em; margin: -4px 0 10px; }
-    table { width: 100%; border-collapse: collapse; font-size: .85rem; }
-    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #1d3350;
-             font-variant-numeric: tabular-nums; }
-    th { color: #7f9bbb; font-weight: 600; font-size: .72rem; text-transform: uppercase; }
-    td.tijd { text-align: right; }
-    td.rank { width: 1.4em; color: #7f9bbb; text-align: center; }
-    .leaflet-container { background: #0b1622; }
-    .boot-label { background: rgba(10,20,32,.85); border: 1px solid #24405e; border-radius: 6px;
-      padding: 2px 6px; font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap; }
-    .lijn-label { background: transparent; border: none; box-shadow: none;
-      color: #fff; font-weight: 800; font-size: 11px; text-shadow: 0 0 4px #000, 0 0 4px #000; }
-    .boei { width: 22px; height: 22px; border-radius: 50%; background: #f0932b;
-      border: 2px solid #fff; color: #241300; font-weight: 800; font-size: 12px;
-      display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 4px #0008; }
-    .windwidget { background: rgba(10,20,32,.88); border: 1px solid #24405e; border-radius: 12px;
-      padding: 8px 13px; display: flex; align-items: center; gap: 11px; color: #e8eef5;
-      font-variant-numeric: tabular-nums; box-shadow: 0 2px 8px #0007; }
-    .windpijl { font-size: 26px; line-height: 1; color: #7ec8ff; transition: transform .6s ease; }
-    .windwidget .spd { font-size: 1.15rem; font-weight: 800; }
-    .windwidget .windsub { font-size: .72rem; color: #9fb4cd; }
-    .windwidget .kop { font-size: .6rem; letter-spacing: .08em; color: #6f8aa8; text-transform: uppercase; }
-    .windwidget.fout .windpijl { opacity: .25; }
-    .banner { background:#7a1f22; color:#ffd7d7; padding:10px 12px; border-radius:10px;
-              font-size:.8rem; line-height:1.4; margin-bottom:14px; display:none; }
-    .btn { display:block; width:100%; padding:11px; margin-bottom:8px; border:none;
-           border-radius:10px; background:#1c3a5e; color:#fff; font-weight:600;
-           font-size:.9rem; cursor:pointer; }
-    .btn:hover { background:#244a76; }
-    .btn.gun { background:#b5561e; } .btn.gun:hover { background:#d1641f; }
-    .btn.reset { background:#3a2436; color:#f0b4c8; } .btn.reset:hover { background:#50314a; }
-    .btn.archief { background:#1f6b3a; } .btn.archief:hover { background:#26814698; }
-    .btnrow { display:flex; gap:8px; }
-    .btnrow .btn { flex:1; }
-    .wlstatus { font-size:.78rem; color:#9fb4cd; margin:4px 0 10px; min-height:1.1em; }
-    .badge { display:inline-block; font-size:.64rem; padding:1px 7px; border-radius:20px;
-             margin-left:6px; vertical-align:middle; }
-    .badge.onderweg { background:#1c4a2e; color:#7ee0a1; }
-    .badge.finish { background:#3a2a12; color:#f0c674; }
-    .hint { color:#55708c; font-size:.75rem; margin-top:8px; line-height:1.4; }
-    .aftel { background:#12233a; border:1px solid #2a4a6e; border-radius:12px;
-      padding:10px 14px; margin-bottom:16px; text-align:center; }
-    .aftel .lbl { color:#8ba3bd; font-size:.7rem; letter-spacing:.1em; }
-    .aftel .groot { font-size:1.7rem; font-weight:800; font-variant-numeric:tabular-nums;
-      color:#7ec8ff; line-height:1.15; }
-    .aftel.urgent { border-color:#d1641f; }
-    .aftel.urgent .groot { color:#ffb454; }
-    .aftel.gestart { border-color:#1f6b3a; }
-    .aftel.gestart .groot { color:#7ee0a1; font-size:1.2rem; }
+    /* ---- Live: kaart + paneel ---- */
+    #kaartwrap { position: relative; flex: 1; min-width: 0; }
+    #kaart { position: absolute; inset: 0; }
+    #paneel { width: 400px; flex: none; background: var(--hout-bg); background-color: var(--hout-2);
+      border-left: 3px solid var(--messing-donker); box-shadow: inset 4px 0 12px #000a; padding: 18px; overflow-y: auto; }
+    h1 { font-family: var(--font-titel); font-weight: 400; font-size: 2.1rem; margin: 0 0 2px; color: var(--goud);
+      letter-spacing: .02em; text-shadow: 0 2px 0 #000, 0 0 12px rgba(240,199,94,.25); line-height: 1.1; }
+    h2 { font-family: var(--font-kap); font-size: .88rem; text-transform: uppercase; letter-spacing: .14em; color: var(--goud);
+      margin: 24px 0 8px; display: flex; align-items: center; gap: 10px; }
+    h2::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--messing-donker), transparent); }
+    .uitleg { color: var(--ivoor-zacht); font-size: .95rem; margin: -2px 0 10px; line-height: 1.4; }
+    .perkament .uitleg, .correctie .uitleg { color: var(--inkt-zacht); }
+
+    /* Bootkaartjes (klikbaar: volg op de kaart) */
+    .boot { display: block; width: 100%; text-align: left; font: inherit; color: var(--inkt);
+      padding: 12px 14px; background: var(--perkament-bg); border: 1px solid var(--perkament-rand); border-radius: 4px;
+      box-shadow: var(--perkament-schaduw); margin-bottom: 12px; cursor: pointer; outline-offset: 3px; }
+    .boot * { pointer-events: none; }
+    .boot:hover { border-color: var(--messing-donker); }
+    .boot.gekozen { border-color: var(--bloed); box-shadow: 0 0 0 3px var(--goud), var(--perkament-schaduw); }
+    .boot.offline { filter: grayscale(.5) brightness(.8); }
+    .boot-top { display: flex; align-items: center; gap: 10px; }
+    .boot-top .kleur { width: 18px; height: 18px; border-radius: 50%; flex: none; border: 2px solid var(--inkt);
+      box-shadow: 0 0 0 1px var(--messing); }
+    .boot-top .namen { min-width: 0; }
+    .boot-top .naam { font-weight: 700; font-size: 1.2rem; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .boot-top .model { font-size: .85rem; color: var(--inkt-zacht); display: block; font-style: italic; }
+    .boot-top .meta { margin-left: auto; flex: none; font-size: .72rem; font-weight: 700; padding: 3px 9px; font-family: var(--font-kap);
+      letter-spacing: .06em; border-radius: 3px; background: rgba(107,81,48,.18); color: var(--inkt-zacht); border: 1px solid rgba(107,81,48,.4); }
+    .boot-top .meta.live { background: var(--verdigris); color: #eafff0; border-color: #1c4634; }
+
+    /* Tabellen (op perkament) */
+    .tabelscroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { width: 100%; border-collapse: collapse; font-size: 1rem; color: var(--inkt); }
+    th, td { text-align: left; padding: 9px 6px; border-bottom: 1px solid rgba(107,81,48,.35); }
+    th { color: var(--inkt-zacht); font-family: var(--font-kap); font-weight: 700; font-size: .7rem; text-transform: uppercase;
+      letter-spacing: .08em; border-bottom: 2px solid var(--perkament-rand); }
+    td.tijd, th.tijd { text-align: right; white-space: nowrap; }
+    td.pos, th.pos { text-align: center; width: 2.4em; }
+    td.pos { font-weight: 700; }
+    td.boot-cel { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 7px; vertical-align: -1px;
+      border: 1.5px solid var(--inkt); }
+    tr.winnaar td { color: var(--bloed); font-weight: 700; }
+    tr.winnaar td.pos:first-child::before { content: "👑 "; }
+
+    /* Grote aftelklok over de kaart */
+    .aftel-groot { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 900;
+      text-align: center; padding: 10px 26px 12px; border-radius: 8px;
+      background: linear-gradient(180deg, rgba(37,26,16,.95), rgba(15,10,6,.95)); border: 2px solid var(--messing);
+      box-shadow: inset 0 0 0 3px rgba(15,10,6,.9), inset 0 0 0 4px var(--messing-donker), 0 8px 24px #000a;
+      pointer-events: none; min-width: 58%; max-width: 94%; }
+    .aftel-groot .lbl { font-family: var(--font-kap); font-size: clamp(.8rem, 2.4vw, 1.05rem); letter-spacing: .16em; color: var(--ivoor-zacht); font-weight: 700; }
+    .aftel-groot .cijfers { font-family: var(--font-kap); font-size: clamp(3.4rem, 12vw, 7.5rem); font-weight: 900; line-height: 1.05;
+      color: var(--goud); text-shadow: 0 3px 0 #000, 0 0 18px rgba(240,199,94,.35); }
+    .aftel-groot .volgorde { font-size: clamp(.85rem, 2vw, 1rem); color: var(--ivoor-zacht); margin-top: 4px; }
+    .aftel-groot.urgent { border-color: #d0542f; background: linear-gradient(180deg, rgba(90,22,12,.96), rgba(40,10,6,.96)); }
+    .aftel-groot.urgent .cijfers { color: #ffb08a; text-shadow: 0 3px 0 #000, 0 0 20px rgba(255,120,80,.5); }
+    .aftel-groot.laatste10 .cijfers { animation: knipper 1s steps(2, start) infinite; }
+    .aftel-groot.gestart { min-width: 0; padding: 6px 18px 8px; border-color: var(--verdigris); }
+    .aftel-groot.gestart .cijfers { font-size: clamp(1.6rem, 5vw, 2.4rem); color: var(--verdigris-licht); }
+
+    /* Knoppen: messing beslag */
+    .btn { display: block; width: 100%; min-height: 50px; padding: 11px; margin-bottom: 9px; border-radius: 5px;
+      background: linear-gradient(#e7c26a, #a67c2e); color: var(--inkt); border: 1px solid var(--messing-donker);
+      box-shadow: inset 0 1px 0 #f7e2a6, 0 2px 0 #3d2a0e; font-family: var(--font-kap); font-weight: 700; font-size: .92rem;
+      letter-spacing: .03em; cursor: pointer; }
+    .btn:hover { background: linear-gradient(#f1d488, #b8903a); }
+    .btn:active { transform: translateY(1px); box-shadow: inset 0 1px 0 #f7e2a6, 0 1px 0 #3d2a0e; }
+    .btn:disabled { opacity: .45; cursor: default; }
+    .btn.gun { background: linear-gradient(#d06a2c, #8e3c12); color: #fff4e2; border-color: #4a1d06; box-shadow: inset 0 1px 0 #f0a070, 0 2px 0 #3a1605; }
+    .btn.reset { background: linear-gradient(#9b2a1f, #6e1a12); color: #ffe9dc; border-color: #3d0d07; box-shadow: inset 0 1px 0 #c65a4a, 0 2px 0 #2a0804; }
+    .btn.archief { background: linear-gradient(#4f9a74, var(--verdigris)); color: #f2fff5; border-color: #173a2b; box-shadow: inset 0 1px 0 #86c9a2, 0 2px 0 #10281d; }
+    .btn.stil { background: linear-gradient(#3a2a1a, #221810); color: var(--ivoor); border-color: var(--messing-donker); box-shadow: inset 0 1px 0 #5a4228, 0 2px 0 #000; }
+    .btn.actief { box-shadow: inset 0 0 0 3px var(--bloed), 0 2px 0 #3d2a0e; }
+    .concept-balk { background: var(--perkament-bg); color: var(--inkt); border: 2px dashed var(--bloed); border-radius: 4px;
+      padding: 10px 12px; margin: 4px 0 10px; font-size: .98rem; line-height: 1.45; box-shadow: var(--perkament-schaduw); }
+    .concept-balk .btnrow { margin-top: 8px; }
+    .concept-balk .btn { margin-bottom: 0; }
+    .waarschuwing { color: var(--bloed); font-weight: 700; }
+    .correctie { background: var(--perkament-bg); color: var(--inkt); border: 1px solid var(--perkament-rand); border-radius: 4px;
+      box-shadow: var(--perkament-schaduw); padding: 10px 12px; margin: 4px 0 12px; }
+    .correctie summary { font-family: var(--font-kap); font-weight: 700; cursor: pointer; min-height: 32px; line-height: 32px; font-size: .92rem; }
+    .correctie .uitleg { font-size: .92rem; margin: 6px 0 8px; }
+    .corr-rij { padding: 8px 0; border-top: 1px dashed rgba(107,81,48,.45); }
+    .corr-naam { font-weight: 700; margin-bottom: 6px; }
+    .corr-boeien { display: flex; flex-wrap: wrap; gap: 6px; }
+    .corr-boei { min-height: 42px; min-width: 66px; padding: 4px 10px; border-radius: 4px; border: 1px solid var(--perkament-rand);
+      background: rgba(255,250,230,.5); color: var(--inkt); font: inherit; font-size: .9rem; cursor: pointer; }
+    .corr-boei.gerond { background: var(--verdigris); border-color: #173a2b; color: #f2fff5; }
+    .corr-boei:disabled { opacity: .45; cursor: default; }
+    /* Wedstrijdleiding: tabjes Baan · Race · Spel · Overig */
+    .wl-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 4px 0 12px;
+      background: rgba(0,0,0,.35); border: 1px solid var(--messing-donker); border-radius: 6px; padding: 4px; }
+    .wl-tab { min-height: 44px; border: none; border-radius: 4px; background: none; color: var(--ivoor-zacht); cursor: pointer;
+      font-family: var(--font-kap); font-weight: 700; font-size: .78rem; letter-spacing: .02em; padding: 4px 2px; }
+    .wl-tab:hover { color: var(--goud); }
+    .wl-tab.actief { background: linear-gradient(#e7c26a, #a67c2e); color: var(--inkt); box-shadow: inset 0 1px 0 #f7e2a6; }
+    .wl-paneel .uitleg { margin-bottom: 10px; }
+    .btnrow { display: flex; gap: 8px; }
+    .btnrow .btn { flex: 1; }
+    .wlstatus { font-size: .95rem; color: var(--ivoor-zacht); margin: 4px 0 10px; min-height: 1.2em; line-height: 1.4; font-style: italic; }
+    .loginform label { display: block; font-family: var(--font-kap); font-size: .8rem; letter-spacing: .08em; color: var(--goud); margin: 8px 0 4px; }
+    .loginform input { width: 100%; min-height: 50px; padding: 10px 12px; border-radius: 4px; border: 1px solid var(--perkament-rand);
+      background: var(--perkament); color: var(--inkt); font: inherit; font-size: 1.05rem; margin-bottom: 4px;
+      box-shadow: inset 0 2px 6px rgba(110,70,20,.3); }
+    #loginStatus { color: var(--bloed-licht); }
+    .alarm { background: linear-gradient(180deg, #7a1d12, #5a130b); color: #ffe9dc; border: 2px solid var(--bloed-licht); border-radius: 6px;
+      padding: 10px 12px; margin-bottom: 8px; font-weight: 700; }
+
+    /* Scheepsjournaal (verteller) */
+    .journaal { background: var(--perkament-bg); color: var(--inkt); border: 1px solid var(--perkament-rand); border-radius: 4px;
+      box-shadow: var(--perkament-schaduw); padding: 6px 14px 10px; max-height: 46vh; overflow-y: auto; }
+    .journaal-item { padding: 10px 0; border-bottom: 1px dashed rgba(107,81,48,.45); }
+    .journaal-item:last-child { border-bottom: none; }
+    .journaal-kop { font-family: var(--font-kap); font-weight: 700; font-size: .8rem; letter-spacing: .08em; color: var(--bloed); }
+    .journaal-tekst { font-size: 1.05rem; line-height: 1.5; margin-top: 3px; }
+    .journaal-item.nieuw .journaal-tekst::first-letter { font-family: var(--font-titel); font-size: 1.9em; float: left;
+      line-height: .9; margin: 3px 5px 0 0; color: var(--bloed); }
+    .journaal-volgende { font-size: .9rem; color: var(--inkt-zacht); font-style: italic; padding-top: 8px; }
+
+    /* Baanplanning */
+    .planning { background: var(--perkament-bg); color: var(--inkt); border: 1px solid var(--perkament-rand); border-radius: 4px;
+      box-shadow: var(--perkament-schaduw); padding: 12px 14px; }
+    .planning .kop { font-family: var(--font-kap); font-weight: 700; }
+    .planning .sub { color: var(--inkt-zacht); font-size: .92rem; margin: 2px 0 8px; line-height: 1.4; }
+    .planning table { font-size: .92rem; }
+    .planning th, .planning td { padding: 8px 4px; }
+    .planning td:first-child { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .planning .optie { margin-top: 10px; font-size: .98rem; line-height: 1.45; }
+    .planning .optie b { color: var(--bloed); }
 
     /* ---- Regels & Uitslagen ---- */
-    .inhoud { max-width: 780px; margin: 0 auto; }
-    .inhoud h1 { font-size: 1.5rem; margin-bottom: 4px; }
-    .inhoud .lead { color: #9fb4cd; margin-bottom: 24px; }
-    .kaartje { background: #0e1c2e; border: 1px solid #1d3350; border-radius: 14px;
-      padding: 16px 18px; margin-bottom: 14px; }
-    .kaartje h3 { margin: 0 0 6px; font-size: 1rem; display: flex; align-items: center; gap: 8px; }
-    .kaartje p { margin: 0; color: #c4d3e4; font-size: .9rem; line-height: 1.5; }
-    .kaartje .em { color: #7ee0a1; font-weight: 600; }
-    .disclaimer { color:#55708c; font-size:.78rem; margin-top:18px; line-height:1.5; }
-    .u-tabel { background:#0e1c2e; border:1px solid #1d3350; border-radius:14px;
-      padding:6px 16px 12px; margin-bottom:20px; }
-    .u-tabel h3 { font-size:1rem; margin:14px 2px 6px; }
-    .wis-race, .hernoem-race { background:#3a2436; color:#f0b4c8; border:none; border-radius:8px;
-      padding:2px 8px; font-size:.85rem; cursor:pointer; vertical-align:middle; }
-    .hernoem-race { background:#1c3a5e; color:#cfe0f2; }
-    .wis-race:hover { background:#50314a; }
-    .hernoem-race:hover { background:#244a76; }
-    .u-tabel .sub { color:#7f9bbb; font-size:.75rem; margin:0 2px 8px; }
-    td.pt, th.pt { text-align:center; }
-    tr.winnaar td { color:#ffe08a; font-weight:700; }
-    .leeg { color:#55708c; font-style:italic; padding:20px 2px; }
-  </style>
+    .inhoud { max-width: 820px; margin: 0 auto; }
+    .inhoud h1 { font-size: 2.4rem; margin-bottom: 4px; }
+    .inhoud .lead { color: var(--ivoor-zacht); margin-bottom: 22px; line-height: 1.5; font-size: 1.08rem; font-style: italic; }
+    .kaartje { background: var(--perkament-bg); color: var(--inkt); border: 1px solid var(--perkament-rand); border-radius: 4px;
+      box-shadow: var(--perkament-schaduw); padding: 16px 18px; margin-bottom: 14px; }
+    .kaartje h3 { margin: 0 0 6px; font-family: var(--font-kap); font-size: 1.05rem; letter-spacing: .03em; }
+    .kaartje p { margin: 0; color: var(--inkt); font-size: 1.05rem; line-height: 1.55; }
+    .kaartje .em { color: var(--bloed); font-weight: 700; }
+    .disclaimer { color: var(--ivoor-zacht); font-size: .92rem; margin-top: 18px; line-height: 1.5; font-style: italic; }
+    .u-tabel { background: var(--perkament-bg); color: var(--inkt); border: 1px solid var(--perkament-rand); border-radius: 4px;
+      box-shadow: var(--perkament-schaduw); padding: 6px 16px 12px; margin-bottom: 20px; }
+    .u-tabel h3 { font-family: var(--font-kap); font-size: 1.05rem; margin: 14px 2px 4px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .u-tabel .sub { color: var(--inkt-zacht); font-size: .9rem; margin: 0 2px 8px; font-style: italic; }
+    .race-knop { background: linear-gradient(#e7c26a, #a67c2e); color: var(--inkt); border: 1px solid var(--messing-donker); border-radius: 4px;
+      min-height: 36px; padding: 4px 10px; font-family: var(--font-kap); font-weight: 700; font-size: .8rem; cursor: pointer;
+      box-shadow: inset 0 1px 0 #f7e2a6, 0 1px 0 #3d2a0e; }
+    .race-knop:hover { background: linear-gradient(#f1d488, #b8903a); }
+    .race-knop.wis { background: linear-gradient(#9b2a1f, #6e1a12); color: #ffe9dc; border-color: #3d0d07; box-shadow: none; }
+    .leeg { color: var(--ivoor-zacht); font-style: italic; padding: 20px 2px; }
+
+    /* Replay van een race */
+    .replay { position: fixed; inset: 0; z-index: 2500; background: var(--hout-bg); background-color: var(--hout-1);
+      display: flex; flex-direction: column; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+    .replay-kop { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: linear-gradient(180deg, #120c07, #0a0704);
+      border-bottom: 2px solid var(--messing-donker); }
+    .replay-titel { font-family: var(--font-titel); font-size: 1.6rem; color: var(--goud); flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #replayKaart { flex: 1; min-height: 200px; }
+    .replay-bediening { padding: 10px 14px 14px; background: linear-gradient(180deg, #1a120b, #0f0a06); border-top: 2px solid var(--messing-donker); }
+    .replay-klok { font-family: var(--font-kap); font-size: 1.15rem; font-weight: 700; text-align: center; color: var(--goud); }
+    #replaySlider { width: 100%; height: 36px; margin: 6px 0; accent-color: var(--messing); }
+    .replay-knoppen { display: flex; gap: 8px; flex-wrap: wrap; }
+    .replay-knoppen .btn { flex: 1 1 110px; margin-bottom: 0; }
+    .replay-knoppen select { flex: 0 0 88px; min-height: 50px; border-radius: 5px; border: 1px solid var(--messing-donker);
+      background: linear-gradient(#3a2a1a, #221810); color: var(--ivoor); font-family: var(--font-kap); font-weight: 700; padding: 0 8px; }
+    .replay-legenda { margin-top: 10px; font-size: 1rem; line-height: 1.6; color: var(--ivoor); }
+
+    /* Paasei: de schatkaart */
+    .paasei { color: var(--messing-donker); text-decoration: none; margin-left: 4px; }
+    .paasei:hover { color: var(--goud); }
+    .kado-overlay { position: fixed; inset: 0; z-index: 3000; background: rgba(8,5,2,.8);
+      display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .kado-kaart { background: var(--perkament-bg); color: var(--inkt); border: 1px solid var(--perkament-rand); border-radius: 4px;
+      padding: 26px 24px 18px; max-width: 380px; text-align: center; box-shadow: var(--perkament-schaduw), 0 12px 40px #000c;
+      animation: kadoIn .45s ease-out; }
+    .kado-kaart h2 { font-family: var(--font-titel); color: var(--bloed); font-size: 2.2rem; text-transform: none; letter-spacing: 0;
+      margin: 6px 0 8px; justify-content: center; }
+    .kado-kaart h2::after { display: none; }
+    .kado-kaart p { line-height: 1.5; margin: 0 0 16px; color: var(--inkt); font-size: 1.08rem; }
+    .kado-icoon { font-size: 4rem; animation: kadoWiebel 1.2s ease-in-out infinite; }
+    @keyframes kadoIn { from { transform: scale(.6) rotate(-4deg); opacity: 0; } to { transform: scale(1) rotate(0); opacity: 1; } }
+    @keyframes kadoWiebel { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+
+    /* ---- Telefoon ---- */
+    @media (max-width: 820px) {
+      #tabbar button { flex: 1; padding: 12px 4px; font-size: .85rem; letter-spacing: .03em; }
+      #tabLive.actief { flex-direction: column; overflow-y: auto; }
+      #kaartwrap { flex: none; height: 58vh; min-height: 320px; }
+      #paneel { width: 100%; border-left: none; border-top: 3px solid var(--messing-donker); overflow: visible;
+        padding: 16px 16px calc(28px + env(safe-area-inset-bottom)); }
+      #tabRegels.actief, #tabUitslagen.actief { padding: 16px; }
+      .aftel-groot { top: 8px; min-width: 70%; }
+    }
+</style>
 </head>
 <body>
   <nav id="tabbar">
-    <button data-tab="tabLive" class="actief">📍 Live</button>
-    <button data-tab="tabRegels">📖 Regels</button>
+    <button data-tab="tabLive" class="actief">⚓ Live</button>
+    <button data-tab="tabRegels">📜 Regels</button>
     <button data-tab="tabUitslagen">🏆 Uitslagen</button>
   </nav>
 
   <!-- ================= LIVE ================= -->
   <div id="tabLive" class="tab actief">
-    <div id="kaart"></div>
+    <div id="kaartwrap">
+      <div id="kaart"></div>
+      <div id="aftelGroot" class="aftel-groot" hidden></div>
+    </div>
     <aside id="paneel">
-      <h1>⛵ Zeilrace</h1>
-      <div class="race" id="raceNaam"></div>
-      <div class="banner" id="banner"></div>
-      <div class="aftel" id="aftel" style="display:none"></div>
+      <h1>☠ Zeilrace</h1>
+      <div class="banner" id="banner" hidden></div>
+      <div id="alarmen"></div>
 
-      <section id="wedstrijdleiding" style="display:none">
+      <h2>Boten — live</h2>
+      <div class="uitleg">Tik op een boot om hem op de kaart te volgen. ⛶ op de kaart toont weer de hele baan.</div>
+      <div id="botenlijst"></div>
+
+      <section id="spelSectie" hidden>
+        <h2>🏴‍☠️ Het Piratenspel</h2>
+        <div class="spel">
+          <div id="spelStatusDash" class="spel-status"></div>
+          <div id="spelStandDash"></div>
+        </div>
+      </section>
+
+      <section id="wlLogin" hidden>
         <h2>Wedstrijdleiding</h2>
-        <div class="btnrow">
-          <button class="btn" id="btnStart">📍 Startlijn</button>
-          <button class="btn" id="btnFinish">🏁 Finishlijn</button>
+        <form id="loginForm" class="loginform">
+          <label for="loginEmail">E-mailadres</label>
+          <input id="loginEmail" type="email" autocomplete="username" required>
+          <label for="loginWw">Wachtwoord</label>
+          <input id="loginWw" type="password" autocomplete="current-password" required>
+          <button class="btn" type="submit">Inloggen</button>
+        </form>
+        <div class="wlstatus" id="loginStatus"></div>
+      </section>
+
+      <section id="wedstrijdleiding" hidden>
+        <h2>Wedstrijdleiding</h2>
+        <!-- Altijd zichtbaar: de concept-baan die nog bevestigd moet worden -->
+        <div id="conceptBalk" class="concept-balk" hidden>
+          <div id="conceptTekst"></div>
+          <div class="btnrow">
+            <button class="btn archief" id="btnBevestig">✔ Baan bevestigen</button>
+            <button class="btn reset" id="btnAnnuleer">✖ Annuleren</button>
+          </div>
         </div>
-        <div class="btnrow">
-          <button class="btn" id="btnBoei">🟠 Boei toevoegen</button>
-          <button class="btn reset" id="btnBoeienWis">🗑 Boeien wissen</button>
+
+        <div class="wl-tabs" role="tablist">
+          <button type="button" class="wl-tab" data-wl="baan" role="tab">🧭 Baan</button>
+          <button type="button" class="wl-tab" data-wl="race" role="tab">🏁 Race</button>
+          <button type="button" class="wl-tab" data-wl="spel" role="tab">🏴‍☠️ Spel</button>
+          <button type="button" class="wl-tab" data-wl="overig" role="tab">⚙️ Overig</button>
         </div>
-        <button class="btn gun" id="btnSein">🔫 Startsein geven</button>
-        <button class="btn archief" id="btnArchief">✅ Race afronden &amp; opslaan</button>
-        <button class="btn reset" id="btnReset">♻︎ Live tijden resetten</button>
+
+        <div class="wl-paneel" data-wl="baan">
+          <div class="uitleg">Wijzigingen zijn eerst een <b>concept</b> (geel op de kaart); pas na <b>✔ Bevestigen</b>
+            zien de boten het. Boeien kun je verslepen. Een nieuwe start- of finishlijn haalt alle boeien weg.</div>
+          <div class="btnrow">
+            <button class="btn" id="btnStart">📍 Startlijn</button>
+            <button class="btn" id="btnFinish">🏁 Finishlijn</button>
+          </div>
+          <div class="btnrow">
+            <button class="btn" id="btnBoei">🟠 Boei erbij</button>
+            <button class="btn" id="btnBoeiWeg">✖ Boei weg</button>
+          </div>
+          <button class="btn reset" id="btnBoeienWis">🗑 Alle boeien wissen</button>
+        </div>
+
+        <div class="wl-paneel" data-wl="race" hidden>
+          <button class="btn archief" id="btnArchief">✅ Race afronden &amp; opslaan</button>
+          <button class="btn reset" id="btnReset">♻︎ Live tijden resetten</button>
+          <div class="btnrow">
+            <button class="btn gun" id="btnSeinGelijk">🔫 Start A: gelijk</button>
+            <button class="btn gun" id="btnSeinAchter">🔫 Start B: achtervolging</button>
+          </div>
+          <div class="uitleg" id="startUitleg">Het startsein valt op het eerstvolgende 5-minutenmoment. Verwachte tijden en
+            vertragingen staan in de <b>baanplanning</b>.</div>
+          <details class="correctie" id="correctieBlok">
+            <summary>🛠 Boeironding handmatig corrigeren</summary>
+            <div class="uitleg">Miste een telefoon een ronding (bijv. GPS uitgevallen)? Tik op een boei om hem
+              voor die boot als gerond te markeren, of tik op een ✓ om dat terug te draaien.</div>
+            <div id="correctie"></div>
+          </details>
+        </div>
+
+        <div class="wl-paneel" data-wl="spel" hidden>
+          <div class="uitleg">Teken eerst het speelveld: tik het midden en dan de rand van de cirkel. Buiten de cirkel
+            kost elke 20 seconden een leven. Elke boot heeft 3 levens en 10 salvo's.</div>
+          <button class="btn" id="btnVeld">⭕ Speelveld tekenen</button>
+          <div class="btnrow">
+            <button class="btn gun" id="btnSpelStart">🏴‍☠️ Start zeeslag</button>
+            <button class="btn reset" id="btnSpelStop">⏹ Stop</button>
+          </div>
+        </div>
+
+        <div class="wl-paneel" data-wl="overig" hidden>
+          <div class="uitleg"><b>Boten vrijgeven</b>: gebruik dit als een boot een andere telefoon wil gebruiken.</div>
+          <button class="btn stil" id="btnVrijgeven">🔓 Boten vrijgeven</button>
+          <button class="btn stil" id="btnUitloggen">Uitloggen</button>
+        </div>
+
         <div class="wlstatus" id="wlStatus"></div>
       </section>
 
-      <h2>Boten — live data</h2>
-      <div class="boten-legenda">per boot: snelheid · VMG · volgend doel · afstand · tijd</div>
-      <div id="botenlijst"></div>
+      <section id="journaalSectie" hidden>
+        <h2>📜 Scheepsjournaal</h2>
+        <div id="journaal" class="journaal"></div>
+        <button class="btn stil" id="btnJournaalNu" hidden style="margin-top:10px">📝 Maak nu een journaalnotitie (test)</button>
+      </section>
 
-      <h2>Scorebord — huidige race</h2>
-      <table>
-        <thead>
-          <tr><th class="rank">#</th><th>Boot</th>
-              <th class="tijd">Tijd</th><th class="tijd">Gecorr.</th></tr>
-        </thead>
-        <tbody id="scorebord"></tbody>
-      </table>
-      <div class="hint">De tijd loopt vanaf het startsein (voor iedereen gelijk).
-        Gecorrigeerde tijd = verzeilde tijd × rating; voor de Valken staat rating op 1.0,
-        dus beide kolommen zijn gelijk.</div>
+      <section id="planningSectie" hidden>
+        <h2>Baanplanning</h2>
+        <div id="planning" class="planning"></div>
+      </section>
     </aside>
   </div>
 
   <!-- ================= REGELS ================= -->
   <div id="tabRegels" class="tab">
     <div class="inhoud">
-      <h1>📖 Zeilwedstrijd­regels — in het kort</h1>
+      <h1>📜 De Code — zeilregels in het kort</h1>
       <div class="lead">De belangrijkste regels om samen veilig en eerlijk te racen.
-        Dit is een vereenvoudigde uitleg, geen vervanging van de officiële
-        <em>Racing Rules of Sailing</em>.</div>
+        Dit is een vereenvoudigde uitleg, geen vervanging van de officiële <em>Racing Rules of Sailing</em>.</div>
 
       <div class="kaartje">
         <h3>🚦 De start</h3>
-        <p>De race begint met een <span class="em">startsein</span> op een vast klokmoment;
-          op de dashboards telt een klok ernaartoe af. Je mag de startlijn pas ná het sein in
-          de juiste richting kruisen — ben je te vroeg over, dan moet je terug en opnieuw starten.
-          <span class="em">De tijd loopt voor iedereen vanaf het startsein</span>, dus hoe later je
-          de lijn kruist, hoe meer tijd het je kost. Zorg dat je vlak na het sein met snelheid
-          over de lijn gaat.</p>
+        <p>De race begint met een <span class="em">startsein</span> op een vast klokmoment; op de schermen telt een
+          grote klok ernaartoe af, met een kanonschot op 5 minuten, 1 minuut en bij de start. Je mag de startlijn pas ná
+          jouw startsein in de juiste richting kruisen — ben je te vroeg over, dan moet je terug en opnieuw starten.
+          <span class="em">De tijd loopt vanaf het startsein</span>, dus hoe later je de lijn kruist, hoe meer tijd
+          het je kost.</p>
+      </div>
+
+      <div class="kaartje" id="regelSpel" hidden>
+        <h3>🏴‍☠️ Het piratenspel</h3>
+        <p>Een zeeslag tussen de races door. Met <span class="em">💥 Vuur het kanon!</span> op je tracker vuur je een
+          breedzijde af: een wolk van kogels haaks op je koers, naar bakboord én stuurboord (de stippellijnen op de kaart).
+          Komt een kogel binnen 20 meter van een ander schip, dan is het raak. Elk schip heeft <span class="em">3 levens</span>
+          en <span class="em">10 salvo's</span>, en na elk salvo moet het kanon een minuut herladen. Blijf binnen het speelveld
+          (de rode cirkel): elke 20 seconden daarbuiten kost een leven. De zeeslag is voorbij als er nog maar één schip
+          drijft of als het kruit op is. Winnaar: de meeste levens, dan de meeste treffers, dan de meeste salvo's over.</p>
       </div>
 
       <div class="kaartje">
-        <h3>➡️ Stuurboord heeft voorrang</h3>
-        <p>Een boot met de wind van <span class="em">stuurboord</span> (giek aan bakboord,
-          wind van rechts) heeft voorrang op een boot over bakboord. De bakboordboot moet
-          uitwijken. Bij twijfel: hou stuurboord aan.</p>
+        <h3>⚖️ Rating en twee soorten start</h3>
+        <p>De boten zijn niet even snel: een Sun Odyssey 519 is sneller dan een 389. Daarom heeft elke boot een
+          <span class="em">rating</span> (gebaseerd op ORC-certificaten). Er zijn twee manieren van starten:<br>
+          • <b>Gelijke start</b> — iedereen start tegelijk; na afloop wordt je tijd met de rating omgerekend
+          (gecorrigeerde tijd).<br>
+          • <b>Achtervolgingsstart</b> — de langzaamste boot start eerst, de snellere boten starten later. Het
+          verschil is precies de verwachte tijd die de snellere boot sneller is. In theorie finisht iedereen
+          tegelijk: <span class="em">wie het eerst over de finish gaat, wint</span>.<br>
+          De uitslag telt altijd <b>met</b> rating (gecorrigeerde tijd); de verzeilde tijd staat er ter informatie bij.</p>
+      </div>
+
+      <div class="kaartje">
+        <h3>⬅️ Bakboord heeft voorrang</h3>
+        <p>We kijken naar het <span class="em">zeil</span>: staan jouw giek en grootzeil <span class="em">over bakboord</span>
+          (links), dan heb jij voorrang. Staat je giek over stuurboord (rechts), dan moet jij uitwijken voor de
+          bakboordboot. Bij twijfel: tijdig en duidelijk uitwijken.</p>
       </div>
 
       <div class="kaartje">
         <h3>⬆️ Loef wijkt voor lij</h3>
-        <p>Liggen twee boten aan dezelfde kant (zelfde overstag)? Dan moet de
-          <span class="em">loefboot</span> (dichtst bij de wind, bovenwinds) uitwijken voor
-          de <span class="em">lijboot</span> (benedenwinds). Oploeven mag, maar geef de ander
-          ruimte om vrij te blijven.</p>
+        <p>Liggen twee boten aan dezelfde kant (zelfde overstag)? Dan moet de <span class="em">loefboot</span>
+          (bovenwinds) uitwijken voor de <span class="em">lijboot</span> (benedenwinds). Oploeven mag, maar geef de
+          ander ruimte om vrij te blijven.</p>
       </div>
 
       <div class="kaartje">
         <h3>🟠 Boeien ronden</h3>
         <p>Rond de boeien in de <span class="em">juiste volgorde</span>. Bij elke boei hoort een
-          (onzichtbare) <span class="em">rondingslijn</span> die vanaf de boei naar buiten loopt,
-          in de richting van de bocht die de baan daar maakt. Je hebt de boei gerond zodra je die
-          lijn <span class="em">oversteekt</span> — of dat aan bakboord of stuurboord is, volgt
-          vanzelf uit de baan. Kom je met twee boten tegelijk bij een boei, dan heeft de
-          binnenboot (die overlap heeft) recht op ruimte om te ronden.</p>
+          <span class="em">rondingslijn</span> (de paarse stippellijn op je tracker) die vanaf de boei naar buiten
+          loopt, in de richting van de bocht die de baan daar maakt. Je hebt de boei gerond zodra je die lijn
+          <span class="em">oversteekt</span> — of dat aan bakboord of stuurboord is, volgt vanzelf uit de baan.
+          Ligt een boei vrijwel op een rechte lijn (geen bocht), dan loopt de lijn <span class="em">dwars</span>
+          door de boei: passeren aan welke kant dan ook telt. Mist je telefoon een ronding, dan kan de
+          wedstrijdleiding hem handmatig goedkeuren. Kom je met twee boten tegelijk bij een boei, dan heeft de binnenboot (die overlap heeft) recht op ruimte
+          om te ronden.</p>
       </div>
 
       <div class="kaartje">
         <h3>🔄 Wie manoeuvreert, wijkt</h3>
-        <p>Een boot die <span class="em">overstag gaat of gijpt</span> moet vrij blijven van
-          boten die hun koers varen. Rond je manoeuvre af vóórdat je een ander in gevaar
-          brengt.</p>
+        <p>Een boot die <span class="em">overstag gaat of gijpt</span> moet vrij blijven van boten die hun koers
+          varen. Rond je manoeuvre af vóórdat je een ander in gevaar brengt.</p>
       </div>
 
       <div class="kaartje">
         <h3>🏁 De finish</h3>
-        <p>Je bent gefinisht zodra je de finishlijn kruist — maar pas nádat je álle boeien
-          hebt gerond. Je verzeilde tijd is de tijd <span class="em">van het startsein tot je
-          finish</span>, en wordt met je rating omgerekend naar de
-          <span class="em">gecorrigeerde tijd</span>, waarmee boten van verschillende
-          snelheid eerlijk vergeleken worden.</p>
+        <p>Je bent gefinisht zodra je de finishlijn kruist — maar pas nádat je álle boeien hebt gerond. Je
+          verzeilde tijd is de tijd <span class="em">van jouw startsein tot je finish</span>.</p>
       </div>
 
-      <div class="disclaimer">Veiligheid gaat altijd vóór de regels: voorkom aanvaringen,
-        ook als je voorrang hebt. Twijfel je? Wijk uit en bespreek het na afloop.</div>
+      <div class="disclaimer">Veiligheid gaat altijd vóór de regels: voorkom aanvaringen, ook als je voorrang hebt.
+        Twijfel je? Wijk uit en bespreek het na afloop. <a href="#" id="paasei" class="paasei" aria-label="anker">⚓</a></div>
+    </div>
+  </div>
+
+  <div id="replay" class="replay" hidden role="dialog" aria-modal="true" aria-labelledby="replayTitel">
+    <div class="replay-kop">
+      <div id="replayTitel" class="replay-titel"></div>
+      <button type="button" id="replaySluit" class="race-knop" aria-label="Sluiten">✕ Sluiten</button>
+    </div>
+    <div id="replayKaart"></div>
+    <div class="replay-bediening">
+      <div class="replay-klok" id="replayKlok">—</div>
+      <input id="replaySlider" type="range" min="0" max="100" step="1" value="0" aria-label="Tijd in de race">
+      <div class="replay-knoppen">
+        <button type="button" class="btn" id="replayPlay">▶ Afspelen</button>
+        <select id="replaySnelheid" aria-label="Afspeelsnelheid">
+          <option value="10">10×</option><option value="30">30×</option>
+          <option value="60" selected>60×</option><option value="120">120×</option><option value="300">300×</option>
+        </select>
+        <button type="button" class="btn" id="replayVideo">🎬 Video</button>
+        <button type="button" class="btn stil" id="replayFoto">🖼 Foto</button>
+      </div>
+      <div class="replay-legenda" id="replayLegenda"></div>
+    </div>
+  </div>
+
+  <div id="kadoOverlay" class="kado-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="kadoTitel">
+    <div class="kado-kaart">
+      <div class="kado-icoon">🎁</div>
+      <h2 id="kadoTitel">Gevonden!</h2>
+      <p>Goed gelezen, stuurman. Je hebt het verstopte anker gevonden —<br>
+        <b>je mag een kadootje ophalen bij Emiel.</b></p>
+      <button class="btn" id="kadoSluit">Top, ahoy! ⛵</button>
     </div>
   </div>
 
   <!-- ================= UITSLAGEN ================= -->
   <div id="tabUitslagen" class="tab">
     <div class="inhoud">
-      <h1>🏆 Uitslagen &amp; klassement</h1>
-      <div class="lead">Overall klassement (low-point: laagste totaal wint) en de uitslag
-        van elke afgeronde race.</div>
+      <h1>🏆 De Buit — uitslagen &amp; klassement</h1>
+      <div class="lead">Klassement volgens low-point (laagste totaal wint), op <b>gecorrigeerde tijd</b> (met rating).
+        Per race zie je ook de verzeilde tijd. Per race kun je de <b>replay</b> bekijken:
+        sleep door de tijd, speel hem af, of maak er een video of foto van.</div>
       <div id="uitslagenInhoud"></div>
     </div>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"
+          integrity="sha384-aUtWR1iCiOCHS8pn1nKNXMZm3I/eDrV63IXWXgE+mHHqJfYTWYV+jGk0sCXz57+U" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js"
+          integrity="sha384-ZRqyA8Xkw0A6FmVya9A0Werzt9yjKKAp2TCzqVJjHK1O3oyb0z9jMxpkWPVoFtUm" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/12.19.0/firebase-database-compat.js"
+          integrity="sha384-LXlcKfZa4dKRGTde8HcsjmxloF7wRHDvUWCV/UFqEsccZaCsOue3gUiDYzknmbW+" crossorigin="anonymous"></script>
   <script src="config.js"></script>
   <script src="shared.js"></script>
-  <script>
-    document.getElementById('raceNaam').textContent = 'Race: ' + RACE_ID;
-
-    if (firebaseConfig.apiKey.startsWith('PLAK')) {
-      const b = document.getElementById('banner');
-      b.style.display = 'block';
-      b.textContent = 'config.js is nog niet ingevuld met je Firebase-gegevens. ' +
-        'Zie README.md — zonder die gegevens komt er nog geen live data binnen.';
-    }
-
-    const kaart = L.map('kaart').setView([52.4, 5.4], 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, attribution: '© OpenStreetMap'
-    }).addTo(kaart);
-
-    const markers = {}, sporen = {}, laatsteTs = {}, botData = {};
-    let eersteFix = true;
-    let timesData = {};    // races/.../times (huidige race)
-    let raceStart = null;  // startsein-tijd
-    let boeien = [];       // races/.../marks
-    let rondingData = {};  // races/.../rounded
-    let resultsData = {};  // races/.../results (afgeronde races)
-    let namen = {};        // races/.../names  { boot: 'gekozen naam' }
-    const FLEET = Object.keys(BOTEN);
-
-    // Weergavenaam van een boot (gekozen naam, anders het slot Valk1/2/3)
-    function naamVan(boot) {
-      return (namen[boot] && String(namen[boot]).trim()) ? namen[boot] : boot;
-    }
-
-    // =========================================================
-    //  Tabbladen
-    // =========================================================
-    function toonTab(id) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('actief', t.id === id));
-      document.querySelectorAll('#tabbar button').forEach(b => b.classList.toggle('actief', b.dataset.tab === id));
-      if (id === 'tabLive') setTimeout(() => kaart.invalidateSize(), 30);
-      if (id === 'tabUitslagen') renderUitslagen();
-    }
-    document.querySelectorAll('#tabbar button').forEach(b =>
-      b.addEventListener('click', () => toonTab(b.dataset.tab)));
-
-    // =========================================================
-    //  Boten (live) — statuslijst
-    // =========================================================
-    function verversLijst() {
-      const lijst = document.getElementById('botenlijst');
-      lijst.innerHTML = '';
-      const nu = Date.now();
-      FLEET.forEach(naam => {
-        const ts = laatsteTs[naam];
-        const online = ts && (nu - ts < 30000);
-        const t = timesData[naam] || {};
-        const s = Object.assign({}, botData[naam], { start: t.start, finish: t.finish, gerond: rondingData[naam] });
-        const div = document.createElement('div');
-        div.className = 'boot' + (online ? '' : ' offline');
-        div.innerHTML =
-          `<div class="boot-top">` +
-          `<span class="kleur" style="background:${BOTEN[naam].kleur}"></span>` +
-          `<span class="naam">${naamVan(naam)}</span>` +
-          `<span class="meta">${online ? 'LIVE' : (ts ? Math.round((nu - ts) / 1000) + 's' : 'offline')}</span></div>` +
-          `<div class="boot-data">${bootDataTekst(s, lijnData, boeien)}</div>`;
-        lijst.appendChild(div);
-      });
-    }
-
-    // =========================================================
-    //  Scorebord — huidige race
-    // =========================================================
-    function berekenUitslag(times) {
-      // -> array {naam, gefinisht, elapsed, corrected} met live 'onderweg'-tijd.
-      // De verzeilde tijd loopt vanaf het startsein (gun) — voor iedereen gelijk,
-      // dus een late start kost tijd. Is er (nog) geen sein gezet, dan valt het
-      // terug op de eigen startlijn-kruising (handig bij losse tests).
-      const nu = Date.now();
-      return FLEET.map(naam => {
-        const t = times[naam] || {};
-        const ref = (raceStart != null) ? raceStart : t.start;
-        let elapsed = null, gefinisht = false, onderweg = false;
-        if (t.start != null && ref != null) {
-          if (t.finish != null) { elapsed = t.finish - ref; gefinisht = true; }
-          else { elapsed = nu - ref; onderweg = true; }
-        }
-        const corrected = elapsed != null ? elapsed * BOTEN[naam].rating : null;
-        return { naam, gefinisht, onderweg, elapsed, corrected };
-      });
-    }
-
-    function renderScorebord() {
-      const rijen = berekenUitslag(timesData);
-      rijen.sort((a, b) => {
-        if (a.corrected == null && b.corrected == null) return 0;
-        if (a.corrected == null) return 1;
-        if (b.corrected == null) return -1;
-        return a.corrected - b.corrected;
-      });
-      const tb = document.getElementById('scorebord');
-      tb.innerHTML = '';
-      let rang = 0;
-      rijen.forEach(r => {
-        const heeftTijd = r.corrected != null;
-        if (heeftTijd) rang++;
-        const status = r.gefinisht ? 'finish' : (r.onderweg ? 'onderweg' : null);
-        const voortgang = (boeien.length && status === 'onderweg')
-          ? ` ${Object.keys(rondingData[r.naam] || {}).length}/${boeien.length}` : '';
-        const badge = status
-          ? `<span class="badge ${status}">${status === 'finish' ? 'finish' : 'onderweg' + voortgang}</span>` : '';
-        const tr = document.createElement('tr');
-        tr.innerHTML =
-          `<td class="rank">${heeftTijd ? rang : '–'}</td>` +
-          `<td><span class="kleur" style="display:inline-block;width:9px;height:9px;` +
-          `border-radius:50%;background:${BOTEN[r.naam].kleur};margin-right:6px"></span>` +
-          `${naamVan(r.naam)}${badge}</td>` +
-          `<td class="tijd">${formatDuur(r.elapsed)}</td>` +
-          `<td class="tijd">${formatDuur(r.corrected)}</td>`;
-        tb.appendChild(tr);
-      });
-    }
-
-    db.ref(`races/${RACE_ID}/times`).on('value', s => { timesData = s.val() || {}; renderScorebord(); });
-
-    // Gekozen bootnamen live meelezen en overal doorvoeren
-    db.ref(`races/${RACE_ID}/names`).on('value', s => {
-      namen = s.val() || {};
-      verversLijst(); renderScorebord();
-      FLEET.forEach(n => { if (markers[n]) markers[n].setTooltipContent(naamVan(n)); });
-      if (document.getElementById('tabUitslagen').classList.contains('actief')) renderUitslagen();
-    });
-
-    // =========================================================
-    //  Uitslagen & overall klassement
-    // =========================================================
-    const DNF_PUNTEN = FLEET.length + 1; // niet-gefinisht = aantal boten + 1
-
-    db.ref(`races/${RACE_ID}/results`).on('value', s => {
-      resultsData = s.val() || {};
-      if (document.getElementById('tabUitslagen').classList.contains('actief')) renderUitslagen();
-    });
-    // Oude race verwijderen (knop verschijnt alleen met ?wl)
-    document.getElementById('uitslagenInhoud').addEventListener('click', e => {
-      const wis = e.target.closest('.wis-race');
-      if (wis) {
-        const nr = wis.dataset.nr;
-        if (confirm(`Race ${nr} definitief verwijderen uit de uitslagen?`))
-          db.ref(`races/${RACE_ID}/results/${nr}`).remove();
-        return;
-      }
-      const hern = e.target.closest('.hernoem-race');
-      if (hern) {
-        const nr = hern.dataset.nr;
-        const huidig = (resultsData[nr] && resultsData[nr].naam) || '';
-        const naam = prompt(`Naam voor race ${nr} (leeg = geen naam):`, huidig);
-        if (naam !== null) db.ref(`races/${RACE_ID}/results/${nr}/naam`).set(naam.trim() || null);
-      }
-    });
-
-    function renderUitslagen() {
-      const houder = document.getElementById('uitslagenInhoud');
-      const magWissen = new URLSearchParams(location.search).has('wl');
-      const nummers = Object.keys(resultsData).map(Number).sort((a, b) => a - b);
-      if (!nummers.length) {
-        houder.innerHTML = '<div class="leeg">Nog geen races afgerond. ' +
-          'Rond een race af via de wedstrijdleiding (▸ Live-tab met ?wl).</div>';
-        return;
-      }
-
-      // Punten per boot per race
-      const punten = {};        // punten[boot][nr]
-      FLEET.forEach(n => punten[n] = {});
-      nummers.forEach(nr => {
-        const uit = resultsData[nr].uitslag || {};
-        FLEET.forEach(naam => {
-          const r = uit[naam];
-          punten[naam][nr] = (r && r.gefinisht && r.positie) ? r.positie : DNF_PUNTEN;
-        });
-      });
-      const totaal = {};
-      FLEET.forEach(n => totaal[n] = nummers.reduce((sum, nr) => sum + punten[n][nr], 0));
-      const volgorde = [...FLEET].sort((a, b) => {
-        if (totaal[a] !== totaal[b]) return totaal[a] - totaal[b];
-        // Gelijkspel: de meest recente race beslist (lagere punten wint)
-        for (let k = nummers.length - 1; k >= 0; k--) {
-          const nr = nummers[k];
-          if (punten[a][nr] !== punten[b][nr]) return punten[a][nr] - punten[b][nr];
-        }
-        return 0;
-      });
-
-      // -- Overall tabel --
-      let html = '<div class="u-tabel"><h3>Overall klassement</h3>' +
-        '<div class="sub">Low-point — laagste totaal wint. Niet gefinisht = ' + DNF_PUNTEN + ' punten.</div>' +
-        '<table><thead><tr><th class="rank">#</th><th>Boot</th>' +
-        nummers.map(nr => `<th class="pt">R${nr}</th>`).join('') +
-        '<th class="pt">Totaal</th></tr></thead><tbody>';
-      volgorde.forEach((naam, i) => {
-        const win = i === 0 ? ' class="winnaar"' : '';
-        html += `<tr${win}><td class="rank">${i + 1}</td>` +
-          `<td><span class="kleur" style="display:inline-block;width:9px;height:9px;` +
-          `border-radius:50%;background:${BOTEN[naam].kleur};margin-right:6px"></span>${naamVan(naam)}</td>` +
-          nummers.map(nr => `<td class="pt">${punten[naam][nr]}</td>`).join('') +
-          `<td class="pt"><b>${totaal[naam]}</b></td></tr>`;
-      });
-      html += '</tbody></table></div>';
-
-      // -- Per race --
-      [...nummers].reverse().forEach(nr => {
-        const res = resultsData[nr];
-        const rijen = FLEET.map(naam => ({ naam, ...(res.uitslag[naam] || {}) }))
-          .sort((a, b) => {
-            if (a.gefinisht && b.gefinisht) return a.positie - b.positie;
-            if (a.gefinisht) return -1; if (b.gefinisht) return 1; return 0;
-          });
-        const wanneer = res.ts ? new Date(res.ts).toLocaleString('nl-NL',
-          { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
-        const rNaam = res.naam ? ': ' + res.naam : '';
-        html += `<div class="u-tabel"><h3>Race ${nr}${rNaam}` +
-          (magWissen ? ` <button class="hernoem-race" data-nr="${nr}" title="Naam wijzigen">✏️</button>` +
-                       ` <button class="wis-race" data-nr="${nr}" title="Verwijder deze race">🗑</button>` : '') +
-          `</h3><div class="sub">${wanneer}</div>` +
-          '<table><thead><tr><th class="rank">#</th><th>Boot</th>' +
-          '<th class="tijd">Tijd</th><th class="tijd">Gecorr.</th></tr></thead><tbody>';
-        rijen.forEach(r => {
-          html += `<tr><td class="rank">${r.gefinisht ? r.positie : 'DNF'}</td>` +
-            `<td><span class="kleur" style="display:inline-block;width:9px;height:9px;` +
-            `border-radius:50%;background:${BOTEN[r.naam].kleur};margin-right:6px"></span>${naamVan(r.naam)}</td>` +
-            `<td class="tijd">${r.gefinisht ? formatDuur(r.elapsed) : '—'}</td>` +
-            `<td class="tijd">${r.gefinisht ? formatDuur(r.corrected) : '—'}</td></tr>`;
-        });
-        html += '</tbody></table></div>';
-      });
-
-      houder.innerHTML = html;
-    }
-
-    // =========================================================
-    //  Start-/finishlijnen + boeien + geplande route tekenen
-    // =========================================================
-    const lijnLagen = { start: null, finish: null };
-    let lijnData = {};
-    const boeiLagen = [];
-    let routeLaag = null;
-
-    function midden(ln) { return { lat: (ln.a.lat + ln.b.lat) / 2, lng: (ln.a.lng + ln.b.lng) / 2 }; }
-
-    db.ref(`races/${RACE_ID}/lines`).on('value', s => {
-      lijnData = s.val() || {};
-      ['start', 'finish'].forEach(type => {
-        if (lijnLagen[type]) { kaart.removeLayer(lijnLagen[type]); lijnLagen[type] = null; }
-        const ln = lijnData[type];
-        if (ln && ln.a && ln.b) {
-          const kleur = type === 'start' ? '#2ea043' : '#e6194b';
-          lijnLagen[type] = L.polyline(
-            [[ln.a.lat, ln.a.lng], [ln.b.lat, ln.b.lng]],
-            { color: kleur, weight: 4, dashArray: '7 7' }
-          ).addTo(kaart).bindTooltip(type === 'start' ? 'START' : 'FINISH',
-            { permanent: true, direction: 'center', className: 'lijn-label' });
-        }
-      });
-      tekenBoeien();
-    });
-
-    function tekenBoeien() {
-      boeiLagen.forEach(l => kaart.removeLayer(l));
-      boeiLagen.length = 0;
-      const wlZichtbaar = new URLSearchParams(location.search).has('wl');
-      boeien.forEach((boei, i) => {
-        // Rondingslijn (bissectrice) — alleen voor de wedstrijdleiding (?wl)
-        if (wlZichtbaar) {
-          const { prev, next } = boeiPrevNext(i, boeien, lijnData);
-          const rl = rondingsLijn(boei, prev, next, 6, 150);   // korter getekend dan gemeten (10 km)
-          if (rl) boeiLagen.push(L.polyline([[rl.a.lat, rl.a.lng], [rl.b.lat, rl.b.lng]],
-            { color: '#e05fd8', weight: 3, dashArray: '4 6' }).addTo(kaart)
-            .bindTooltip('rondingslijn boei ' + (i + 1), { direction: 'top' }));
-        }
-        boeiLagen.push(L.marker([boei.lat, boei.lng], {
-          icon: L.divIcon({ className: 'boei-icoon',
-            html: `<div class="boei">${i + 1}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] })
-        }).addTo(kaart).bindTooltip(boei.naam || ('Boei ' + (i + 1)),
-          { direction: 'top', offset: [0, -10] }));
-      });
-      tekenRoute();
-    }
-
-    function tekenRoute() {
-      if (routeLaag) { kaart.removeLayer(routeLaag); routeLaag = null; }
-      const punten = [];
-      if (lijnData.start && lijnData.start.a) { const m = midden(lijnData.start); punten.push([m.lat, m.lng]); }
-      boeien.forEach(b => punten.push([b.lat, b.lng]));
-      if (lijnData.finish && lijnData.finish.a) { const m = midden(lijnData.finish); punten.push([m.lat, m.lng]); }
-      if (punten.length >= 2) {
-        routeLaag = L.polyline(punten, { color: '#9fb4cd', weight: 2, dashArray: '3 8', opacity: .8 }).addTo(kaart);
-      }
-    }
-
-    db.ref(`races/${RACE_ID}/marks`).on('value', s => { boeien = s.val() || []; tekenBoeien(); renderScorebord(); });
-    db.ref(`races/${RACE_ID}/rounded`).on('value', s => { rondingData = s.val() || {}; renderScorebord(); });
-
-    // =========================================================
-    //  Live posities + sporen
-    // =========================================================
-    FLEET.forEach(naam => {
-      const kleur = BOTEN[naam].kleur;
-      db.ref(`races/${RACE_ID}/positions/${naam}`).on('value', snap => {
-        const d = snap.val();
-        if (!d) return;
-        laatsteTs[naam] = d.ts;
-        botData[naam] = { lat: d.lat, lng: d.lng, speed: d.speed, heading: d.heading, ts: d.ts };
-        const ll = [d.lat, d.lng];
-        if (!markers[naam]) {
-          markers[naam] = L.circleMarker(ll, {
-            radius: 8, color: '#fff', weight: 2, fillColor: kleur, fillOpacity: 1
-          }).addTo(kaart).bindTooltip(naamVan(naam), {
-            permanent: true, direction: 'top', className: 'boot-label', offset: [0, -6] });
-        } else { markers[naam].setLatLng(ll); }
-        if (eersteFix) { kaart.setView(ll, 14); eersteFix = false; }
-        verversLijst();
-      });
-      sporen[naam] = L.polyline([], { color: kleur, weight: 3, opacity: .7 }).addTo(kaart);
-      db.ref(`races/${RACE_ID}/tracks/${naam}`).on('child_added', snap => {
-        const d = snap.val();
-        if (d && d.lat != null) sporen[naam].addLatLng([d.lat, d.lng]);
-      });
-    });
-
-    // Sporen wissen als een race wordt afgerond/gereset (gen verandert)
-    let vorigeGen;
-    db.ref(`races/${RACE_ID}/gen`).on('value', s => {
-      const g = s.val();
-      if (vorigeGen !== undefined && g !== vorigeGen) Object.values(sporen).forEach(p => p.setLatLngs([]));
-      vorigeGen = g;
-    });
-
-    // =========================================================
-    //  Live wind (Open-Meteo) — widget op de kaart
-    // =========================================================
-    const windControl = L.control({ position: 'bottomleft' });
-    windControl.onAdd = function () {
-      const div = L.DomUtil.create('div', 'windwidget');
-      div.id = 'windwidget';
-      div.innerHTML =
-        '<div class="windpijl" id="windPijl" title="wijst mee met de wind">↑</div>' +
-        '<div><div class="kop">Wind</div>' +
-        '<div class="spd" id="windSpd">– kn</div>' +
-        '<div class="windsub" id="windDir">laden…</div></div>';
-      L.DomEvent.disableClickPropagation(div);
-      return div;
-    };
-    windControl.addTo(kaart);
-
-    function kompas(deg) {
-      const r = ['N','NNO','NO','ONO','O','OZO','ZO','ZZO','Z','ZZW','ZW','WZW','W','WNW','NW','NNW'];
-      return r[Math.round(deg / 22.5) % 16];
-    }
-    function windLocatie() {
-      if (lijnData.start && lijnData.start.a) return midden(lijnData.start);
-      for (const n of FLEET) { if (markers[n]) { const ll = markers[n].getLatLng(); return { lat: ll.lat, lng: ll.lng }; } }
-      const c = kaart.getCenter(); return { lat: c.lat, lng: c.lng };
-    }
-    async function haalWind() {
-      const w = document.getElementById('windwidget');
-      try {
-        const p = windLocatie();
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${p.lat.toFixed(4)}` +
-          `&longitude=${p.lng.toFixed(4)}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn`;
-        const j = await (await fetch(url)).json();
-        const c = j.current;
-        document.getElementById('windSpd').textContent = Math.round(c.wind_speed_10m) + ' kn';
-        document.getElementById('windDir').textContent =
-          `uit ${kompas(c.wind_direction_10m)} (${Math.round(c.wind_direction_10m)}°) · vlagen ${Math.round(c.wind_gusts_10m)} kn`;
-        // Pijl wijst met de wind mee (naar waar hij waait): meteo-richting + 180°
-        document.getElementById('windPijl').style.transform = `rotate(${c.wind_direction_10m + 180}deg)`;
-        w.classList.remove('fout');
-      } catch (e) {
-        document.getElementById('windDir').textContent = 'wind niet beschikbaar';
-        w.classList.add('fout');
-      }
-    }
-    haalWind();
-    setInterval(haalWind, 5 * 60 * 1000);
-
-    // =========================================================
-    //  Wedstrijdleiding (alleen met ?wl in de URL)
-    // =========================================================
-    const isLeiding = new URLSearchParams(location.search).has('wl');
-    const wlStatusEl = document.getElementById('wlStatus');
-
-    db.ref(`races/${RACE_ID}/raceStart`).on('value', s => { raceStart = s.val() || null; toonWlStatus(); updateAftel(); });
-
-    // --- Aftelklok naar de start (zichtbaar voor iedereen) ---
-    const aftelEl = document.getElementById('aftel');
-    function klokHM(ts) { return new Date(ts).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' }); }
-    function updateAftel() {
-      if (!raceStart) { aftelEl.style.display = 'none'; return; }
-      aftelEl.style.display = 'block';
-      const rem = raceStart - Date.now();
-      if (rem > 0) {
-        aftelEl.className = 'aftel' + (rem <= 60000 ? ' urgent' : '');
-        aftelEl.innerHTML = `<div class="lbl">START OVER</div>` +
-          `<div class="groot">${formatDuur(rem)}</div><div class="lbl">om ${klokHM(raceStart)}</div>`;
-      } else {
-        aftelEl.className = 'aftel gestart';
-        aftelEl.innerHTML = `<div class="lbl">GESTART om ${klokHM(raceStart)}</div>` +
-          `<div class="groot">${formatDuur(-rem)}</div><div class="lbl">geleden</div>`;
-      }
-    }
-
-    // Eerstvolgende 5-minuten-klokmoment, minimaal 5 min vanaf nu
-    function volgendeStartTijd() {
-      const stap = 5 * 60 * 1000;
-      return Math.ceil((Date.now() + stap) / stap) * stap;
-    }
-
-    function toonWlStatus(bericht) {
-      if (bericht) { wlStatusEl.textContent = bericht; return; }
-      if (!raceStart) { wlStatusEl.textContent = 'Nog geen start gepland.'; return; }
-      wlStatusEl.textContent = (raceStart > Date.now() ? '🔫 Start gepland om ' : '🔫 Gestart om ')
-        + klokHM(raceStart);
-    }
-
-    if (isLeiding) {
-      document.getElementById('wedstrijdleiding').style.display = 'block';
-      toonWlStatus();
-
-      let instelModus = null;
-      let punten = [], tijdMarkers = [];
-      function wisTijdelijk() { tijdMarkers.forEach(m => kaart.removeLayer(m)); tijdMarkers = []; punten = []; }
-
-      function beginInstellen(type) {
-        instelModus = type; wisTijdelijk();
-        toonWlStatus(`Tik 2 punten voor de ${type === 'start' ? 'startlijn' : 'finishlijn'} op de kaart…`);
-      }
-      document.getElementById('btnStart').onclick = () => beginInstellen('start');
-      document.getElementById('btnFinish').onclick = () => beginInstellen('finish');
-
-      kaart.on('click', e => {
-        if (!instelModus) return;
-        if (instelModus === 'boei') {
-          const nieuw = [...boeien, { lat: e.latlng.lat, lng: e.latlng.lng }];
-          db.ref(`races/${RACE_ID}/marks`).set(nieuw);
-          toonWlStatus(`Boei ${nieuw.length} geplaatst — tik nog een boei, of klik nogmaals op de knop om te stoppen.`);
-          return;
-        }
-        punten.push({ lat: e.latlng.lat, lng: e.latlng.lng });
-        tijdMarkers.push(L.circleMarker(e.latlng, {
-          radius: 5, color: '#fff', weight: 2, fillColor: '#f0b429', fillOpacity: 1 }).addTo(kaart));
-        if (punten.length === 2) {
-          db.ref(`races/${RACE_ID}/lines/${instelModus}`).set({ a: punten[0], b: punten[1] });
-          toonWlStatus(`${instelModus === 'start' ? 'Startlijn' : 'Finishlijn'} opgeslagen ✓`);
-          instelModus = null; wisTijdelijk();
-        }
-      });
-
-      document.getElementById('btnBoei').onclick = () => {
-        if (instelModus === 'boei') { instelModus = null; toonWlStatus('Klaar met boeien plaatsen.'); }
-        else { instelModus = 'boei'; wisTijdelijk();
-          toonWlStatus('Tik boeien op de kaart in de te varen volgorde. Klik nogmaals op de knop om te stoppen.'); }
-      };
-      document.getElementById('btnBoeienWis').onclick = () => {
-        if (!confirm('Alle boeien verwijderen?')) return;
-        db.ref(`races/${RACE_ID}/marks`).remove();
-        db.ref(`races/${RACE_ID}/rounded`).remove();
-        instelModus = null; toonWlStatus('Boeien verwijderd.');
-      };
-
-      document.getElementById('btnSein').onclick = () => {
-        const t = volgendeStartTijd();
-        const min = Math.round((t - Date.now()) / 60000);
-        if (!confirm(`Start plannen op ${klokHM(t)} (over ~${min} min)? ` +
-          'De racers zien een aftelklok tot dat moment.')) return;
-        db.ref(`races/${RACE_ID}/raceStart`).set(t);
-      };
-
-      document.getElementById('btnArchief').onclick = () => {
-        const rijen = berekenUitslag(timesData);
-        const finishers = rijen.filter(r => r.gefinisht).sort((a, b) => a.corrected - b.corrected);
-        if (!finishers.length && !confirm('Nog geen enkele boot gefinisht. Toch een lege race opslaan?')) return;
-        if (finishers.length && !confirm(`Race afronden met ${finishers.length} finisher(s)? ` +
-          'De uitslag wordt opgeslagen en de live tijden gereset.')) return;
-        finishers.forEach((r, i) => r.positie = i + 1);
-        const uitslag = {};
-        rijen.forEach(r => { uitslag[r.naam] = {
-          gefinisht: r.gefinisht,
-          elapsed: r.gefinisht ? r.elapsed : null,
-          corrected: r.gefinisht ? r.corrected : null,
-          positie: r.positie || null }; });
-        const nr = (Object.keys(resultsData).map(Number).reduce((m, n) => Math.max(m, n), 0)) + 1;
-        db.ref(`races/${RACE_ID}/results/${nr}`).set({ nr, ts: Date.now(), uitslag });
-        db.ref(`races/${RACE_ID}/times`).remove();
-        db.ref(`races/${RACE_ID}/rounded`).remove();
-        db.ref(`races/${RACE_ID}/raceStart`).remove();
-        db.ref(`races/${RACE_ID}/tracks`).remove();          // getrackte routes wissen
-        db.ref(`races/${RACE_ID}/gen`).set(Date.now());      // open schermen laten wissen
-        toonWlStatus(`Race ${nr} opgeslagen ✓ — klaar voor de volgende start.`);
-      };
-
-      document.getElementById('btnReset').onclick = () => {
-        if (!confirm('Live tijden, boei-rondingen, sporen én startsein wissen zónder op te slaan? ' +
-          '(lijnen en boeien blijven staan)')) return;
-        db.ref(`races/${RACE_ID}/times`).remove();
-        db.ref(`races/${RACE_ID}/rounded`).remove();
-        db.ref(`races/${RACE_ID}/raceStart`).remove();
-        db.ref(`races/${RACE_ID}/tracks`).remove();
-        db.ref(`races/${RACE_ID}/gen`).set(Date.now());
-      };
-    }
-
-    verversLijst();
-    setInterval(() => { verversLijst(); renderScorebord(); updateAftel(); }, 1000);
-  </script>
+  <script src="kaartexport.js"></script>
+  <script src="feest.js"></script>
+  <script src="piraat.js"></script>
+  <script src="verteller.js"></script>
+  <script src="dashboard.js"></script>
 </body>
 </html>

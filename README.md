@@ -1,99 +1,173 @@
-# ⛵ Zeilrace dashboard
+# ⛵ Zeilrace
 
-Live GPS-tracking + dashboard voor een zeilrace. Telefoons op de boten sturen hun
-positie door; iedereen kan op de website live meekijken.
+Live GPS-tracking voor een zeilrace. De telefoons op de boten sturen hun positie door,
+en iedereen kijkt live mee op het dashboard. Het is een statische site met Firebase
+Realtime Database, gehost op Netlify.
 
-**Status:** Fase 1 (MVP) — live posities + sporen op de kaart.
-Volgt nog: start/finish-tijden + scorebord (Fase 2), route + windslider (Fase 3).
+- **Dashboard:** https://marzeille.netlify.app/ (wedstrijdleiding: `/?wl`)
+- **Tracker op de boot:** https://marzeille.netlify.app/tracker.html (optioneel `?boot=SO469`)
 
 ## Bestanden
 
 | Bestand | Wat het is |
 |---|---|
-| `index.html`  | Het **dashboard** — kaart met alle boten. Dit deel je met publiek. |
-| `tracker.html`| De **telefoonpagina** op elke boot die GPS doorstuurt. |
-| `config.js`   | Firebase-gegevens + de boten + ratings. **Hier vul je je project in.** |
+| `index.html` + `dashboard.js` | Het dashboard met de tabs Live, Regels en Uitslagen, plus de wedstrijdleiding (`?wl`) |
+| `tracker.html` + `tracker.js` | De telefoonpagina op elke boot: GPS, navigatie, aftelklok en GPS-alarm |
+| `shared.js` | Gedeelde logica: inloggen, geometrie, rondingslijnen, wind, planning en geluid |
+| `config.js` | Firebase-config, de boten + ORC-ratings en `RACE_ID` |
+| `kaartexport.js` | Replay-scène, foto (PNG) en video (MP4/WebM) van een afgeronde race |
+| `piraat.js` | Het piratenspel: regels, stand, kogelwolken en de animatie op de kaart |
+| `feest.js` | Confetti (goudstukken), vuurwerk en knallend geluid bij de finish |
+| `verteller.js` | Het scheepsjournaal: elk uur een notitie over de race (alleen op het dashboard, zonder AI) |
+| `gedeeld.css` | Gedeelde stijlen |
+| `sw.js` | Service worker, alleen voor meldingen (geen caching) |
+| `database.rules.json` | Beveiligingsregels van de database. Plak ze in de Firebase-console. |
+| `_headers` | Extra beveiligingsheaders voor Netlify |
 
 ---
 
-## Eenmalige setup (± 10 min)
+## Eenmalige Firebase-setup (verplicht na deze update)
 
-### 1. Firebase-project maken
-1. Ga naar https://console.firebase.google.com en log in met je Google-account.
-2. Klik **Project toevoegen**, geef het een naam (bv. `zeilrace`). Google Analytics mag uit.
+Zonder deze stappen toont de app *"Firebase Authentication is nog niet ingesteld"*.
 
-### 2. Realtime Database aanzetten
-1. Linkermenu → **Build → Realtime Database** → **Database maken**.
-2. Kies locatie **europe-west1** (Europa).
-3. Start in **testmodus** (voor nu open — we scherpen dit later aan). Klik gereed.
-4. Kopieer de database-URL bovenaan (ziet eruit als
-   `https://zeilrace-default-rtdb.europe-west1.firebasedatabase.app`).
+1. **Authentication aanzetten**
+   Firebase-console → project `marzeille-474a9` → **Build → Authentication → Get started**.
+2. **Inlogmethodes** (tab *Sign-in method*):
+   - **Anonymous** → inschakelen. Dit gebruiken alle telefoons en kijkers, zonder wachtwoord.
+   - **Email/Password** → inschakelen. Dit gebruikt de wedstrijdleiding.
+3. **Account voor de wedstrijdleiding** (tab *Users* → *Add user*): maak een account met
+   e-mail en wachtwoord aan. Kopieer daarna de **User UID**.
+4. **Dat account admin maken:** Realtime Database → tab *Data* → voeg bij de root toe:
+   ```
+   admins
+     └─ <User UID> : true
+   ```
+   (Waarde `true` als boolean, niet als tekst.)
+5. **Regels publiceren:** Realtime Database → tab *Rules* → plak de inhoud van
+   `database.rules.json` → **Publish**.
+6. **Domein toestaan:** Authentication → *Settings* → *Authorized domains* → voeg
+   `marzeille.netlify.app` toe (`localhost` staat er standaard al).
 
-### 3. Web-app registreren en config kopiëren
-1. Tandwiel (linksboven) → **Projectinstellingen** → tab **Algemeen**.
-2. Onder *Je apps* → klik het **web-icoon `</>`**. Geef een bijnaam, klik registreren.
-3. Je krijgt een `firebaseConfig = { ... }` blok te zien. Kopieer die waarden.
-4. Open `config.js` en plak de waarden op de juiste plek. Zet ook de juiste
-   `databaseURL` (uit stap 2.4).
+Na deze stappen geldt:
 
-> De `apiKey` in een web-app is **niet geheim** — die hoort in de front-end.
-> De beveiliging regelen we via database-regels (zie onderaan), niet via de key.
+- Kijkers kunnen alleen **lezen**.
+- Een telefoon kan alleen schrijven naar de boot die hij heeft **geclaimd**.
+- Start- en finishtijden en boeironden kunnen maar één keer worden gezet.
+- Alleen de wedstrijdleiding mag de baan, het startsein en de uitslagen wijzigen.
 
-### 4. Boten en race instellen
-In `config.js`:
-- Pas `BOTEN` aan (namen, kleuren; ratings mogen 1.0 blijven voor de Valk-test).
-- `RACE_ID` staat op `test-valk-25juli`. Later zet je die op bv. `frankrijk-2026`.
-
----
-
-## Uitproberen op je eigen computer
-
-Omdat de pagina's `config.js` inladen, moet je ze via een klein webservertje openen
-(niet met dubbelklik als `file://`). In deze map:
-
-```
-# met Python (staat vaak al op je pc):
-python -m http.server 8000
-```
-
-Open dan http://localhost:8000/index.html (dashboard) en
-http://localhost:8000/tracker.html (tracker).
-
-> GPS in de browser werkt alleen op `localhost` of via **https**. Op je telefoon
-> heb je dus straks een https-adres nodig → daarom hosten we het (hieronder).
+> De `apiKey` in `config.js` is niet geheim; die hoort in een web-app. De beveiliging
+> zit in de regels en de login. Zet **nooit** een AI- of andere betaalde API-key in deze site.
 
 ---
 
-## Online zetten (zodat de telefoons op het water erbij kunnen)
+## De boten en hun rating
 
-De simpelste weg is **Firebase Hosting** (zit al bij je project):
+| Boot | ORC GPH (s/zm) | Rating (ToT = 600/GPH) | Bron |
+|---|---|---|---|
+| Sun Odyssey 389 | 635 | 0.945 | **Schatting**: geen actief certificaat gevonden. Afgeleid van zusterromp SO 379, lengteregressie over Sun Odyssey-certificaten en een correctie voor de ondiepe kiel. |
+| Sun Odyssey 469 | 560 | 1.071 | Actieve ORC-certificaten (met spinnaker), omgerekend naar zeilen zonder spinnaker (+6–8 %) |
+| Sun Odyssey 519 | 537 | 1.117 | Zusterromp SO 509 (actieve ORC-certificaten) |
 
-```
-npm install -g firebase-tools
-firebase login
-firebase init hosting      # kies je project; public map = deze map; geen SPA-rewrite
-firebase deploy
-```
+GPH is het aantal seconden per zeemijl. Hoe lager, hoe sneller de boot. Het zijn
+charterboten met onbekende zeilen en lading, dus de ratings zijn een redelijke schatting,
+geen officieel certificaat. Aanpassen kan in `config.js` (`gph`).
 
-Je krijgt dan een `https://JOUW-PROJECT.web.app` adres.
-- Dashboard: `https://JOUW-PROJECT.web.app/`
-- Tracker op de boot: `https://JOUW-PROJECT.web.app/tracker.html?boot=Valk1`
+**Uitslagen** tellen met rating: gecorrigeerde tijd = verzeilde tijd × rating (Time-on-Time).
+Per race staat de verzeilde tijd er ter informatie bij.
 
-(Alternatief zonder Firebase Hosting: Netlify of GitHub Pages. Vraag me gerust.)
+**Startopties** (tab 🏁 Race van de wedstrijdleiding):
+- **A · Gelijke start:** iedereen tegelijk weg. De rating corrigeert achteraf.
+- **B · Achtervolgingsstart:** de langzaamste boot start eerst. De anderen starten later,
+  met het verschil in verwachte tijd. Wie het eerst finisht, wint.
+
+De verwachte tijd is GPH × baanlengte × windfactor. De windfactor komt uit de actuele
+wind van Open-Meteo, weergegeven in Beaufort.
 
 ---
 
 ## Gebruik op de racedag
 
-1. Elke boot opent de **tracker-URL** met de juiste `?boot=`-naam.
-2. Boot kiezen → **Start tracking** → locatietoestemming geven.
-3. Telefoon aan de oplader, scherm aan laten. De pagina stuurt elke ~3 sec de positie.
-4. Iedereen kijkt live mee op het **dashboard**.
+**Wedstrijdleiding** (`/?wl`, inloggen met e-mail en wachtwoord):
+1. Zet de start- en finishlijn en de boeien uit. Wijzigingen zijn eerst een **concept**
+   (geel op de kaart). Pas na **✓ Bevestigen** zien de boten ze. Zo voeg je tijdens de
+   race niet per ongeluk een boei toe, maar kun je de baan wel bewust aanpassen,
+   bijvoorbeeld bij een windshift.
+2. Geef in de tab **🏁 Race** het startsein: **Start A: gelijk** of **Start B: achtervolging**.
+   De start valt op het volgende 5-minutenmoment. De verwachte tijden en vertragingen staan in de baanplanning.
+3. Na de race: **Race afronden & opslaan**. De uitslag, de baan en de sporen worden
+   bewaard. In de tab *Uitslagen* staat per race een **▶ Replay** met een tijdslider,
+   afspelen, **🎬 Video** (MP4 of WebM) en **🖼 Foto**.
+
+**Boeironden:**
+- Bij elke boei hoort een onzichtbare rondingslijn aan de buitenkant van de bocht. Wie die oversteekt, heeft de boei gerond.
+- Ligt een boei vrijwel op een rechte lijn, dan loopt de lijn dwars door de boei en telt passeren aan elke kant.
+- Mist een telefoon een ronding, dan kan de wedstrijdleiding die via *🛠 Boeironding handmatig corrigeren*
+  goedkeuren of terugdraaien. De tracker neemt dat direct over.
+
+**Scheepsjournaal:**
+- Elk uur na het startsein schrijft de verteller een paar zinnen: koploper, achterstand, gerondde boeien, snelste boot en wind.
+- Extra notities komen bij de eerste boot over de startlijn, de eerste ronding van elke boei en de eerste finish
+  (maximaal één zo'n notitie per half uur), en als de laatste boot binnen is.
+- Met `?wl` staat er een testknop om meteen een notitie over dit moment te maken. Die blijft alleen lokaal.
+- Iedereen die het dashboard opent, ziet dezelfde notities, ook die van eerdere uren.
+
+**Op de boot** (tracker):
+- De eerste keer verschijnt een kompas (later weer te openen via 🧭 naast de titel). Waar het naar
+  wijst, moeten de zeilers zelf ontdekken 😉
+1. Kies je boot, vul eventueel een teamnaam in en druk op **Start tracking**.
+   Geef toestemming voor locatie en meldingen.
+2. Telefoon aan de lader en de pagina open laten (het scherm blijft aan).
+3. Bovenin staat een grote aftelklok naar **jouw** start. De knop 🎯 volgt je eigen boot;
+   tik op een andere boot om die te volgen.
+
+**🏴‍☠️ Het piratenspel** (zeeslag tussen de races door):
+1. De wedstrijdleiding opent *🏴‍☠️ Piratenspel* en kiest **⭕ Speelveld tekenen**: tik het midden en dan de rand van de cirkel.
+2. **🏴‍☠️ Start zeeslag** geeft alle schepen 3 levens en 10 salvo's.
+3. Op de tracker vuurt **💥 Vuur het kanon!** een breedzijde af, haaks op de koers en naar beide kanten: 10 kogels per kant,
+   150 m ver. Een kogel binnen 20 m van een ander schip is raak. Na elk salvo moet het kanon 1 minuut herladen.
+4. Buiten de cirkel kost elke 20 seconden een leven.
+5. Het spel is voorbij als er nog maar één schip drijft of als het kruit op is. Winnaar: de meeste levens, dan de meeste treffers,
+   dan de meeste salvo's over.
+6. **⏹ Stop** beëindigt de zeeslag. Nog een keer drukken haalt de uitslag van het scherm.
+   Zolang er geen zeeslag gestart is, zie je niets van het spel: geen scorebord, geen regelkaartje en geen speelveld
+   (behalve voor de wedstrijdleiding). De boten zijn dan eenvoudige scheepjes in kaartstijl; tijdens de zeeslag worden
+   het piratenschepen (sloep, brigantijn, fregat, op schaal van de echte romplengte).
+Instellingen (bereik, levens, herladen) staan bovenaan `piraat.js`. **Let op:** publiceer na deze update de nieuwe
+`database.rules.json`, anders weigert de database de schoten.
+
+**Signalen** (tik één keer op de pagina, anders mag de telefoon geen geluid maken):
+- **Aftellen:** een kanonschot op 5 minuten, op 1 minuut en bij de start (het zwaarste schot).
+- **Startlijn over:** één slag op de scheepsbel. **Boei gerond:** twee glazen (ding-ding).
+- **Finish:** de bootsmansfluit. **GPS weg of boot offline:** de misthoorn. **GPS weer terug:** één zachte bel.
+
+**Afstanden** staan in zeemijl (zm). De replay loopt van hooguit 15 minuten vóór het startschot tot de finish van de laatste boot.
+
+**Meldingen als de GPS uitvalt:**
+- Zolang de trackerpagina open is: de misthoorn, trillen en een rode balk als er
+  20 seconden geen GPS-fix is of als locatie wordt geweigerd. Losse GPS-haperingen geven geen alarm.
+  Zonder positie herstart de app de GPS elke 15 seconden, en zodra er weer een positie is, stopt het alarm.
+- Zit de pagina op de achtergrond, dan komt er een systeemmelding.
+- De wedstrijdleiding krijgt een alarm als een boot offline gaat.
+- Op de **iPhone** werken meldingen alleen als de site via *Deel → Zet op beginscherm*
+  als app is toegevoegd.
+- Een melding sturen naar een telefoon waarop de pagina helemaal **gesloten** is, kan
+  niet zonder een push-server (Firebase Cloud Functions, betaald Blaze-plan).
 
 ---
 
-## Beveiliging vóór de echte race (belangrijk)
+## Lokaal testen
 
-De testmodus-regels laten iedereen schrijven. Vóór de race in Frankrijk zetten we
-strengere regels in (bv. alleen schrijven naar de bekende bootnamen, of een
-race-wachtwoord). Zeg het als we bij Fase 2 zijn, dan regel ik de regels mee.
+```
+python -m http.server 8000 --bind 127.0.0.1
+```
+Open daarna http://127.0.0.1:8000/index.html en http://127.0.0.1:8000/tracker.html.
+GPS werkt alleen via `localhost`/`127.0.0.1` of via https.
+
+## Online zetten (Netlify)
+
+Netlify → site *marzeille* → **Deploys** → sleep de hele projectmap in het vak.
+Het bestand `_headers` wordt automatisch meegenomen.
+
+## Backlog
+- AI-radiocommentaar: een lokaal Python-script, waarbij de API-key op de eigen laptop
+  blijft en nooit in de site komt.

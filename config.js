@@ -1,12 +1,10 @@
 // ============================================================
-//  Zeilrace — Firebase configuratie
+//  Zeilrace — configuratie
 // ============================================================
-//  Vul hieronder de gegevens van JOUW Firebase-project in.
-//  Je vindt ze in de Firebase Console:
-//    Project instellingen (tandwiel)  ->  Je apps  ->  SDK-setup
-//  Zie README.md voor de stap-voor-stap uitleg.
+//  Firebase-gegevens (Projectinstellingen → Je apps → SDK-setup).
+//  De apiKey van een web-app is niet geheim: de database wordt
+//  beschermd door inloggen + de regels in database.rules.json.
 // ------------------------------------------------------------
-
 const firebaseConfig = {
   apiKey:            "AIzaSyDdrSzr8E3_MXqDLUq9aEvf2zg-nJi30gs",
   authDomain:        "marzeille-474a9.firebaseapp.com",
@@ -18,21 +16,34 @@ const firebaseConfig = {
 };
 
 // ------------------------------------------------------------
-//  De boten die meedoen. Naam + kleur op de kaart + ratingfactor.
-//  Voor de Valk-test staan alle ratings op 1.0 (one-design).
-//  Voor Frankrijk: vul de echte handicap in (bv. 0.95, 1.03, ...).
+//  De boten: Dream Yacht Charter, Port Pin Rolland (Côte d'Azur).
+//
+//  gph = ORC General Purpose Handicap ZONDER spinnaker, in seconden
+//  per zeemijl (lager = sneller). Daarmee rekent de app:
+//    - verwachte tijd  = gph × afstand (× windfactor)
+//    - rating (ToT)    = 600 / gph   (standaard ORC-omrekening)
+//    - gecorrigeerd    = verzeilde tijd × rating
+//  Herkomst (ORC-certificaten, zie README):
+//    SO519: romp = Sun Odyssey 509 → ORC NS 536,3 en 537,0
+//    SO469: ORC 512,1 / 534,0 met spinnaker → ~+6% zonder spinnaker
+//    SO389: romp = Sun Odyssey 379 → ORC 595,8 met spinnaker (~640 NS),
+//           lengteregressie 607, +1% voor de ondiepe kiel (1,52 m)
+//
+//  schip = het piratenschip op de kaart: type, romplengte en breedte (m).
+//  De schepen worden op dezelfde schaal getekend, dus de onderlinge
+//  lengteverschillen kloppen. (Breedtes zijn afgerond; alleen voor het plaatje.)
 // ------------------------------------------------------------
 const BOTEN = {
-  Valk1: { kleur: "#e6194b", rating: 1.0 },
-  Valk2: { kleur: "#3cb44b", rating: 1.0 },
-  Valk3: { kleur: "#4363d8", rating: 1.0 }
+  SO389: { model: "Sun Odyssey 389", kleur: "#e6194b", gph: 635, schip: { type: 'sloep',      romp: 10.98, breedte: 3.99 } },
+  SO469: { model: "Sun Odyssey 469", kleur: "#3cb44b", gph: 560, schip: { type: 'brigantijn', romp: 13.67, breedte: 4.49 } },
+  SO519: { model: "Sun Odyssey 519", kleur: "#4363d8", gph: 537, schip: { type: 'fregat',     romp: 15.24, breedte: 4.84 } }
 };
+Object.values(BOTEN).forEach(b => { b.rating = 600 / b.gph; });
 
 // ------------------------------------------------------------
 //  Naam van de huidige race (map in de database).
-//  Handig: 'test-valk-25juli' nu, later 'frankrijk-2026'.
 // ------------------------------------------------------------
-const RACE_ID = "test-valk-25juli";
+const RACE_ID = "frankrijk-2026";
 
 // ------------------------------------------------------------
 //  Boei ronden = de "rondingslijn" oversteken. Die lijn loopt vanaf
@@ -53,3 +64,4 @@ const RONDINGS_MARGE_MAX_M = 25;
 // Firebase initialiseren (wordt door beide pagina's gebruikt)
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
+const auth = firebase.auth();
