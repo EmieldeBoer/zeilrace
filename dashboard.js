@@ -213,10 +213,23 @@ function raceHtml(nr) {
       `<td class="boot-cel">${dotHtml(r.naam)}${esc(nm(r.naam))}</td>` +
       `<td class="tijd">${r.gefinisht ? formatDuur(r.elapsed) : 'DNF'}</td>` +
       `<td class="tijd">${r.gefinisht ? formatDuur(r.corrected) : '—'}</td>` +
-      `<td class="tijd">${r.afstand != null ? formatAfstand(r.afstand) : '—'}</td></tr>`;
+      `<td class="tijd">${(a => a != null ? formatAfstand(a) : '—')(r.afstand != null ? r.afstand : afstandUitSpoor(res, r.naam))}</td></tr>`;
   });
   return h + '</tbody></table></div>' + journaalUitslagHtml(res, nm) + '</div>';
 }
+// Afgelegde afstand voor races die zonder afstand zijn opgeslagen (van vóór die
+// functie): achteraf berekend uit het bewaarde spoor, van de eigen start (de
+// lijnkruising, maar niet vóór het eigen startsein) tot de finish.
+function afstandUitSpoor(res, b) {
+  const t = res.tijden && res.tijden[b], ruw = res.sporen && res.sporen[b];
+  if (!t || t.start == null || !ruw) return null;
+  const t0 = res.t0 || res.ts;
+  const sein = res.gun != null ? res.gun + ((res.modus === 'achtervolging' && res.vertraging && res.vertraging[b]) || 0) : null;
+  const van = sein != null ? Math.max(t.start, sein) : t.start;
+  const pts = normaliseerSpoor(ruw).map(p => ({ lat: p[0], lng: p[1], ts: t0 + p[2] * 1000 }));
+  return afgelegdM(pts, van, t.finish);
+}
+
 // =========================================================
 //  Ratingcheck: welke rating 'verdiende' elke boot in de afgeronde races?
 // =========================================================
