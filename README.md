@@ -119,6 +119,10 @@ wind van Open-Meteo, weergegeven in Beaufort.
 - De slotnotitie geeft de uitslag op het water én met de rating, ook als de race wordt afgerond terwijl er nog
   boten varen. Boten die niet uitvaren, blijven buiten het verhaal.
 
+**Snelheid in kleur** (in de replay: *🌈 Snelheid in kleur*): het gevaren spoor kleurt van blauw (langzaam) via geel
+naar rood (snel), met de bootkleur als rand eronder. De snelheid is gemiddeld over 20 s; de schaal past zich aan de
+race aan (de langzaamste tot de snelste 10%), met een kleurbalk in knopen.
+
 **Overstaghoeken** (in de replay: *⤢ Overstaghoeken tonen*): bij elk overstagmoment de hoek op de kaart en per boot
 het gemiddelde in de legenda. Een overstag is een blijvende koerswijziging van minstens 55° met een stabiele koers
 ervoor en erna. Zonder winddata is een gijp daar niet van te onderscheiden.

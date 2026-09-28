@@ -56,6 +56,28 @@ function overstagHoeken(pts, van = -Infinity, tot = Infinity) {
   return uit.map(k => Object.assign(k, { hoek: Math.round(k.hoek) }));
 }
 
+// Snelheid (kn) bij elk punt van een spoor [[lat, lng, s]], gemiddeld over ±venster
+// seconden (tegen GPS-ruis). Null waar te weinig punten zijn.
+function snelheidsSpoor(pts, venster = 10) {
+  const v = new Array(pts.length).fill(null);
+  for (let i = 0, a = 0, b = 0; i < pts.length; i++) {
+    while (pts[a][2] < pts[i][2] - venster) a++;
+    if (b < i) b = i;
+    while (b + 1 < pts.length && pts[b + 1][2] <= pts[i][2] + venster) b++;
+    const dt = pts[b][2] - pts[a][2];
+    if (dt >= 5) v[i] = afstandMeter({ lat: pts[a][0], lng: pts[a][1] }, { lat: pts[b][0], lng: pts[b][1] }) / dt * 1.94384;
+  }
+  return v;
+}
+// Kleur bij een snelheid op schaal 0 (langzaam, blauw) … 1 (snel, rood)
+function snelheidKleur(f) {
+  const stops = [[0, [44, 111, 187]], [.25, [63, 167, 201]], [.5, [232, 195, 58]], [.75, [224, 123, 44]], [1, [192, 57, 43]]];
+  f = Math.max(0, Math.min(1, f));
+  let i = 0; while (i < stops.length - 2 && f > stops[i + 1][0]) i++;
+  const [f0, c0] = stops[i], [f1, c1] = stops[i + 1], r = (f - f0) / (f1 - f0);
+  return 'rgb(' + c0.map((c, k) => Math.round(c + (c1[k] - c) * r)).join(',') + ')';
+}
+
 // o = { titel, klok(t) → tekst, sporen: [{kleur, naam, pts, finishS}], baan: {lines, marks} }
 // Geeft { canvas, teken(t), eind } terug; de achtergrond wordt één keer geladen.
 async function maakScene(o, W = 1600, H = 1200) {

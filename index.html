@@ -208,6 +208,10 @@
     .replay-optie { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--ivoor); font-family: var(--font-kap);
       font-weight: 700; font-size: .85rem; letter-spacing: .03em; cursor: pointer; min-height: 36px; }
     .replay-optie input { width: 20px; height: 20px; accent-color: var(--messing); }
+    .snelheid-schaal { display: flex; align-items: center; gap: 8px; margin: 2px 0 4px 28px; color: var(--ivoor-zacht);
+      font-family: var(--font-kap); font-size: .78rem; font-weight: 700; }
+    .schaal-balk { flex: 0 1 180px; height: 10px; border-radius: 5px; border: 1px solid var(--messing-donker);
+      background: linear-gradient(90deg, #2c6fbb, #3fa7c9, #e8c33a, #e07b2c, #c0392b); }
     .overstag-label { background: none; border: none; }
     .overstag-label span { display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; font: 700 11px/1 var(--font-kap);
       background: rgba(234,216,174,.92); color: var(--inkt); border: 2px solid; border-radius: 9px; padding: 2px 5px; }
@@ -466,6 +470,10 @@
         <button type="button" class="btn stil" id="replayFoto">🖼 Foto</button>
       </div>
       <label class="replay-optie"><input type="checkbox" id="replayOverstag"> ⤢ Overstaghoeken tonen</label>
+      <label class="replay-optie"><input type="checkbox" id="replaySnelheidKleur"> 🌈 Snelheid in kleur</label>
+      <div class="snelheid-schaal" id="snelheidSchaal" hidden>
+        <span id="schaalMin">—</span><span class="schaal-balk"></span><span id="schaalMax">—</span>
+      </div>
       <div class="replay-legenda" id="replayLegenda"></div>
     </div>
   </div>

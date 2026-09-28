@@ -401,6 +401,7 @@ function openReplay(nr) {
   // Overstagmomenten per boot (van het startschot tot de eigen finish); labels pas tonen met de schakelaar
   rp.overstag = data.sporen.map(s => ({ s, lijst: overstagHoeken(s.pts, data.gunS != null ? data.gunS : 0,
     s.finishS != null ? s.finishS : Infinity).map(o => Object.assign(o, { marker: null })) }));
+  rp.kleur = null;                                    // snelheidsspoor: pas opbouwen als de schakelaar aan gaat
   const slider = el('replaySlider');
   slider.max = Math.ceil(rp.eind); slider.value = 0;
   setTimeout(() => {
@@ -419,17 +420,70 @@ function koersInSpoor(pts, p) {
   }
   return null;
 }
+// Snelheidsspoor: stukjes spoor per kleurklasse (blauw = langzaam … rood = snel). De schaal
+// past zich aan de race aan: van de langzaamste tot de snelste 10% tijdens de race.
+const SNELHEID_KLASSEN = 10;
+function bouwSnelheidsSpoor() {
+  const van = rp.data.gunS != null ? rp.data.gunS : 0;
+  const perBoot = rp.data.sporen.map(s => ({ s, v: snelheidsSpoor(s.pts) }));
+  const alle = [];
+  perBoot.forEach(({ s, v }) => v.forEach((x, i) => {
+    if (x != null && s.pts[i][2] >= van && (s.finishS == null || s.pts[i][2] <= s.finishS)) alle.push(x);
+  }));
+  alle.sort((a, b) => a - b);
+  const lo = alle.length ? alle[Math.floor(alle.length * .1)] : 0, hi = alle.length ? alle[Math.floor(alle.length * .9)] : 1;
+  const klasse = x => Math.max(0, Math.min(SNELHEID_KLASSEN - 1, Math.floor((x - lo) / Math.max(.1, hi - lo) * SNELHEID_KLASSEN)));
+  rp.kleur = { lo, hi, boten: perBoot.map(({ s, v }) => {
+    const stukken = [];
+    let huidig = null;
+    for (let i = 1; i < s.pts.length; i++) {
+      const sv = v[i] != null && v[i - 1] != null ? (v[i] + v[i - 1]) / 2 : (v[i] != null ? v[i] : v[i - 1]);
+      const k = sv == null ? null : klasse(sv);
+      if (!huidig || huidig.k !== k) { huidig = { k, i0: i - 1, i1: i, stand: 'uit' }; stukken.push(huidig); }
+      else huidig.i1 = i;
+    }
+    stukken.forEach(st => {
+      st.laag = L.polyline([], { color: st.k == null ? '#8e7550' : snelheidKleur((st.k + .5) / SNELHEID_KLASSEN),
+        weight: 4, opacity: 1, interactive: false });
+      rp.lagen.push(st.laag);
+    });
+    return { s, stukken };
+  }) };
+}
+function tekenSnelheidsSpoor(t, aan) {
+  if (aan && !rp.kleur) bouwSnelheidsSpoor();
+  el('snelheidSchaal').hidden = !aan;
+  if (aan) { el('schaalMin').textContent = rp.kleur.lo.toFixed(1) + ' kn'; el('schaalMax').textContent = rp.kleur.hi.toFixed(1) + ' kn'; }
+  if (!rp.kleur) return;
+  rp.kleur.boten.forEach(({ s, stukken }) => {
+    const p = aan ? positieOp(s.pts, t) : null;
+    stukken.forEach(st => {
+      const stand = !p || s.pts[st.i0][2] > t ? 'uit' : st.i1 <= p.i ? 'vol' : 'deel';
+      if (stand === 'uit') { if (st.stand !== 'uit') { rp.kaart.removeLayer(st.laag); st.stand = 'uit'; } return; }
+      if (stand === 'vol' && st.stand === 'vol') return;          // al helemaal getekend
+      const ll = s.pts.slice(st.i0, Math.min(st.i1, p.i) + 1).map(q => [q[0], q[1]]);
+      if (stand === 'deel') ll.push([p.lat, p.lng]);
+      st.laag.setLatLngs(ll);
+      if (st.stand === 'uit') st.laag.addTo(rp.kaart);
+      st.stand = stand;
+    });
+  });
+}
 function zetReplayTijd(t) {
   rp.t = t;
   el('replaySlider').value = t;
+  const kleurAan = el('replaySnelheidKleur').checked;
   rp.boten.forEach(({ s, lijn, stip }) => {
     const p = positieOp(s.pts, t);
     if (!p) { lijn.setLatLngs([]); if (rp.kaart.hasLayer(stip)) rp.kaart.removeLayer(stip); return; }
     lijn.setLatLngs(s.pts.slice(0, p.i + 1).map(q => [q[0], q[1]]).concat([[p.lat, p.lng]]));
+    // met snelheidskleuren wordt de bootkleur een brede rand onder het gekleurde spoor
+    lijn.setStyle(kleurAan ? { weight: 9, opacity: .8 } : { weight: 4, opacity: .9 });
     stip.setLatLng([p.lat, p.lng]);
     if (!rp.kaart.hasLayer(stip)) stip.addTo(rp.kaart);
     zetKoers(stip, koersInSpoor(s.pts, p));
   });
+  tekenSnelheidsSpoor(t, kleurAan);
   el('replayKlok').textContent = rp.data.klok(t);
   // Overstaghoeken: een label bij elk overstagmoment dat op tijdstip t al geweest is
   const toon = el('replayOverstag').checked;
@@ -453,6 +507,7 @@ function zetReplayTijd(t) {
     `<div>${dotHtml(s.boot)}${s.finishS != null && t >= s.finishS ? '🏁 ' : ''}${esc(s.legenda)}${overstagTekst(s.boot)}</div>`).join('');
 }
 el('replayOverstag').addEventListener('change', () => { if (rp) zetReplayTijd(rp.t); });
+el('replaySnelheidKleur').addEventListener('change', () => { if (rp) zetReplayTijd(rp.t); });
 function speelReplay() {
   if (rp.speelt) { pauzeReplay(); return; }
   if (rp.t >= rp.eind) zetReplayTijd(0);

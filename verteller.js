@@ -94,7 +94,9 @@ const Verteller = (() => {
     return uit;
   }
   const verzeild = (d, b, f) => f - eigenStartVan(b, {}, d.raceStart, d.startPlan);
-  const gecorr = (d, b, f) => gecorrigeerdeTijd(b, f, d.raceStart, d.startPlan, eigenStartVan(b, {}, d.raceStart, d.startPlan));
+  // De rating die in déze race gold (bij oude races uit de bewaarde uitslag), anders de huidige
+  const ratingVan = (d, b) => (d.ratings && d.ratings[b]) || BOTEN[b].rating;
+  const gecorr = (d, b, f) => isAchter(d) ? f - d.raceStart : verzeild(d, b, f) * ratingVan(d, b);
 
   // ---- Eén notitie op tijdstip t ----
   // o = { soort: 'uur'|'start'|'boei'|'finish'|'kop'|'einde'|'test', voor, onderwerp, vorigeT, laatste }
@@ -237,15 +239,20 @@ const Verteller = (() => {
       const water = [...binnen].sort((a, c) => a.finish - c.finish);
       zinnen.push('Op het water: ' + water.map((v, i) => `${i + 1}. ${v.naam} (${formatDuur(verzeild(d, v.boot, v.finish))})`).join(', ') + '.');
       if (isAchter(d)) {
-        zinnen.push(`In de achtervolging telt de finishvolgorde: ${water[0].naam} wint!`);
+        zinnen.push(`In de achtervolging telt de finishvolgorde: ${water[0].naam} wint! De ratings zaten al in de ` +
+          `startvertragingen (${d.deelnemers.map(b => `${d.naam(b)} ${ratingVan(d, b).toFixed(3)}`).join(', ')}).`);
       } else if (binnen.length > 1) {
         const rating = [...binnen].sort((a, c) => gecorr(d, a.boot, a.finish) - gecorr(d, c.boot, c.finish));
-        zinnen.push('Met de rating: ' + rating.map((v, i) => `${i + 1}. ${v.naam} (${formatDuur(gecorr(d, v.boot, v.finish))})`).join(', ') + '.');
+        zinnen.push('De uitslag met de rating (verzeilde tijd × rating): ' + rating.map((v, i) =>
+          `${i + 1}. ${v.naam} — ${formatDuur(verzeild(d, v.boot, v.finish))} × ${ratingVan(d, v.boot).toFixed(3)} = ` +
+          `${formatDuur(gecorr(d, v.boot, v.finish))}`).join('; ') + '.');
+        const [w, t2] = rating;
+        zinnen.push(`${w.naam} wint met ${formatDuur(gecorr(d, t2.boot, t2.finish) - gecorr(d, w.boot, w.finish))} voorsprong op ${t2.naam}.`);
         const stijgers = rating.filter((v, i) => water.indexOf(v) > i);
         if (stijgers.length) zinnen.push(`De rating husselt de volgorde: ${opsomming(stijgers.map(v =>
           `${v.naam} klimt van plek ${water.indexOf(v) + 1} naar ${rating.indexOf(v) + 1}`))}.`);
-        else zinnen.push(kies([`${rating[0].naam} wint op het water én met de rating.`,
-                               `Geen verrassingen: ${rating[0].naam} wint zowel op het water als met de rating.`]));
+        else zinnen.push(kies([`${w.naam} wint op het water én met de rating.`,
+                               `Geen verrassingen: ${w.naam} wint zowel op het water als met de rating.`]));
       }
     }
     if (niet.length) zinnen.push(`${opsomming(niet.map(v => v.naam))} ${niet.length > 1 ? 'kwamen' : 'kwam'} niet binnen.`);
@@ -404,9 +411,14 @@ const Verteller = (() => {
     Object.entries(res.sporen).forEach(([b, v]) => {
       sporen[b] = normaliseerSpoor(v).map(p => ({ lat: p[0], lng: p[1], ts: t0 + p[2] * 1000 }));
     });
+    // De ratings van toen: gecorrigeerd / verzeild uit de bewaarde uitslag (gelijke start)
+    const ratings = {};
+    if ((res.modus || 'gelijk') !== 'achtervolging') Object.entries(res.uitslag || {}).forEach(([b, u]) => {
+      if (u && u.corrected > 0 && u.elapsed > 0) ratings[b] = u.corrected / u.elapsed;   // niet afronden: tijden moeten kloppen
+    });
     const d = { raceStart: res.gun, startPlan: { modus: res.modus || 'gelijk', vertraging: res.vertraging || null },
       times: res.tijden || {}, boeien: alsBoeien(res.baan && res.baan.marks), lijnen: (res.baan && res.baan.lines) || {},
-      sporen, naam, wind: null, rounded: {}, afgerond: true };
+      sporen, naam, wind: null, rounded: {}, afgerond: true, ratings };
     d.rounded = res.rondingen || rondingenUitSporen(d);
     const eindes = FLEET.map(b => finishVan(d, b)).filter(v => v != null)
       .concat(Object.values(sporen).map(p => p.length ? p[p.length - 1].ts : 0));
