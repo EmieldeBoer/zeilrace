@@ -283,6 +283,73 @@ function ratingCheckHtml(nummers) {
     'Beoordeel liever meerdere races met verschillende omstandigheden.</div></div>';
 }
 
+// =========================================================
+//  Polars: de snelheid van elke boot per windhoek en windsterkte (polar.js)
+// =========================================================
+let polarCache = null, polarBoot = null;
+// Plek voor de wind: midden van de startlijn, anders het eerste spoorpunt
+function racePlek(res) {
+  const l = res.baan && res.baan.lines && res.baan.lines.start;
+  if (l && l.a) return lijnMidden(l);
+  const eerste = Object.values(res.sporen || {}).map(normaliseerSpoor).find(p => p.length);
+  return eerste ? { lat: eerste[0][0], lng: eerste[0][1] } : null;
+}
+function raceEinde(res) {
+  const t0 = res.t0 || res.ts;
+  const finishes = Object.values(res.tijden || {}).map(t => t && t.finish).filter(Boolean);
+  const sporen = Object.values(res.sporen || {}).map(normaliseerSpoor).map(p => p.length ? t0 + p[p.length - 1][2] * 1000 : 0);
+  return Math.max(res.gun || t0, ...finishes, ...sporen);
+}
+async function laadPolars(nummers) {
+  const vak = el('polarSectie'); if (!vak) return;
+  const bruikbaar = nummers.filter(nr => resultsData[nr] && resultsData[nr].sporen && resultsData[nr].gun);
+  const sleutel = bruikbaar.map(nr => nr + ':' + resultsData[nr].ts).join(',');
+  if (!bruikbaar.length) { vak.remove(); return; }
+  if (!polarCache || polarCache.sleutel !== sleutel) {
+    vak.innerHTML = '<h3>🧭 Polars</h3><div class="sub">Wind ophalen en polars opbouwen…</div>';
+    const races = await Promise.all(bruikbaar.map(async nr => {
+      const res = resultsData[nr], plek = racePlek(res);
+      const uren = Array.isArray(res.wind) && res.wind.length ? res.wind
+        : plek ? await Polar.windUren(plek, res.gun - 3600e3, raceEinde(res) + 3600e3) : [];
+      return { res, uren };
+    }));
+    const polars = Polar.bouw(races);
+    polarCache = { sleutel, data: polars.boten, correcties: polars.correcties, races: races.filter(r => r.uren.length).length };
+  }
+  const nu = el('polarSectie'); if (!nu) return;                      // intussen opnieuw getekend
+  toonPolars(nu, polarCache);
+}
+function toonPolars(vak, cache) {
+  const boten = FLEET.filter(b => cache.data[b] && cache.data[b].n);
+  if (!boten.length) { vak.innerHTML = '<h3>🧭 Polars</h3><div class="sub">Nog geen bruikbare metingen (geen wind of sporen gevonden).</div>'; return; }
+  if (!boten.includes(polarBoot)) polarBoot = boten[0];
+  const p = cache.data[polarBoot];
+  const maxKn = Math.max(...boten.flatMap(b => Object.values(cache.data[b].vakken).flatMap(v => Object.values(v).map(x => x.kn))));
+  const krachten = Object.keys(p.vakken).sort((a, b) => a - b);
+  vak.innerHTML = '<h3>🧭 Polars</h3>' +
+    `<div class="sub">Snelheid per windhoek en windsterkte, opgebouwd uit ${cache.races} gezeilde race${cache.races === 1 ? '' : 's'}. ` +
+    'Snelheid over de grond en modelwind (Open-Meteo): een indicatie die beter wordt met elke race.</div>' +
+    '<div class="polar-boten">' + boten.map(b => `<button type="button" class="race-knop polar-kies${b === polarBoot ? ' actief' : ''}" ` +
+      `data-boot="${b}">${dotHtml(b)}${esc(naamVan(b))}</button>`).join('') + '</div>' +
+    `<div class="polar-kaart">${Polar.svg(p, maxKn)}</div>` +
+    '<div class="polar-legenda">' + krachten.map(k => {
+      const n = Object.values(p.vakken[k]).reduce((s, x) => s + x.n, 0);
+      return `<span><i style="background:${Polar.kleurVan(k)}"></i>${k} Bft <small>(${n} metingen)</small></span>`;
+    }).join('') + '</div>' +
+    '<div class="sub">' + (krachten.filter(k => p.beste[k]).map(k => { const x = p.beste[k];
+      return `<b>${k} Bft</b>: beste kruishoek ${Math.round(x.twa)}° bij ${x.kn.toFixed(1)} kn (VMG ${x.vmg.toFixed(1)} kn)`; }).join(' · ')
+      || 'Nog te weinig metingen aan de wind voor een beste kruishoek.') +
+    `. Vage punten: minder dan ${Polar.MIN_METINGEN} metingen.</div>` +
+    '<div class="sub">Windrichting: ' + ((cache.correcties || []).map(c => c.graden == null
+      ? `race ${c.nr} zoals het model (te weinig overstagmomenten om bij te stellen)`
+      : `race ${c.nr} bijgesteld met ${c.graden > 0 ? '+' : '−'}${Math.abs(Math.round(c.graden))}° uit ${c.n} overstagmomenten`).join(' · ')) +
+    '. De echte wind ligt bij kruisen midden tussen de koersen vóór en na een overstag.</div>';
+}
+el('uitslagenInhoud').addEventListener('click', e => {
+  const k = e.target.closest('.polar-kies'); if (!k || !polarCache) return;
+  polarBoot = k.dataset.boot; toonPolars(el('polarSectie'), polarCache);
+});
+
 // Het scheepsjournaal bij een afgeronde race (bewaard, of achteraf opnieuw gemaakt)
 function journaalUitslagHtml(res, nm) {
   let j;
@@ -304,7 +371,9 @@ function renderUitslagen() {
   houder.innerHTML =
     klassementHtml('Klassement', `Op gecorrigeerde tijd (met rating) · low-point · niet gefinisht = ${DNF_PUNTEN} punten`, nummers, 'corrected') +
     ratingCheckHtml(nummers) +
+    '<div class="u-tabel" id="polarSectie"></div>' +
     [...nummers].reverse().map(raceHtml).join('');
+  laadPolars(nummers);
 }
 el('uitslagenInhoud').addEventListener('click', e => {
   const k = e.target.closest('.race-knop'); if (!k) return;
@@ -1095,6 +1164,18 @@ async function rondRaceAf() {
     if (raceStart) res.gun = raceStart;
     res.tijden = JSON.parse(JSON.stringify(timesData || {}));
     if (Object.keys(rondingData || {}).length) res.rondingen = JSON.parse(JSON.stringify(rondingData));
+    // Wind per uur tijdens de race bewaren (voor de polars); mag mislukken
+    try {
+      const plek = racePlek(res);
+      if (plek && res.gun) {
+        const uren = await Promise.race([Polar.windUren(plek, res.gun - 3600e3, raceEinde(res) + 3600e3),
+          new Promise(r => setTimeout(() => r([]), 8000))]);
+        const van = res.gun - 3600e3, tot = raceEinde(res) + 3600e3;
+        const binnen = uren.filter(w => w.t >= van - 3600e3 && w.t <= tot + 3600e3)
+          .map(w => ({ t: w.t, kn: Math.round(w.kn * 10) / 10, richting: Math.round(w.richting) }));
+        if (binnen.length) res.wind = binnen;
+      }
+    } catch (e) {}
     // Het scheepsjournaal van deze race bewaren (zonder testnotities), zodat het bij de uitslag blijft
     if (raceStart) {
       const notities = Verteller.journaal(Object.assign(journaalData(Date.now()), { afgerond: true }))

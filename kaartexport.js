@@ -50,8 +50,8 @@ function overstagHoeken(pts, van = -Infinity, tot = Infinity) {
     const hoek = verschil(voor.k, na.k);
     if (hoek < 55) return;
     const vorige = uit[uit.length - 1];            // binnen een minuut: hetzelfde overstagmoment
-    if (vorige && c.s - vorige.s < 60) { if (hoek > vorige.hoek) Object.assign(vorige, { lat: c.lat, lng: c.lng, hoek }); }
-    else uit.push({ lat: c.lat, lng: c.lng, s: c.s, hoek });
+    if (vorige && c.s - vorige.s < 60) { if (hoek > vorige.hoek) Object.assign(vorige, { lat: c.lat, lng: c.lng, hoek, voor: voor.k, na: na.k }); }
+    else uit.push({ lat: c.lat, lng: c.lng, s: c.s, hoek, voor: voor.k, na: na.k });   // voor/na: koers vóór en na (°)
   });
   return uit.map(k => Object.assign(k, { hoek: Math.round(k.hoek) }));
 }

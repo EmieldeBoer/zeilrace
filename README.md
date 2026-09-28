@@ -18,6 +18,7 @@ Realtime Database, gehost op Netlify.
 | `kaartexport.js` | Replay-scène, foto (PNG) en video (MP4/WebM) van een afgeronde race |
 | `piraat.js` | Het piratenspel: regels, stand, kogelwolken en de animatie op de kaart |
 | `feest.js` | Confetti (goudstukken), vuurwerk en knallend geluid bij de finish |
+| `polar.js` | De polars: snelheid per windhoek en windsterkte uit de gezeilde races |
 | `verteller.js` | Het scheepsjournaal: elk uur een notitie over de race (alleen op het dashboard, zonder AI) |
 | `gedeeld.css` | Gedeelde stijlen |
 | `sw.js` | Service worker, alleen voor meldingen (geen caching) |
@@ -118,6 +119,14 @@ wind van Open-Meteo, weergegeven in Beaufort.
   samen met een uurnotitie, dan worden ze één notitie.
 - De slotnotitie geeft de uitslag op het water én met de rating, ook als de race wordt afgerond terwijl er nog
   boten varen. Boten die niet uitvaren, blijven buiten het verhaal.
+
+**🧭 Polars** (tab Uitslagen): per boot de snelheid per windhoek en windsterkte (Bft), opgebouwd uit alle gezeilde
+races, met de beste kruishoek (hoogste VMG). Per GPS-punt de snelheid en koers over de grond (gemiddeld over 20 s)
+tegen de ware wind van Open-Meteo (uurwaarden; bij nieuwe races bij het afronden bewaard in de uitslag). De
+windrichting van het model wordt per race bijgesteld met de overstagmomenten: bij kruisen ligt de echte wind midden
+tussen de koersen vóór en na een overstag. Weggelaten: overstagmomenten, stilliggen, vóór de start en na de finish.
+Per vakje de snelheid die de boot in 75% van de tijd haalde. Snelheid over de grond en modelwind: een indicatie die
+beter wordt met elke race.
 
 **Snelheid in kleur** (in de replay: *🌈 Snelheid in kleur*): het gevaren spoor kleurt van blauw (langzaam) via geel
 naar rood (snel), met de bootkleur als rand eronder. De snelheid is gemiddeld over 20 s; de schaal past zich aan de
