@@ -205,6 +205,12 @@
     .replay-knoppen .btn { flex: 1 1 110px; margin-bottom: 0; }
     .replay-knoppen select { flex: 0 0 88px; min-height: 50px; border-radius: 5px; border: 1px solid var(--messing-donker);
       background: linear-gradient(#3a2a1a, #221810); color: var(--ivoor); font-family: var(--font-kap); font-weight: 700; padding: 0 8px; }
+    .replay-optie { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--ivoor); font-family: var(--font-kap);
+      font-weight: 700; font-size: .85rem; letter-spacing: .03em; cursor: pointer; min-height: 36px; }
+    .replay-optie input { width: 20px; height: 20px; accent-color: var(--messing); }
+    .overstag-label { background: none; border: none; }
+    .overstag-label span { display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; font: 700 11px/1 var(--font-kap);
+      background: rgba(234,216,174,.92); color: var(--inkt); border: 2px solid; border-radius: 9px; padding: 2px 5px; }
     .replay-legenda { margin-top: 10px; font-size: 1rem; line-height: 1.6; color: var(--ivoor); }
 
     /* Paasei: de schatkaart */
@@ -459,6 +465,7 @@
         <button type="button" class="btn" id="replayVideo">🎬 Video</button>
         <button type="button" class="btn stil" id="replayFoto">🖼 Foto</button>
       </div>
+      <label class="replay-optie"><input type="checkbox" id="replayOverstag"> ⤢ Overstaghoeken tonen</label>
       <div class="replay-legenda" id="replayLegenda"></div>
     </div>
   </div>

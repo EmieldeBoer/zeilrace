@@ -21,6 +21,41 @@ function positieOp(pts, t) {
   return { lat: a[0] + (b[0] - a[0]) * f, lng: a[1] + (b[1] - a[1]) * f, i: lo };
 }
 
+// Overstagmomenten in een spoor [[lat, lng, s]] tussen van en tot (s): een blijvende
+// koerswijziging van minstens 55°, met een stabiele koers in de minuut ervoor én erna
+// (zo tellen GPS-ruis en een korte zwieper niet mee). Geeft [{lat, lng, s, hoek}].
+// Zonder winddata is een gijp niet van een overstag te onderscheiden; aan de wind
+// (kruisen) zijn het vrijwel altijd overstagmomenten.
+function overstagHoeken(pts, van = -Infinity, tot = Infinity) {
+  const p = pts.filter(q => q[2] >= van - 90 && q[2] <= tot + 90);
+  if (p.length < 10) return [];
+  // koers over de grond tussen punten die minstens 20 m uit elkaar liggen
+  const koersen = [];
+  for (let a = 0, i = 1; i < p.length; i++) {
+    const A = { lat: p[a][0], lng: p[a][1] }, B = { lat: p[i][0], lng: p[i][1] };
+    if (afstandMeter(A, B) >= 20) { koersen.push({ s: (p[a][2] + p[i][2]) / 2, k: peiling(A, B), lat: A.lat, lng: A.lng }); a = i; }
+  }
+  const rad = Math.PI / 180;
+  const gemiddeld = (lo, hi) => {                    // gemiddelde koers + hoe stabiel (R: 1 = recht)
+    let x = 0, y = 0, n = 0;
+    koersen.forEach(c => { if (c.s >= lo && c.s <= hi) { x += Math.cos(c.k * rad); y += Math.sin(c.k * rad); n++; } });
+    return n < 2 ? null : { k: (Math.atan2(y, x) / rad + 360) % 360, R: Math.hypot(x, y) / n };
+  };
+  const verschil = (a, b) => Math.abs(((b - a + 540) % 360) - 180);
+  const uit = [];
+  koersen.forEach(c => {
+    if (c.s < van || c.s > tot) return;
+    const voor = gemiddeld(c.s - 75, c.s - 12), na = gemiddeld(c.s + 12, c.s + 75);
+    if (!voor || !na || voor.R < 0.9 || na.R < 0.9) return;
+    const hoek = verschil(voor.k, na.k);
+    if (hoek < 55) return;
+    const vorige = uit[uit.length - 1];            // binnen een minuut: hetzelfde overstagmoment
+    if (vorige && c.s - vorige.s < 60) { if (hoek > vorige.hoek) Object.assign(vorige, { lat: c.lat, lng: c.lng, hoek }); }
+    else uit.push({ lat: c.lat, lng: c.lng, s: c.s, hoek });
+  });
+  return uit.map(k => Object.assign(k, { hoek: Math.round(k.hoek) }));
+}
+
 // o = { titel, klok(t) → tekst, sporen: [{kleur, naam, pts, finishS}], baan: {lines, marks} }
 // Geeft { canvas, teken(t), eind } terug; de achtergrond wordt één keer geladen.
 async function maakScene(o, W = 1600, H = 1200) {

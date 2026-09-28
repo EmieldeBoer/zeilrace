@@ -111,9 +111,17 @@ wind van Open-Meteo, weergegeven in Beaufort.
   goedkeuren of terugdraaien. De tracker neemt dat direct over.
 
 **Scheepsjournaal:**
-- Elk uur na het startsein schrijft de verteller een paar zinnen: koploper, achterstand, gerondde boeien, snelste boot en wind.
-- Extra notities komen bij de eerste boot over de startlijn, de eerste ronding van elke boei en de eerste finish
-  (maximaal één zo'n notitie per half uur), en als de laatste boot binnen is.
+- Elk uur na het startsein schrijft de verteller een paar zinnen: koploper, achterstand, inhalen, gerondde boeien,
+  snelste boot en wind. Na de eerste finish ook de stand met de rating en wie nog kan winnen (en of dat haalbaar is).
+- Extra notities komen bij de eerste boot over de startlijn, de eerste finish, de eerste ronding van elke boei en
+  een wisseling aan kop (maximaal één zo'n notitie per half uur; start en finish gaan voor). Valt een gebeurtenis
+  samen met een uurnotitie, dan worden ze één notitie.
+- De slotnotitie geeft de uitslag op het water én met de rating, ook als de race wordt afgerond terwijl er nog
+  boten varen. Boten die niet uitvaren, blijven buiten het verhaal.
+
+**Overstaghoeken** (in de replay: *⤢ Overstaghoeken tonen*): bij elk overstagmoment de hoek op de kaart en per boot
+het gemiddelde in de legenda. Een overstag is een blijvende koerswijziging van minstens 55° met een stabiele koers
+ervoor en erna. Zonder winddata is een gijp daar niet van te onderscheiden.
 - Met `?wl` staat er een testknop om meteen een notitie over dit moment te maken. Die blijft alleen lokaal.
 - Iedereen die het dashboard opent, ziet dezelfde notities, ook die van eerdere uren.
 

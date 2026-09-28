@@ -398,6 +398,9 @@ function openReplay(nr) {
     return { s, lijn, stip };
   });
   rp.eind = Math.max(0, ...data.sporen.map(s => s.pts.length ? s.pts[s.pts.length - 1][2] : 0));
+  // Overstagmomenten per boot (van het startschot tot de eigen finish); labels pas tonen met de schakelaar
+  rp.overstag = data.sporen.map(s => ({ s, lijst: overstagHoeken(s.pts, data.gunS != null ? data.gunS : 0,
+    s.finishS != null ? s.finishS : Infinity).map(o => Object.assign(o, { marker: null })) }));
   const slider = el('replaySlider');
   slider.max = Math.ceil(rp.eind); slider.value = 0;
   setTimeout(() => {
@@ -428,9 +431,28 @@ function zetReplayTijd(t) {
     zetKoers(stip, koersInSpoor(s.pts, p));
   });
   el('replayKlok').textContent = rp.data.klok(t);
+  // Overstaghoeken: een label bij elk overstagmoment dat op tijdstip t al geweest is
+  const toon = el('replayOverstag').checked;
+  (rp.overstag || []).forEach(({ s, lijst }) => lijst.forEach(o => {
+    const zichtbaar = toon && o.s <= t;
+    if (zichtbaar && !o.marker) {
+      o.marker = L.marker([o.lat, o.lng], { interactive: false, keyboard: false,
+        icon: L.divIcon({ className: 'overstag-label', html: `<span style="border-color:${s.kleur}">${o.hoek}°</span>`, iconSize: [0, 0] }) });
+      rp.lagen.push(o.marker);
+    }
+    if (o.marker) { if (zichtbaar && !rp.kaart.hasLayer(o.marker)) o.marker.addTo(rp.kaart);
+                    if (!zichtbaar && rp.kaart.hasLayer(o.marker)) rp.kaart.removeLayer(o.marker); }
+  }));
+  const overstagTekst = b => {
+    const o = toon && (rp.overstag || []).find(x => x.s.boot === b);
+    if (!o || !o.lijst.length) return '';
+    const gem = Math.round(o.lijst.reduce((a, x) => a + x.hoek, 0) / o.lijst.length);
+    return ` · overstag gem. ${gem}° (${o.lijst.length}×)`;
+  };
   el('replayLegenda').innerHTML = rp.data.sporen.map(s =>
-    `<div>${dotHtml(s.boot)}${s.finishS != null && t >= s.finishS ? '🏁 ' : ''}${esc(s.legenda)}</div>`).join('');
+    `<div>${dotHtml(s.boot)}${s.finishS != null && t >= s.finishS ? '🏁 ' : ''}${esc(s.legenda)}${overstagTekst(s.boot)}</div>`).join('');
 }
+el('replayOverstag').addEventListener('change', () => { if (rp) zetReplayTijd(rp.t); });
 function speelReplay() {
   if (rp.speelt) { pauzeReplay(); return; }
   if (rp.t >= rp.eind) zetReplayTijd(0);
@@ -1020,7 +1042,8 @@ async function rondRaceAf() {
     if (Object.keys(rondingData || {}).length) res.rondingen = JSON.parse(JSON.stringify(rondingData));
     // Het scheepsjournaal van deze race bewaren (zonder testnotities), zodat het bij de uitslag blijft
     if (raceStart) {
-      const notities = Verteller.journaal(journaalData(Date.now())).map(n => ({ t: n.t, kop: n.kop, tekst: n.tekst }));
+      const notities = Verteller.journaal(Object.assign(journaalData(Date.now()), { afgerond: true }))
+        .map(n => ({ t: n.t, kop: n.kop, tekst: n.tekst }));
       if (notities.length) res.journaal = notities;
     }
     await db.ref(`${P}/results/${nr}`).set(res);
