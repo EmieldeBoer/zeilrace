@@ -139,16 +139,11 @@
   <button id="knop" class="start">▶︎ Start tracking</button>
   <div class="warn" id="warn" role="status"></div>
 
-  <div class="nav" id="nav">
-    <div class="navdoel" id="navDoel">Volgend doel: —</div>
-    <div class="grid">
-      <div class="cell"><div class="k">Afstand</div><div class="v" id="navAfstand">—</div></div>
-      <div class="cell"><div class="k">Snelheid</div><div class="v" id="navSpd">—</div></div>
-      <div class="cell"><div class="k">VMG naar doel</div><div class="v" id="navVmg">—</div></div>
-      <div class="cell"><div class="k">Tijd tot doel</div><div class="v" id="navEta">—</div></div>
-      <div class="cell"><div class="k">Afgelegd</div><div class="v" id="navAfgelegd">—</div></div>
-      <div class="cell"><div class="k" id="navWinK">Om te winnen</div><div class="v" id="navWin">—</div></div>
-    </div>
+  <!-- Je eigen boot: hetzelfde kaartje als bij 'Andere boten' -->
+  <div class="nav eigen-boot" id="nav">
+    <div class="ab-naam"><span class="ab-dot" id="eigenDot"></span><span class="ab-namen"><span class="ab-tekst" id="eigenNaam"></span>
+      <span class="ab-type" id="eigenType"></span></span><span class="ab-status" id="eigenStatus">jij</span></div>
+    <div id="eigenStats"><div class="stats-leeg">nog geen positie</div></div>
     <div class="startinfo" id="winInfo" hidden></div>
     <div class="startinfo" id="startinfo" hidden></div>
   </div>

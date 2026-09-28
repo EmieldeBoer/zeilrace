@@ -215,7 +215,70 @@ function raceHtml(nr) {
       `<td class="tijd">${r.gefinisht ? formatDuur(r.corrected) : '—'}</td>` +
       `<td class="tijd">${r.afstand != null ? formatAfstand(r.afstand) : '—'}</td></tr>`;
   });
-  return h + '</tbody></table></div></div>';
+  return h + '</tbody></table></div>' + journaalUitslagHtml(res, nm) + '</div>';
+}
+// =========================================================
+//  Ratingcheck: welke rating 'verdiende' elke boot in de afgeronde races?
+// =========================================================
+// Per race: de rating waarbij alle gefinishte boten precies gelijk waren geëindigd
+// (verdiend ∝ 1 / verzeilde tijd), zo geschaald dat het gemiddelde gelijk blijft
+// aan dat van de huidige ratings. Over de races: het geometrisch gemiddelde van
+// verdiend / huidig per boot. Advies pas vanaf RATING_MIN_RACES races.
+const RATING_MIN_RACES = 3;
+function ratingVerdiend(res) {
+  const fin = uitslagLijst(res).filter(r => r.gefinisht && r.elapsed > 0 && BOTEN[r.naam]);
+  if (fin.length < 2) return null;
+  const gemHuidig = fin.reduce((s, r) => s + BOTEN[r.naam].rating, 0) / fin.length;
+  const gemSnel = fin.reduce((s, r) => s + 1 / r.elapsed, 0) / fin.length;
+  const uit = {};
+  fin.forEach(r => { uit[r.naam] = (1 / r.elapsed) / gemSnel * gemHuidig; });
+  return uit;
+}
+function ratingCheckHtml(nummers) {
+  const perRace = nummers.map(nr => ({ nr, v: ratingVerdiend(resultsData[nr]) })).filter(x => x.v);
+  if (!perRace.length) return '';
+  const pct = x => (x >= 0 ? '+' : '−') + Math.abs(x * 100).toFixed(1) + '%';
+  const boten = FLEET.filter(b => perRace.some(x => x.v[b] != null));
+  const samen = {};
+  boten.forEach(b => {
+    const verh = perRace.map(x => x.v[b]).filter(v => v != null).map(v => v / BOTEN[b].rating);
+    const geo = Math.exp(verh.reduce((s, v) => s + Math.log(v), 0) / verh.length);
+    samen[b] = { n: verh.length, verdiend: BOTEN[b].rating * geo, afwijking: geo - 1 };
+  });
+  const advies = boten.some(b => samen[b].n >= RATING_MIN_RACES);
+  let h = '<div class="u-tabel"><h3>⚖️ Ratingcheck</h3><div class="sub">Welke rating had elke boot nodig gehad om precies ' +
+    'gelijk te eindigen? Gemiddeld over de afgeronde races, met dezelfde gemiddelde rating als nu. ' +
+    (advies ? '' : `<b>Indicatie — nog te weinig races voor een advies</b> (vanaf ${RATING_MIN_RACES} per boot).`) + '</div>' +
+    '<div class="tabelscroll"><table><thead><tr><th>Boot</th><th class="tijd">Nu</th>' +
+    perRace.map(x => `<th class="tijd">R${x.nr}</th>`).join('') +
+    '<th class="tijd">Gemiddeld</th><th class="tijd">Verschil</th></tr></thead><tbody>';
+  boten.forEach(b => {
+    const s = samen[b];
+    h += `<tr><td class="boot-cel">${dotHtml(b)}${esc(naamVan(b))}</td><td class="tijd">${BOTEN[b].rating.toFixed(3)}</td>` +
+      perRace.map(x => `<td class="tijd">${x.v[b] != null ? x.v[b].toFixed(3) : '—'}</td>`).join('') +
+      `<td class="tijd"><b>${s.verdiend.toFixed(3)}</b></td>` +
+      `<td class="tijd${Math.abs(s.afwijking) >= 0.03 ? ' rating-opvallend' : ''}">${pct(s.afwijking)}</td></tr>`;
+  });
+  h += '</tbody></table></div>';
+  if (advies) {
+    const lijst = boten.filter(b => samen[b].n >= RATING_MIN_RACES && Math.abs(samen[b].afwijking) >= 0.02)
+      .map(b => `${esc(naamVan(b))}: ${BOTEN[b].rating.toFixed(3)} → <b>${samen[b].verdiend.toFixed(3)}</b>`);
+    h += `<div class="sub" style="margin-top:8px">${lijst.length ? 'Advies (in <code>config.js</code>, via de GPH): ' + lijst.join(' · ')
+      : 'De ratings kloppen goed: geen boot wijkt 2% of meer af.'}</div>`;
+  }
+  return h + '<div class="sub">Let op: bemanning, starts en het soort baan (kruisen, ruime wind) tellen hier ook mee. ' +
+    'Beoordeel liever meerdere races met verschillende omstandigheden.</div></div>';
+}
+
+// Het scheepsjournaal bij een afgeronde race (bewaard, of achteraf opnieuw gemaakt)
+function journaalUitslagHtml(res, nm) {
+  let j;
+  try { j = Verteller.uitArchief(res, nm); } catch (e) { return ''; }
+  if (!j.notities.length) return '';
+  return '<details class="journaal-uitslag"><summary>📜 Scheepsjournaal' +
+    (j.achteraf ? ' <small>(achteraf opgemaakt uit de sporen)</small>' : '') + '</summary><div class="journaal">' +
+    [...j.notities].reverse().map(n => `<div class="journaal-item"><div class="journaal-kop">${esc(n.kop)}</div>` +
+      `<div class="journaal-tekst">${esc(n.tekst)}</div></div>`).join('') + '</div></details>';
 }
 function renderUitslagen() {
   const houder = el('uitslagenInhoud');
@@ -227,6 +290,7 @@ function renderUitslagen() {
   }
   houder.innerHTML =
     klassementHtml('Klassement', `Op gecorrigeerde tijd (met rating) · low-point · niet gefinisht = ${DNF_PUNTEN} punten`, nummers, 'corrected') +
+    ratingCheckHtml(nummers) +
     [...nummers].reverse().map(raceHtml).join('');
 }
 el('uitslagenInhoud').addEventListener('click', e => {
@@ -940,6 +1004,12 @@ async function rondRaceAf() {
     if (Object.keys(sporenOpslag).length) { res.sporen = sporenOpslag; res.t0 = t0; }
     if (raceStart) res.gun = raceStart;
     res.tijden = JSON.parse(JSON.stringify(timesData || {}));
+    if (Object.keys(rondingData || {}).length) res.rondingen = JSON.parse(JSON.stringify(rondingData));
+    // Het scheepsjournaal van deze race bewaren (zonder testnotities), zodat het bij de uitslag blijft
+    if (raceStart) {
+      const notities = Verteller.journaal(journaalData(Date.now())).map(n => ({ t: n.t, kop: n.kop, tekst: n.tekst }));
+      if (notities.length) res.journaal = notities;
+    }
     await db.ref(`${P}/results/${nr}`).set(res);
     await wisLiveRace();
     resultsData[nr] = res;

@@ -73,7 +73,13 @@ charterboten met onbekende zeilen en lading, dus de ratings zijn een redelijke s
 geen officieel certificaat. Aanpassen kan in `config.js` (`gph`).
 
 **Uitslagen** tellen met rating: gecorrigeerde tijd = verzeilde tijd × rating (Time-on-Time).
-Per race staat de verzeilde tijd er ter informatie bij.
+Per race staat de verzeilde tijd er ter informatie bij, en een uitklapbaar **📜 Scheepsjournaal**
+(bewaard bij het afronden; bij oudere races achteraf opgemaakt uit de sporen).
+
+**⚖️ Ratingcheck** (tab Uitslagen): per race de rating waarmee elke boot precies gelijk was geëindigd,
+geschaald op dezelfde gemiddelde rating, plus het gemiddelde over alle races. Vanaf 3 races per boot
+geeft hij een advies voor `config.js`. Bemanning, starts en het soort baan tellen mee: beoordeel dus
+meerdere races met verschillende omstandigheden.
 
 **Startopties** (tab 🏁 Race van de wedstrijdleiding):
 - **A · Gelijke start:** iedereen tegelijk weg. De rating corrigeert achteraf.

@@ -39,11 +39,17 @@ const Verteller = (() => {
     return afstandMeter(begin, eind) / ((eind.ts - begin.ts) / 1000) * 1.94384;
   }
 
+  // Startsein van een boot: het startschot, bij een achtervolgingsstart plus de eigen vertraging
+  const startSein = (d, b) => d.raceStart + vertragingVan(d.startPlan, b);
+  // Starttijd voor het verhaal: een lijnkruising vóór het eigen startsein (bijv. van een
+  // eerder gegeven sein) telt als start op het moment van het sein zelf
+  const startVan = (d, b) => { const s = d.times[b] && d.times[b].start; return s == null ? null : Math.max(s, startSein(d, b)); };
+
   // Toestand van alle boten op tijdstip t
   function toestand(d, t) {
     return FLEET.map(b => {
       const tm = d.times[b] || {}, rd = d.rounded[b] || {};
-      const start = tm.start != null && tm.start <= t ? tm.start : null;
+      const s0 = startVan(d, b), start = s0 != null && s0 <= t ? s0 : null;
       const finish = tm.finish != null && tm.finish <= t ? tm.finish : null;
       const gerond = {};
       d.boeien.forEach((bo, i) => { const id = boeiId(bo, i); if (rd[id] != null && rd[id] <= t) gerond[id] = rd[id]; });
@@ -139,13 +145,15 @@ const Verteller = (() => {
       `${snel.naam} heeft nu de meeste vaart: ${snel.kn.toFixed(1)} knopen.`,
       `Snelste schip op dit moment: ${snel.naam}, ${snel.kn.toFixed(1)} kn.`]));
 
-    // 5. Boten die nog niet gestart zijn: wachten op hun eigen sein (achtervolging) of nog niet over de lijn
+    // 5. Boten die nog niet over de startlijn zijn. Bij een gelijke start klinkt één
+    //    startschot voor iedereen: de klok loopt dan al. Alleen bij een achtervolgingsstart
+    //    hebben boten een eigen, later startsein.
     if (wachtend.length && onderweg.length) {
-      const eigenSein = v => d.raceStart + vertragingVan(d.startPlan, v.boot);
-      const opSein = wachtend.filter(v => eigenSein(v) > t), laat = wachtend.filter(v => eigenSein(v) <= t);
-      const meer = a => a.length > 1;
-      if (opSein.length) zinnen.push(`${opsomming(opSein.map(v => v.naam))} ${meer(opSein) ? 'wachten' : 'wacht'} nog op ${meer(opSein) ? 'hun' : 'het eigen'} startsein.`);
-      if (laat.length) zinnen.push(`${opsomming(laat.map(v => v.naam))} ${meer(laat) ? 'moeten' : 'moet'} de startlijn nog over.`);
+      const opSein = wachtend.filter(v => startSein(d, v.boot) > t), laat = wachtend.filter(v => startSein(d, v.boot) <= t);
+      const meer = a => a.length > 1, namen = a => opsomming(a.map(v => v.naam));
+      opSein.forEach(v => zinnen.push(`${v.naam} start later (achtervolging) en wacht nog op het eigen startsein van ${klokHM(startSein(d, v.boot))}.`));
+      if (laat.length) zinnen.push(`${namen(laat)} ${meer(laat) ? 'zijn' : 'is'} nog niet over de startlijn — ` +
+        `de klok loopt al sinds het startschot van ${klokHM(d.raceStart)}.`);
     }
 
     // 6. Wind (alleen bij de nieuwste notitie: we kennen alleen de actuele wind)
@@ -167,10 +175,13 @@ const Verteller = (() => {
       return best;
     };
     const ev = [];
-    const s = eerste(b => d.times[b] && d.times[b].start);
-    if (s) ev.push(Object.assign(s, { kop: 'eerste over de startlijn', voor: k => k([
-      `${d.naam(s.boot)} kruist als eerste de startlijn — de jacht is geopend!`,
-      `Als eerste over de startlijn: ${d.naam(s.boot)}!`]) }));
+    const s = eerste(b => startVan(d, b));
+    const achtervolging = d.startPlan && d.startPlan.modus === 'achtervolging';
+    if (s) ev.push(Object.assign(s, { kop: 'eerste over de startlijn', voor: k => achtervolging
+      ? k([`${d.naam(s.boot)} gaat als eerste over de startlijn — de achtervolging is begonnen!`,
+           `De jacht is geopend: ${d.naam(s.boot)} vertrekt als eerste.`])
+      : k([`Eén startschot voor de hele vloot, en ${d.naam(s.boot)} is als eerste over de lijn!`,
+           `Na het startschot van ${klokHM(d.raceStart)} is ${d.naam(s.boot)} als eerste over de startlijn.`]) }));
     d.boeien.forEach((bo, i) => {
       const id = boeiId(bo, i), r = eerste(b => d.rounded[b] && d.rounded[b][id]);
       if (r) ev.push(Object.assign(r, { kop: `boei ${i + 1} als eerste gerond`, voor: k => k([
@@ -221,5 +232,45 @@ const Verteller = (() => {
     if (!d.raceStart || d.nu < d.raceStart) return null;
     return d.raceStart + (Math.floor((d.nu - d.raceStart) / UUR) + 1) * UUR;
   }
-  return { journaal, volgende, notitieNu };
+  // ---- Journaal van een afgeronde race (tab Uitslagen) ----
+  // Nieuwe races bewaren hun journaal bij het afronden (res.journaal). Voor oudere
+  // races maakt de verteller het achteraf opnieuw uit de bewaarde sporen en tijden;
+  // de boeirondingen worden dan uit de sporen herleid (zelfde rondingslijnen als live).
+  function rondingenUitSporen(d) {
+    const uit = {};
+    FLEET.forEach(b => {
+      const start = startVan(d, b), pts = d.sporen[b];
+      if (start == null || !pts || !d.boeien.length) return;
+      const tot = d.times[b] && d.times[b].finish, gerond = uit[b] = {};
+      let v = 0;
+      for (let i = 1; i < pts.length && v < d.boeien.length; i++) {
+        if (pts[i].ts < start) continue;
+        if (tot != null && pts[i].ts > tot) break;
+        const { prev, next } = boeiPrevNext(v, d.boeien, d.lijnen);
+        const lijn = rondingsLijn(d.boeien[v], prev, next, RONDINGS_MARGE_MAX_M, RONDINGS_LIJN_M);
+        if (lijn && lijnstukkenKruisen(pts[i - 1], pts[i], lijn.a, lijn.b)) { gerond[boeiId(d.boeien[v], v)] = pts[i].ts; v++; }
+      }
+    });
+    return uit;
+  }
+  function uitArchief(res, naam) {
+    if (!res) return { notities: [], achteraf: false };
+    if (Array.isArray(res.journaal) || (res.journaal && typeof res.journaal === 'object'))
+      return { notities: Object.values(res.journaal).filter(Boolean), achteraf: false };
+    if (!res.gun || !res.sporen) return { notities: [], achteraf: true };
+    const t0 = res.t0 || res.ts, sporen = {};
+    Object.entries(res.sporen).forEach(([b, v]) => {
+      sporen[b] = normaliseerSpoor(v).map(p => ({ lat: p[0], lng: p[1], ts: t0 + p[2] * 1000 }));
+    });
+    const d = { raceStart: res.gun, startPlan: { modus: res.modus || 'gelijk', vertraging: res.vertraging || null },
+      times: res.tijden || {}, boeien: alsBoeien(res.baan && res.baan.marks), lijnen: (res.baan && res.baan.lines) || {},
+      sporen, naam, wind: null, rounded: {} };
+    d.rounded = res.rondingen || rondingenUitSporen(d);
+    const eindes = FLEET.map(b => d.times[b] && d.times[b].finish).filter(v => v != null)
+      .concat(Object.values(sporen).map(p => p.length ? p[p.length - 1].ts : 0));
+    d.nu = Math.max(res.gun, ...eindes);
+    return { notities: journaal(d), achteraf: true };
+  }
+
+  return { journaal, volgende, notitieNu, uitArchief };
 })();

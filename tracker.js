@@ -151,8 +151,7 @@ setInterval(() => toonWind(windPlek()), 5 * 60 * 1000);
 // =========================================================
 //  Navigatie naar het volgende doel
 // =========================================================
-let navVorige = null;
-const navEl = { doel: $('navDoel'), afstand: $('navAfstand'), spd: $('navSpd'), vmg: $('navVmg'), eta: $('navEta') };
+let navVorige = null, mijnSnelheid = null, mijnHeading = null;
 const volgendDoel = pos => doelVanBoot(pos, mijnTijden.start, mijnTijden.finish, mijnGerond, lijnen, boeien);
 function volgendDoelLabel() {
   if (mijnTijden.finish != null) return null;
@@ -160,40 +159,40 @@ function volgendDoelLabel() {
   const v = boeien.findIndex((b, i) => mijnGerond[boeiId(b, i)] == null);
   return v !== -1 ? 'boei ' + (v + 1) : 'de finish';
 }
+// Bij elke eigen GPS-positie: snelheid/koers onthouden, lijn naar het doel op de kaart
 function updateNav(lat, lng, speedMps, heading, nu) {
-  navEl.spd.textContent = speedMps != null ? (speedMps * 1.94384).toFixed(1) + ' kn' : '—';
+  mijnSnelheid = speedMps; mijnHeading = heading;
   const pos = { lat, lng }, doel = volgendDoel(pos);
-  if (!doel) {
-    navEl.doel.textContent = mijnTijden.finish != null ? 'Gefinisht 🏁' : 'Volgend doel: —';
-    navEl.afstand.textContent = navEl.vmg.textContent = navEl.eta.textContent = '—';
-    if (doelLijn) { kaart.removeLayer(doelLijn); doelLijn = null; }
-    navVorige = { pos, ts: nu };
-    return;
-  }
-  const dist = afstandMeter(pos, doel.punt);
-  // VMG naar het doel: via GPS-koers, anders uit de afname van de afstand
-  let vmg = vmgNaarDoel(pos, speedMps, heading, doel.punt);
-  if (vmg == null && navVorige) {
-    const dt = (nu - navVorige.ts) / 1000;
-    if (dt > 0) vmg = (afstandMeter(navVorige.pos, doel.punt) - dist) / dt;
-  }
   navVorige = { pos, ts: nu };
-  const eta = (speedMps != null && speedMps > 0.3) ? dist / speedMps : null;
-  navEl.doel.textContent = 'Volgend doel: ' + doel.label;
-  navEl.afstand.textContent = formatAfstand(dist);
-  navEl.vmg.textContent = vmg != null ? (vmg * 1.94384).toFixed(1) + ' kn' : '—';
-  navEl.vmg.classList.toggle('neg', vmg != null && vmg < 0);
-  navEl.eta.textContent = eta != null ? formatDuur(eta * 1000) : '—';
-  const pad = [[lat, lng], [doel.punt.lat, doel.punt.lng]];
-  if (!doelLijn) doelLijn = L.polyline(pad, { color: '#38d9c8', weight: 3, dashArray: '2 8', interactive: false }).addTo(kaart);
-  else doelLijn.setLatLngs(pad);
+  if (!doel) { if (doelLijn) { kaart.removeLayer(doelLijn); doelLijn = null; } }
+  else {
+    const pad = [[lat, lng], [doel.punt.lat, doel.punt.lng]];
+    if (!doelLijn) doelLijn = L.polyline(pad, { color: '#38d9c8', weight: 3, dashArray: '2 8', interactive: false }).addTo(kaart);
+    else doelLijn.setLatLngs(pad);
+  }
+  renderEigenBoot();
 }
 function wisNav() {
-  navEl.doel.textContent = 'Volgend doel: —';
-  navEl.afstand.textContent = navEl.spd.textContent = navEl.vmg.textContent = navEl.eta.textContent = '—';
-  navEl.vmg.classList.remove('neg');
+  mijnSnelheid = mijnHeading = null;
   if (doelLijn) { kaart.removeLayer(doelLijn); doelLijn = null; }
   navVorige = null;
+  renderEigenBoot();
+}
+// Je eigen boot als kaartje, precies zoals de andere boten (zelfde gegevens, zelfde opmaak)
+function renderEigenBoot() {
+  const b = mijnBoot(), tijden = tijdenNu(), t = tijden[b] || {};
+  $('eigenDot').style.background = BOTEN[b].kleur;
+  $('eigenNaam').textContent = kNaam(b);
+  const eigenNaam = kNaam(b) !== BOTEN[b].model;
+  $('eigenType').textContent = (eigenNaam ? BOTEN[b].model + ' · ' : '') + 'rating ' + BOTEN[b].rating.toFixed(3);
+  $('eigenStatus').textContent = watchId !== null ? 'jij · live' : 'jij';
+  const p = mijnPositie || (botStatus[b] && botStatus[b].lat != null ? botStatus[b] : null);
+  const s = p ? { lat: p.lat, lng: p.lng,
+    speed: mijnPositie ? mijnSnelheid : botStatus[b].speed, heading: mijnPositie ? mijnHeading : botStatus[b].heading,
+    start: t.start, finish: t.finish, gerond: mijnGerond,
+    afgelegd: afgelegdVan(b, t), win: tijdOmTeWinnen(b, tijden, raceStart, startPlan, Date.now()) } : null;
+  const html = bootStatsHtml(bootData(s, lijnen, boeien));
+  if ($('eigenStats').innerHTML !== html) $('eigenStats').innerHTML = html;
 }
 function updateStartInfo() {
   const box = $('startinfo'), t0 = mijnStart();
@@ -247,13 +246,9 @@ function tijdenNu() {
 }
 function afgelegdVan(b, t) { return t.start != null ? afgelegdM(kSpoorPunten[b], t.start, t.finish) : null; }
 function updateRaceStats() {
-  const tijden = tijdenNu(), mijn = tijden[mijnBoot()], nu = Date.now();
-  const afg = afgelegdVan(mijnBoot(), mijn);
-  $('navAfgelegd').textContent = afg != null ? formatAfstand(afg) : '—';
+  const tijden = tijdenNu(), nu = Date.now();
+  renderEigenBoot();                                   // afgelegd + om te winnen staan in het kaartje
   const w = tijdOmTeWinnen(mijnBoot(), tijden, raceStart, startPlan, nu), info = $('winInfo');
-  $('navWinK').textContent = w ? winLabel(w) : 'Om te winnen';
-  $('navWin').textContent = w ? winWaarde(w) : '—';
-  $('navWin').classList.toggle('neg', !!w && w.rest == null);
   info.hidden = !w;
   if (w) info.textContent = w.rest == null
     ? 'Met de gecorrigeerde tijd kun je de boten die binnen zijn niet meer inhalen.'
@@ -449,7 +444,7 @@ function bewaarNaam() {
   const ref = db.ref(`${P}/names/${mijnBoot()}`);
   return n ? ref.set(n) : ref.remove();
 }
-bootSelect.addEventListener('change', () => { laadNaam(); markeerEigen(); renderAndereBoten(); updateAftel(); updateStartInfo(); });
+bootSelect.addEventListener('change', () => { laadNaam(); markeerEigen(); renderAndereBoten(); renderEigenBoot(); updateAftel(); updateStartInfo(); });
 
 async function vraagWakeLock() {
   try {
