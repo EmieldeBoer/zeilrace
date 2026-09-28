@@ -179,32 +179,90 @@ function vmgNaarDoel(pos, speedMps, heading, doelPunt) {
   return speedMps * Math.cos((b - heading) * Math.PI / 180);
 }
 
+// --- Afgelegde afstand langs een spoor (m) ---------------------
+// pts = [{lat,lng,ts}] op tijd gesorteerd; telt alleen tussen van en tot (ms).
+// Tegen GPS-ruis telt een stap pas na 10 m verplaatsing, en sprongen die
+// sneller dan 25 kn zouden zijn (GPS-uitschieters) tellen niet mee.
+const SPOOR_MIN_STAP_M = 10, SPOOR_MAX_MPS = 25 / 1.94384;
+function afgelegdM(pts, van, tot) {
+  let m = 0, anker = null;
+  for (const p of pts || []) {
+    if (van != null && p.ts < van) continue;
+    if (tot != null && p.ts > tot) break;
+    if (!anker) { anker = p; continue; }
+    const d = afstandMeter(anker, p), dt = (p.ts - anker.ts) / 1000;
+    if (d < SPOOR_MIN_STAP_M || (dt > 0 && d / dt > SPOOR_MAX_MPS)) continue;
+    m += d; anker = p;
+  }
+  return m;
+}
+
+// --- Gecorrigeerde tijd ------------------------------------------
+// Verzeild = vanaf de eigen start (het eigen startsein, anders de
+// startlijn). Gecorrigeerd:
+//   gelijke start   → verzeild × rating
+//   achtervolging   → tijd vanaf het eerste startsein (finishvolgorde telt)
+function eigenStartVan(boot, t, raceStart, startPlan) {
+  return raceStart != null ? raceStart + vertragingVan(startPlan, boot) : (t || {}).start;
+}
+const isAchtervolging = (raceStart, startPlan) => raceStart != null && !!startPlan && startPlan.modus === 'achtervolging';
+function gecorrigeerdeTijd(boot, eind, raceStart, startPlan, eigenStart) {
+  return isAchtervolging(raceStart, startPlan) ? eind - raceStart : (eind - eigenStart) * BOTEN[boot].rating;
+}
+
+// --- Hoeveel tijd heeft een boot nog om te winnen? --------------
+// Kijkt naar de boten die al binnen zijn: vóór welk klokmoment moet deze
+// boot finishen om hun gecorrigeerde tijd te verslaan? Geeft de beste plek
+// die nog haalbaar is: { plek, tot (klok, ms), rest (ms) }. Kan hij geen
+// enkele binnengekomen boot meer verslaan: { plek: 1, tot: null, rest: null }.
+// Null als de boot niet onderweg is of nog niemand binnen is.
+function tijdOmTeWinnen(boot, times, raceStart, startPlan, nu) {
+  const t = times[boot] || {};
+  const eigenStart = eigenStartVan(boot, t, raceStart, startPlan);
+  if (t.start == null || t.finish != null || eigenStart == null) return null;
+  const binnen = Object.keys(BOTEN).filter(b => b !== boot && times[b] && times[b].start != null && times[b].finish != null)
+    .map(b => gecorrigeerdeTijd(b, times[b].finish, raceStart, startPlan, eigenStartVan(b, times[b], raceStart, startPlan)))
+    .filter(c => c != null && !isNaN(c)).sort((a, b) => a - b);
+  if (!binnen.length) return null;
+  for (let i = 0; i < binnen.length; i++) {
+    const tot = isAchtervolging(raceStart, startPlan) ? raceStart + binnen[i] : eigenStart + binnen[i] / BOTEN[boot].rating;
+    if (tot > nu) return { plek: i + 1, tot, rest: tot - nu };
+  }
+  return { plek: 1, tot: null, rest: null };
+}
+const winLabel = w => w.plek === 1 || w.rest == null ? 'Om te winnen' : `Voor plek ${w.plek}`;
+const winWaarde = w => w.rest == null ? 'te laat' : formatDuur(w.rest);
+
 // --- Live data van een boot (snelheid, VMG, doel, afstand, tijd) -
+// Optioneel in s: afgelegd (m, sinds de start) en win (uit tijdOmTeWinnen).
 function bootData(s, lijnen, boeien) {
   if (!s || s.lat == null) return { status: 'geen' };
   const kn = v => (v * 1.94384).toFixed(1) + ' kn';
   const spd = s.speed != null ? kn(s.speed) : '—';
-  if (s.finish != null) return { status: 'finish', spd };
+  const extra = { afgelegd: s.afgelegd != null ? formatAfstand(s.afgelegd) : null, win: s.win || null };
+  if (s.finish != null) return Object.assign({ status: 'finish', spd }, extra);
   const pos = { lat: s.lat, lng: s.lng };
   const doel = doelVanBoot(pos, s.start, s.finish, s.gerond, lijnen, boeien);
-  if (!doel) return { status: 'ok', spd, vmg: '—', doel: '—', afst: '—', eta: '—' };
+  if (!doel) return Object.assign({ status: 'ok', spd, vmg: '—', doel: '—', afst: '—', eta: '—' }, extra);
   const dist = afstandMeter(pos, doel.punt);
   const vmg = vmgNaarDoel(pos, s.speed, s.heading, doel.punt);
-  return {
+  return Object.assign({
     status: 'ok', spd,
     vmg: vmg != null ? kn(vmg) : '—', vmgNeg: vmg != null && vmg < 0,
     doel: doel.label, afst: formatAfstand(dist),
     eta: (s.speed != null && s.speed > 0.3) ? formatDuur(dist / s.speed * 1000) : '—'
-  };
+  }, extra);
 }
 // Als raster met labels (leesbaarder dan één lange zin)
 function bootStatsHtml(d) {
   if (d.status === 'geen') return '<div class="stats-leeg">nog geen positie</div>';
   const c = (k, v, cls) => `<div${cls ? ` class="${cls}"` : ''}><span class="k">${k}</span><span class="v">${esc(v)}</span></div>`;
+  const afg = d.afgelegd ? c('Afgelegd', d.afgelegd) : '';
   if (d.status === 'finish')
-    return '<div class="stats">' + c('Snelheid', d.spd) + '<div class="stats-finish">🏁 gefinisht</div></div>';
+    return '<div class="stats">' + c('Snelheid', d.spd) + afg + '<div class="stats-finish">🏁 gefinisht</div></div>';
+  const win = d.win ? c(winLabel(d.win), winWaarde(d.win), d.win.rest == null ? 'neg' : '') : '';
   return '<div class="stats">' + c('Snelheid', d.spd) + c('VMG', d.vmg, d.vmgNeg ? 'neg' : '') +
-    c('Doel', d.doel) + c('Afstand', d.afst) + c('Nog ca.', d.eta) + '</div>';
+    c('Doel', d.doel) + c('Afstand', d.afst) + c('Nog ca.', d.eta) + afg + win + '</div>';
 }
 
 // --- Kaart ------------------------------------------------------

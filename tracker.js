@@ -46,7 +46,7 @@ const mijnStart = () => raceStart != null ? raceStart + vertragingVan(startPlan,
 //  Kaart: baan, rondingslijnen, alle boten + zoom/volg-knoppen
 // =========================================================
 const kaart = maakKaart('kaart');
-const kMarkers = {}, kSporen = {}, botStatus = {};
+const kMarkers = {}, kSporen = {}, kSpoorPunten = {}, botStatus = {};
 let kBaan = [], kGefit = false, doelLijn = null;
 maakWindWidget(kaart);
 kaartKnoppen(kaart, [
@@ -237,11 +237,36 @@ function updateAftel() {
 setInterval(updateAftel, 500);
 
 // =========================================================
+//  Afgelegde afstand en hoeveel tijd je nog hebt om te winnen
+// =========================================================
+function tijdenNu() {
+  const t = {};
+  FLEET.forEach(b => { const s = botStatus[b] || {}; t[b] = { start: s.start, finish: s.finish }; });
+  t[mijnBoot()] = Object.assign({}, t[mijnBoot()], mijnTijden.start != null ? mijnTijden : {});   // eigen boot: lokaal al actueler
+  return t;
+}
+function afgelegdVan(b, t) { return t.start != null ? afgelegdM(kSpoorPunten[b], t.start, t.finish) : null; }
+function updateRaceStats() {
+  const tijden = tijdenNu(), mijn = tijden[mijnBoot()], nu = Date.now();
+  const afg = afgelegdVan(mijnBoot(), mijn);
+  $('navAfgelegd').textContent = afg != null ? formatAfstand(afg) : '—';
+  const w = tijdOmTeWinnen(mijnBoot(), tijden, raceStart, startPlan, nu), info = $('winInfo');
+  $('navWinK').textContent = w ? winLabel(w) : 'Om te winnen';
+  $('navWin').textContent = w ? winWaarde(w) : '—';
+  $('navWin').classList.toggle('neg', !!w && w.rest == null);
+  info.hidden = !w;
+  if (w) info.textContent = w.rest == null
+    ? 'Met de gecorrigeerde tijd kun je de boten die binnen zijn niet meer inhalen.'
+    : `Finish vóór ${formatKlok(w.tot)} om ${w.plek === 1 ? 'te winnen' : 'plek ' + w.plek + ' te halen'} (gecorrigeerde tijd).`;
+}
+setInterval(updateRaceStats, 1000);
+
+// =========================================================
 //  Andere boten (tik = volg op de kaart)
 // =========================================================
 const abKaartjes = {};
 function renderAndereBoten() {
-  const lijst = $('andereLijst'), nu = Date.now();
+  const lijst = $('andereLijst'), nu = Date.now(), tijden = tijdenNu();
   FLEET.forEach(naam => {
     let k = abKaartjes[naam];
     if (!k) {
@@ -261,7 +286,8 @@ function renderAndereBoten() {
     const eigenNaam = kNaam(naam) !== BOTEN[naam].model;
     k.querySelector('.ab-type').textContent = (eigenNaam ? BOTEN[naam].model + ' · ' : '') + 'rating ' + BOTEN[naam].rating.toFixed(3);
     k.querySelector('.ab-status').textContent = online ? '' : (s.ts ? geleden(nu - s.ts) : 'geen data');
-    k.querySelector('.ab-stats').innerHTML = bootStatsHtml(bootData(s, lijnen, boeien));
+    const extra = { afgelegd: afgelegdVan(naam, tijden[naam]), win: tijdOmTeWinnen(naam, tijden, raceStart, startPlan, nu) };
+    k.querySelector('.ab-stats').innerHTML = bootStatsHtml(bootData(Object.assign({}, s, extra), lijnen, boeien));
   });
 }
 setInterval(renderAndereBoten, 1000);
@@ -553,9 +579,15 @@ function koppelData() {
   });
   FLEET.forEach(naam => {
     kSporen[naam] = L.polyline([], { color: BOTEN[naam].kleur, weight: 3, opacity: .75, interactive: false }).addTo(kaart);
+    kSpoorPunten[naam] = [];
     luister(`${P}/tracks/${naam}`, 'child_added', snap => {
       const d = snap.val();
       if (d && d.lat != null) kSporen[naam].addLatLng([d.lat, d.lng]);
+      if (d && d.lat != null && d.ts != null) {
+        const pts = kSpoorPunten[naam];
+        pts.push(d);
+        if (pts.length > 1 && pts[pts.length - 2].ts > d.ts) pts.sort((a, b) => a.ts - b.ts);
+      }
     });
     luister(`${P}/times/${naam}`, 'value', s => {
       const t = s.val() || {};
@@ -579,7 +611,10 @@ function koppelData() {
   let vorigeGen;
   luister(`${P}/gen`, 'value', s => {
     const g = s.val();
-    if (vorigeGen !== undefined && g !== vorigeGen) Object.values(kSporen).forEach(p => p.setLatLngs([]));
+    if (vorigeGen !== undefined && g !== vorigeGen) {
+      Object.values(kSporen).forEach(p => p.setLatLngs([]));
+      FLEET.forEach(b => { kSpoorPunten[b] = []; });
+    }
     vorigeGen = g;
   });
   koppelSpel();

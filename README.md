@@ -140,6 +140,15 @@ Instellingen (bereik, levens, herladen) staan bovenaan `piraat.js`. **Let op:** 
 - **Startlijn over:** één slag op de scheepsbel. **Boei gerond:** twee glazen (ding-ding).
 - **Finish:** de bootsmansfluit. **GPS weg of boot offline:** de misthoorn. **GPS weer terug:** één zachte bel.
 
+**Afgelegd** (op het dashboard, de tracker en in de uitslag): de afstand die een boot heeft gevaren vanaf het
+passeren van de startlijn tot de finish, gemeten langs het GPS-spoor. Tegen GPS-ruis telt een stap pas na 10 m
+verplaatsing, en sprongen die sneller dan 25 kn zouden zijn, tellen niet mee.
+
+**Om te winnen:** zodra er een boot binnen is, zie je bij elke boot die nog vaart hoeveel tijd hij nog heeft om die
+boot op gecorrigeerde tijd te verslaan (met de rating). Op de tracker staat ook het klokmoment waarvoor je binnen
+moet zijn. Lukt winnen niet meer, dan staat er hoeveel tijd je nog hebt voor de volgende plek, of *te laat*.
+Bij een achtervolgingsstart wint wie het eerst binnen is, dus daar is het na de eerste finish meteen *te laat*.
+
 **Afstanden** staan in zeemijl (zm). De replay loopt van hooguit 15 minuten vóór het startschot tot de finish van de laatste boot.
 
 **Meldingen als de GPS uitvalt:**

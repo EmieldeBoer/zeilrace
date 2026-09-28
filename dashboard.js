@@ -93,7 +93,9 @@ function verversLijst() {
     }
     const ts = laatsteTs[naam], online = ts && nu - ts < 30000;
     const t = timesData[naam] || {};
-    const s = Object.assign({}, posData[naam], { start: t.start, finish: t.finish, gerond: rondingData[naam] });
+    const s = Object.assign({}, posData[naam], { start: t.start, finish: t.finish, gerond: rondingData[naam],
+      afgelegd: t.start != null ? afgelegdM(spoorPunten[naam], t.start, t.finish) : null,
+      win: tijdOmTeWinnen(naam, timesData, raceStart, startPlan, nu) });
     const eigenNaam = naamVan(naam) !== BOTEN[naam].model;
     k.classList.toggle('offline', !online);
     k.classList.toggle('gekozen', geselecteerd === naam);
@@ -123,21 +125,18 @@ function selecteerBoot(naam, vanKaart) {
 //  Tijden: verzeild (zonder rating) en gecorrigeerd (met rating)
 // =========================================================
 // Verzeild = vanaf de eigen start (bij een achtervolgingsstart dus
-// later voor snellere boten). Gecorrigeerd:
-//   gelijke start   → verzeild × rating
-//   achtervolging   → tijd vanaf het eerste startsein (finishvolgorde telt)
+// later voor snellere boten). Gecorrigeerd: zie gecorrigeerdeTijd (shared.js).
 function berekenUitslag(times) {
   const nu = Date.now();
-  const achter = startPlan && startPlan.modus === 'achtervolging';
   return FLEET.map(naam => {
     const t = times[naam] || {};
-    const eigenStart = raceStart != null ? raceStart + vertragingVan(startPlan, naam) : t.start;
+    const eigenStart = eigenStartVan(naam, t, raceStart, startPlan);
     let elapsed = null, corrected = null, gefinisht = false, onderweg = false;
     if (t.start != null && eigenStart != null) {
       gefinisht = t.finish != null; onderweg = !gefinisht;
       const eind = gefinisht ? t.finish : nu;
       elapsed = eind - eigenStart;
-      corrected = achter && raceStart != null ? eind - raceStart : elapsed * BOTEN[naam].rating;
+      corrected = gecorrigeerdeTijd(naam, eind, raceStart, startPlan, eigenStart);
     }
     return { naam, gefinisht, onderweg, elapsed, corrected };
   });
@@ -208,12 +207,13 @@ function raceHtml(nr) {
   let h = `<div class="u-tabel"><h3>Race ${nr}${res.naam ? ': ' + esc(res.naam) : ''} ${knoppen}</h3>` +
     `<div class="sub">${wanneer} · ${modus}${res.nm ? ' · ' + Number(res.nm).toFixed(1) + ' zeemijl' : ''}</div>` +
     '<div class="tabelscroll"><table><thead><tr><th class="pos">#</th><th>Boot</th><th class="tijd">Verzeild</th>' +
-    '<th class="tijd">Gecorr.</th></tr></thead><tbody>';
+    '<th class="tijd">Gecorr.</th><th class="tijd">Afgelegd</th></tr></thead><tbody>';
   lijst.forEach(r => {
     h += `<tr${rMet[r.naam] === 1 ? ' class="winnaar"' : ''}><td class="pos">${rMet[r.naam] || '–'}</td>` +
       `<td class="boot-cel">${dotHtml(r.naam)}${esc(nm(r.naam))}</td>` +
       `<td class="tijd">${r.gefinisht ? formatDuur(r.elapsed) : 'DNF'}</td>` +
-      `<td class="tijd">${r.gefinisht ? formatDuur(r.corrected) : '—'}</td></tr>`;
+      `<td class="tijd">${r.gefinisht ? formatDuur(r.corrected) : '—'}</td>` +
+      `<td class="tijd">${r.afstand != null ? formatAfstand(r.afstand) : '—'}</td></tr>`;
   });
   return h + '</tbody></table></div></div>';
 }
@@ -918,15 +918,18 @@ async function rondRaceAf() {
     let t0 = Infinity;
     Object.values(tr).forEach(bt => Object.values(bt || {}).forEach(p => { if (p && p.ts < t0) t0 = p.ts; }));
     if (!isFinite(t0)) t0 = Date.now();
-    const sporenOpslag = {};
+    const sporenOpslag = {}, afgelegd = {};
     Object.keys(tr).forEach(b => {
-      const pts = Object.values(tr[b]).filter(p => p && p.lat != null).sort((x, y) => x.ts - y.ts)
-        .map(p => [+p.lat.toFixed(5), +p.lng.toFixed(5), Math.round((p.ts - t0) / 1000)]);
+      const ruw = Object.values(tr[b]).filter(p => p && p.lat != null).sort((x, y) => x.ts - y.ts);
+      const t = timesData[b] || {};
+      if (t.start != null) afgelegd[b] = Math.round(afgelegdM(ruw, t.start, t.finish));   // uit het volle spoor
+      const pts = ruw.map(p => [+p.lat.toFixed(5), +p.lng.toFixed(5), Math.round((p.ts - t0) / 1000)]);
       if (pts.length > 1) sporenOpslag[b] = dunUit(pts, 900);
     });
     const uitslag = {}, namenNu = {};
     rijen.forEach(r => { uitslag[r.naam] = { gefinisht: r.gefinisht,
-      elapsed: r.gefinisht ? r.elapsed : null, corrected: r.gefinisht ? r.corrected : null }; });
+      elapsed: r.gefinisht ? r.elapsed : null, corrected: r.gefinisht ? r.corrected : null,
+      afstand: afgelegd[r.naam] != null ? afgelegd[r.naam] : null }; });
     FLEET.forEach(b => { namenNu[b] = naamVan(b); });
     const nr = Object.keys(resultsData).map(Number).reduce((m, n) => Math.max(m, n), 0) + 1;
     const nm = baanLengteNm(lijnData, boeien);
