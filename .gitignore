@@ -1,2 +1,5 @@
 .DS_Store
 Thumbs.db
+.env.local
+dist/
+node_modules/
