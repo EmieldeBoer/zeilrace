@@ -93,7 +93,7 @@
         "gen": { ".validate": "newData.isNumber()" },
 
         "startPlan": {
-          ".validate": "!data.exists() && newData.child('modus').val() === 'gelijk' || newData.child('modus').val() === 'achtervolging' || newData.child('modus').val() === 'lus'"
+          ".validate": "!data.exists() && (newData.child('modus').val() === 'gelijk' || newData.child('modus').val() === 'achtervolging' || newData.child('modus').val() === 'lus')"
         },
 
         "lines": {

@@ -206,6 +206,8 @@ function raceHtml(nr) {
   const modus = startNaam(res.modus).toLowerCase();
   const knoppen = (res.sporen ? `<button class="race-knop afspelen" data-nr="${nr}">▶ Replay</button>` : '') +
     (admin ? `<button class="race-knop hernoem" data-nr="${nr}">✏️ Naam</button>` +
+             (res.sporen && Object.keys(BOTEN).some(b => res.tijden && res.tijden[b] && res.tijden[b].start != null && res.tijden[b].finish == null)
+               ? `<button class="race-knop finishfix" data-nr="${nr}" title="Finish van boten zonder finish uit hun spoor halen">🏁 Finish uit spoor</button>` : '') +
              `<button class="race-knop wis" data-nr="${nr}" title="Verwijder deze race">🗑</button>` : '');
   let h = `<div class="u-tabel"><h3>Race ${nr}${res.naam ? ': ' + esc(res.naam) : ''} ${knoppen}</h3>` +
     `<div class="sub">${wanneer} · ${modus}${res.nm ? ' · ' + Number(res.nm).toFixed(1) + ' zeemijl' : ''}</div>` +
@@ -220,6 +222,53 @@ function raceHtml(nr) {
   });
   return h + '</tbody></table></div>' + journaalUitslagHtml(res, nm) + '</div>';
 }
+// ---- Finish achteraf uit het spoor (bijv. als de finishlijn tijdens de race is verlengd) ----
+// De eerste kruising van de finishlijn (zoals die in de opgeslagen race staat) na de eigen
+// start, met het tijdstip tussen de twee spoorpunten ingeschat. Null als hij er niet over ging.
+function finishUitSpoor(res, b) {
+  const F = res.baan && res.baan.lines && res.baan.lines.finish, t = res.tijden && res.tijden[b];
+  if (!F || !F.a || !t || t.start == null || !res.sporen || !res.sporen[b]) return null;
+  const t0 = res.t0 || res.ts;
+  const sein = res.gun != null ? res.gun + ((res.modus === 'achtervolging' && res.vertraging && res.vertraging[b]) || 0) : t.start;
+  const van = Math.max(t.start, sein);
+  const pts = normaliseerSpoor(res.sporen[b]).map(p => ({ lat: p[0], lng: p[1], ts: t0 + p[2] * 1000 }));
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i].ts <= van || !lijnstukkenKruisen(pts[i - 1], pts[i], F.a, F.b)) continue;
+    const a = pts[i - 1], c = pts[i], da = Math.abs(_orient(F.a, F.b, a)), dc = Math.abs(_orient(F.a, F.b, c));
+    return Math.round(a.ts + (c.ts - a.ts) * (da + dc ? da / (da + dc) : 0));
+  }
+  return null;
+}
+async function corrigeerFinishUitSpoor(nr) {
+  const res = resultsData[nr]; if (!res) return;
+  const sp = { modus: res.modus || 'gelijk', vertraging: res.vertraging || null };
+  const t0 = res.t0 || res.ts, voorstel = [];
+  Object.keys(BOTEN).forEach(b => {
+    const t = res.tijden && res.tijden[b];
+    if (!t || t.start == null || t.finish != null) return;
+    const f = finishUitSpoor(res, b); if (f == null) return;
+    const eigenStart = eigenStartVan(b, t, res.gun, sp), elapsed = f - eigenStart;
+    const corrected = gecorrigeerdeTijd(b, f, res.gun, sp, eigenStart);
+    const pts = normaliseerSpoor(res.sporen[b]).map(p => ({ lat: p[0], lng: p[1], ts: t0 + p[2] * 1000 }));
+    voorstel.push({ b, f, elapsed, corrected, afstand: Math.round(afgelegdM(pts, Math.max(t.start, eigenStart), f)) });
+  });
+  const nm = b => (res.namen && res.namen[b]) || naamVan(b);
+  if (!voorstel.length) { alert('Geen boot zonder finish die volgens zijn spoor over de finishlijn van deze race ging.'); return; }
+  if (!confirm(`Race ${nr}: finish uit het spoor halen (over de finishlijn zoals die aan het eind van de race lag)?\n\n` +
+    voorstel.map(v => `${nm(v.b)}: finish ${formatKlok(v.f)} → verzeild ${formatDuur(v.elapsed)}, gecorrigeerd ${formatDuur(v.corrected)}`).join('\n') +
+    '\n\nHet tijdstip is tussen twee spoorpunten ingeschat (enkele seconden nauwkeurig). ' +
+    'Het bewaarde journaal wordt vervangen door een journaal uit de sporen met de nieuwe uitslag.')) return;
+  const upd = { journaal: null };
+  voorstel.forEach(v => {
+    upd[`tijden/${v.b}/finish`] = v.f;
+    upd[`uitslag/${v.b}`] = { gefinisht: true, elapsed: v.elapsed, corrected: v.corrected, afstand: v.afstand };
+  });
+  try {
+    await db.ref(`${P}/results/${nr}`).update(upd);
+    toonWlStatus(`Race ${nr} gecorrigeerd: ${voorstel.map(v => nm(v.b)).join(', ')} alsnog gefinisht.`);
+  } catch (e) { alert('Opslaan mislukt: ' + dbFoutTekst(e)); }
+}
+
 // Afgelegde afstand voor races die zonder afstand zijn opgeslagen (van vóór die
 // functie): achteraf berekend uit het bewaarde spoor, van de eigen start (de
 // lijnkruising, maar niet vóór het eigen startsein) tot de finish.
@@ -384,6 +433,7 @@ el('uitslagenInhoud').addEventListener('click', e => {
   const nr = k.dataset.nr;
   if (k.classList.contains('afspelen')) { openReplay(nr); return; }
   if (!admin) return;
+  if (k.classList.contains('finishfix')) { corrigeerFinishUitSpoor(nr); return; }
   if (k.classList.contains('wis')) {
     if (confirm(`Race ${nr} definitief verwijderen uit de uitslagen?`))
       db.ref(`${P}/results/${nr}`).remove().catch(err => meldFout(dbFoutTekst(err)));
@@ -1381,7 +1431,18 @@ metAuth(koppelData, e => meldFout(authFoutTekst(e)));
 verversLijst();
 tekenBaan();
 renderPlanning();
+// Voorspelde eindstand met rating (tijdens de race)
+let voorspelHtmlCache = '';
+function renderVoorspelling() {
+  const nu = Date.now(), sectie = el('voorspelSectie');
+  const rijen = raceStart && raceStart <= nu ? voorspelEindstand({ times: timesData, gerond: rondingData, sporen: spoorPunten,
+    posities: posData, lijnen: lijnData, boeien, baanVan: b => baanVanBoot(boeien, lussenVan(startPlan), b),
+    raceStart, startPlan, nu }) : [];
+  sectie.hidden = !rijen.length;
+  const html = voorspellingHtml(rijen, naamVan);
+  if (html !== voorspelHtmlCache) { el('voorspelling').innerHTML = html; voorspelHtmlCache = html; }
+}
 setInterval(() => {
-  verversLijst(); updateAftel(); controleerOffline(); renderConceptBalk(); renderJournaal(); renderSpel();
+  verversLijst(); updateAftel(); controleerOffline(); renderConceptBalk(); renderJournaal(); renderSpel(); renderVoorspelling();
   if (voorstel && !raceStart) renderPlanning();            // 'verlopen' en een nieuwe voorgestelde tijd bijwerken
 }, 1000);

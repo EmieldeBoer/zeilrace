@@ -143,6 +143,18 @@ wind van Open-Meteo, weergegeven in Beaufort.
 - De slotnotitie geeft de uitslag op het water én met de rating, ook als de race wordt afgerond terwijl er nog
   boten varen. Boten die niet uitvaren, blijven buiten het verhaal.
 
+**🔮 Voorspelde eindstand** (tijdens de race, op het dashboard en de tracker): de verwachte uitslag met rating. Per boot
+de resterende baan (naar het volgende doel en langs de nog te ronden boeien naar de finish, bij een lusstart de eigen
+baan) gedeeld door het tempo langs de baan: half het gemiddelde sinds de start, half dat van het laatste kwartier.
+Boten die binnen zijn staan er met hun echte tijd (🏁).
+
+**🏁 Finish uit spoor** (tab Uitslagen, alleen wedstrijdleiding): voor een opgeslagen race met een boot zonder finish
+(bijv. als de finishlijn tijdens de race is verlengd) haalt de knop de eerste kruising van de finishlijn uit het spoor,
+toont het voorstel en past na bevestiging de tijden, de uitslag en het journaal aan.
+
+**Kaart:** schaalbalk in zeemijl rechtsonder; de rondingslijn van elke boei staat over de volle lengte (10 km) op de
+kaart, in de kleur van de boei.
+
 **🧭 Polars** (tab Uitslagen): per boot de snelheid per windhoek en windsterkte (Bft), opgebouwd uit alle gezeilde
 races, met de beste kruishoek (hoogste VMG). Per GPS-punt de snelheid en koers over de grond (gemiddeld over 20 s)
 tegen de ware wind van Open-Meteo (uurwaarden; bij nieuwe races bij het afronden bewaard in de uitslag). De

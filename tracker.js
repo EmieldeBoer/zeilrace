@@ -107,7 +107,7 @@ function tekenCourse() {
   });
   // Alleen je eigen lus: de lussen van de andere boten doen voor jou niet mee
   const baan = mijnBaan(), kleur = BOTEN[mijnBoot()].kleur;
-  tekenRondingslijnen(kaart, baan, lijnen, kBaan);       // paars: hier moet je overheen om te ronden
+  tekenRondingslijnen(kaart, baan, lijnen, kBaan);       // in de kleur van de boei: hier moet je overheen om te ronden
   baan.forEach(b => kBaan.push(L.marker([b.lat, b.lng], { icon: b.lus ? lusIcoon(b.letter, kleur) : boeiIcoon(b.nr - 1) })
     .addTo(kaart).bindTooltip(esc(b.label), { direction: 'top', offset: [0, -12] })));
   const route = [];
@@ -193,11 +193,12 @@ function renderEigenBoot() {
   const eigenNaam = kNaam(b) !== BOTEN[b].model;
   $('eigenType').textContent = (eigenNaam ? BOTEN[b].model + ' · ' : '') + 'rating ' + BOTEN[b].rating.toFixed(3);
   $('eigenStatus').textContent = watchId !== null ? 'jij · live' : 'jij';
-  const p = mijnPositie || (botStatus[b] && botStatus[b].lat != null ? botStatus[b] : null);
-  const s = p ? { lat: p.lat, lng: p.lng,
-    speed: mijnPositie ? mijnSnelheid : botStatus[b].speed, heading: mijnPositie ? mijnHeading : botStatus[b].heading,
-    start: t.start, finish: t.finish, gerond: mijnGerond,
-    afgelegd: afgelegdVan(b, t), win: tijdOmTeWinnen(b, tijden, raceStart, startPlan, Date.now()) } : null;
+  // Precies dezelfde gegevens als de andere telefoons van jouw boot zien: uit de database
+  // (elke 3 s bijgewerkt). Alleen zolang daar nog geen positie staat: je eigen GPS.
+  const uitDb = botStatus[b] || {};
+  const basis = uitDb.lat != null ? uitDb : mijnPositie ? Object.assign({}, uitDb, { lat: mijnPositie.lat, lng: mijnPositie.lng,
+    speed: mijnSnelheid, heading: mijnHeading, start: t.start, finish: t.finish, gerond: mijnGerond }) : null;
+  const s = basis && Object.assign({}, basis, { afgelegd: afgelegdVan(b, tijden[b]), win: tijdOmTeWinnen(b, tijden, raceStart, startPlan, Date.now()) });
   const html = bootStatsHtml(bootData(s, lijnen, baanVan(b)));
   if ($('eigenStats').innerHTML !== html) $('eigenStats').innerHTML = html;
 }
@@ -337,6 +338,19 @@ function renderAndereBoten() {
   });
 }
 setInterval(renderAndereBoten, 1000);
+
+// Voorspelde eindstand met rating (tijdens de race), uit dezelfde gegevens als 'Andere boten'
+let voorspelHtmlCache = '';
+function renderVoorspelling() {
+  const nu = Date.now(), tijden = tijdenNu(), gerond = {}, posities = {};
+  FLEET.forEach(b => { const s = botStatus[b] || {}; gerond[b] = s.gerond || {}; if (s.lat != null) posities[b] = s; });
+  const rijen = raceStart && raceStart <= nu ? voorspelEindstand({ times: tijden, gerond, sporen: kSpoorPunten, posities,
+    lijnen, boeien, baanVan, raceStart, startPlan, nu }) : [];
+  $('voorspelBlok').hidden = !rijen.length;
+  const html = voorspellingHtml(rijen, kNaam, mijnBoot());
+  if (html !== voorspelHtmlCache) { $('voorspelling').innerHTML = html; voorspelHtmlCache = html; }
+}
+setInterval(renderVoorspelling, 2000);
 
 // =========================================================
 //  Detectie: startlijn, boeien (rondingslijn), finish

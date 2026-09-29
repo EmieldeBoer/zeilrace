@@ -235,6 +235,81 @@ function tijdOmTeWinnen(boot, times, raceStart, startPlan, nu) {
 const winLabel = w => w.plek === 1 || w.rest == null ? 'Om te winnen' : `Voor plek ${w.plek}`;
 const winWaarde = w => w.rest == null ? 'te laat' : formatDuur(w.rest);
 
+// --- Voorspelde eindstand (met rating) ---------------------------
+// Resterende baan (m) vanaf pos: naar het volgende doel, dan langs de nog te
+// ronden boeien naar het midden van de finish. gerond = {boeiId: ts}.
+function resterendeBaan(pos, gestart, gerond, lijnen, boeien) {
+  if (!(lijnen.finish && lijnen.finish.a)) return null;
+  const reeks = [];
+  if (!gestart) {                                           // eerst nog naar de startlijn, dan alle boeien
+    if (lijnen.start && lijnen.start.a) reeks.push(dichtstbijPuntOpLijn(pos, lijnen.start.a, lijnen.start.b));
+    boeien.forEach(b => reeks.push(b));
+  } else {                                                  // de boeien vanaf de eerste nog niet geronde
+    const v = boeien.findIndex((b, i) => (gerond || {})[boeiId(b, i)] == null);
+    if (v !== -1) boeien.slice(v).forEach(b => reeks.push(b));
+  }
+  // de finish: het dichtstbijzijnde punt als dat het volgende doel is, anders het midden
+  reeks.push(reeks.length ? lijnMidden(lijnen.finish) : dichtstbijPuntOpLijn(pos, lijnen.finish.a, lijnen.finish.b));
+  let m = afstandMeter(pos, reeks[0]);
+  for (let i = 1; i < reeks.length; i++) m += afstandMeter(reeks[i - 1], reeks[i]);
+  return m;
+}
+// Laatste spoorpunt op of vóór tijdstip t (pts op tijd gesorteerd)
+function spoorPuntOp(pts, t) {
+  if (!pts || !pts.length || pts[0].ts > t) return null;
+  let lo = 0, hi = pts.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (pts[m].ts <= t) lo = m; else hi = m - 1; }
+  return pts[lo];
+}
+// Voorspelling per boot: binnen (echte tijd) of onderweg (verwacht). Het tempo is de
+// voortgang langs de baan (dus inclusief kruisen): half het gemiddelde sinds de start,
+// half dat van het laatste kwartier.
+// d = { times, gerond: {boot: {id: ts}}, sporen: {boot: [{lat,lng,ts}]}, posities: {boot: {lat,lng}},
+//       lijnen, boeien, raceStart, startPlan, nu } → [{ boot, status, finish, gecorr, zeker }] op volgorde
+function voorspelEindstand(d) {
+  const rijen = [];
+  Object.keys(BOTEN).forEach(b => {
+    // de baan van déze boot (bij een lusstart met de eigen lus erin) en de lengte ervan
+    const baan = d.baanVan ? d.baanVan(b) : d.boeien;
+    const totaal = d.lijnen.start && d.lijnen.start.a ? resterendeBaan(lijnMidden(d.lijnen.start), false, {}, d.lijnen, baan) : null;
+    const t = d.times[b] || {}, eigenStart = eigenStartVan(b, t, d.raceStart, d.startPlan);
+    if (t.start == null || eigenStart == null) return;                       // nog niet gestart: geen voorspelling
+    if (t.finish != null) {
+      rijen.push({ boot: b, status: 'binnen', finish: t.finish, gecorr: gecorrigeerdeTijd(b, t.finish, d.raceStart, d.startPlan, eigenStart), zeker: true });
+      return;
+    }
+    const pos = d.posities[b]; if (!pos) return;
+    const gerond = d.gerond[b] || {};
+    const rest = resterendeBaan(pos, true, gerond, d.lijnen, baan);
+    if (rest == null) return;
+    const vanStart = Math.max(t.start, eigenStart), sinds = (d.nu - vanStart) / 1000;
+    const gemiddeld = totaal != null && sinds > 120 ? (totaal - rest) / sinds : null;   // m/s langs de baan
+    let recent = null;
+    const toen = spoorPuntOp(d.sporen[b], d.nu - 15 * 60e3);
+    if (toen && toen.ts >= vanStart) {
+      const gerondToen = {}; Object.entries(gerond).forEach(([id, ts]) => { if (ts <= toen.ts) gerondToen[id] = ts; });
+      const restToen = resterendeBaan(toen, true, gerondToen, d.lijnen, baan);
+      if (restToen != null) recent = (restToen - rest) / ((d.nu - toen.ts) / 1000);
+    }
+    const tempo = gemiddeld != null && gemiddeld > .1 && recent != null && recent > .1 ? (gemiddeld + recent) / 2
+      : gemiddeld != null && gemiddeld > .1 ? gemiddeld : recent != null && recent > .1 ? recent : null;
+    if (!tempo) return;
+    const finish = d.nu + rest / tempo * 1000;
+    rijen.push({ boot: b, status: 'onderweg', finish, gecorr: gecorrigeerdeTijd(b, finish, d.raceStart, d.startPlan, eigenStart), zeker: false });
+  });
+  return rijen.sort((a, c) => a.gecorr - c.gecorr);
+}
+// Als tabel (naam(b) = weergavenaam). Leeg als er niets te voorspellen valt.
+function voorspellingHtml(rijen, naam, eigen) {
+  if (!rijen.length) return '';
+  return '<table class="voorspelling"><thead><tr><th class="pos">#</th><th>Boot</th><th class="tijd">Binnen</th>' +
+    '<th class="tijd">Gecorr.</th></tr></thead><tbody>' +
+    rijen.map((r, i) => `<tr class="${r.zeker ? 'zeker' : 'verwacht'}${r.boot === eigen ? ' eigen' : ''}">` +
+      `<td class="pos">${i + 1}</td><td class="boot-cel"><span class="dot" style="background:${BOTEN[r.boot].kleur}"></span>${esc(naam(r.boot))}</td>` +
+      `<td class="tijd">${r.zeker ? '🏁 ' : '≈ '}${klokHM(r.finish)}</td><td class="tijd">${r.zeker ? '' : '≈ '}${formatDuur(r.gecorr)}</td></tr>`).join('') +
+    '</tbody></table>';
+}
+
 // --- Live data van een boot (snelheid, VMG, doel, afstand, tijd) -
 // Optioneel in s: afgelegd (m, sinds de start) en win (uit tijdOmTeWinnen).
 function bootData(s, lijnen, boeien) {
@@ -272,7 +347,31 @@ const TEGEL_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 function maakKaart(id) {
   const k = L.map(id).setView([52.4, 5.4], 12);
   L.tileLayer(TEGEL_URL, { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(k);
+  zeemijlSchaal(k);
   return k;
+}
+// Schaalbalk in zeemijl (Leaflet kent alleen meter/mijl): een mooie ronde lengte
+// van hooguit ~110 px, bij kleine afstanden in kabellengtes van 0,1 zm
+function zeemijlSchaal(kaart) {
+  const c = L.control({ position: 'bottomright' });
+  c.onAdd = () => {
+    const div = L.DomUtil.create('div', 'zeemijl-schaal');
+    div.innerHTML = '<div class="zs-balk"><i></i><i></i></div><div class="zs-tekst"></div>';
+    const bijwerken = () => {
+      const h = kaart.getSize().y / 2, p1 = kaart.containerPointToLatLng([0, h]), p2 = kaart.containerPointToLatLng([110, h]);
+      const zmPer110 = kaart.distance(p1, p2) / 1852;
+      const stappen = [.01, .02, .05, .1, .2, .25, .5, 1, 2, 5, 10, 20, 50, 100];
+      const zm = stappen.filter(s => s <= zmPer110).pop() || stappen[0];
+      div.querySelector('.zs-balk').style.width = Math.round(110 * zm / zmPer110) + 'px';
+      div.querySelector('.zs-tekst').textContent = String(zm) + ' zm' +
+        (zm < .1 ? ` (${Math.round(zm * 1852)} m)` : '');
+    };
+    kaart.on('zoomend moveend resize', bijwerken);
+    setTimeout(bijwerken, 0);
+    L.DomEvent.disableClickPropagation(div);
+    return div;
+  };
+  c.addTo(kaart);
 }
 // --- Piratenschepen als kaartsymbool (bovenaanzicht, draaien mee met de koers) ---
 // Drie modellen, op dezelfde schaal getekend (in meters), zodat de onderlinge
@@ -432,13 +531,16 @@ function lusIcoon(letter, kleur) {
 }
 // Paarse rondingslijnen (getekend korter dan de 10 km die meetelt).
 // Optioneel een eigen kleur en een filter op de boeien die getekend worden.
+// Over de volle lengte waarmee de ronding ook echt wordt gemeten (RONDINGS_LIJN_M), in
+// de kleur van de boei: oranje voor de gewone boeien, de bootkleur voor een lusboei.
 function tekenRondingslijnen(kaart, boeien, lijnen, lagen, kleur, filter) {
   boeien.forEach((boei, i) => {
     if (filter && !filter(boei)) return;
     const { prev, next } = boeiPrevNext(i, boeien, lijnen);
-    const rl = rondingsLijn(boei, prev, next, 6, 150);
+    const rl = rondingsLijn(boei, prev, next, 6, RONDINGS_LIJN_M);
+    const boeiKleur = boei.lus && BOTEN[boei.lus] ? BOTEN[boei.lus].kleur : (kleur || '#d98b2b');
     if (rl) lagen.push(L.polyline([[rl.a.lat, rl.a.lng], [rl.b.lat, rl.b.lng]],
-      { color: kleur || '#e05fd8', weight: 3, dashArray: '4 6', interactive: false }).addTo(kaart));
+      { color: boeiKleur, weight: 3, dashArray: '6 7', opacity: .9, interactive: false }).addTo(kaart));
   });
 }
 
