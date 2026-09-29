@@ -3,3 +3,4 @@ Thumbs.db
 .env.local
 dist/
 node_modules/
+firebase-debug.log
