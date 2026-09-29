@@ -11,6 +11,7 @@ const DNF_PUNTEN = FLEET.length + 1;   // niet gefinisht = aantal boten + 1
 
 let timesData = {}, raceStart = null, startPlan = null, boeien = [], lijnData = {};
 let rondingData = {}, resultsData = {}, namen = {};
+let voorstel = null, akkoordData = {};   // startvoorstel van de wedstrijdleiding + akkoord per boot
 const posData = {}, laatsteTs = {}, markers = {}, sporen = {};
 let admin = false, geselecteerd = null, windKn = null, windRichting = null, eersteFix = true;
 const spoorPunten = {};   // per boot [{lat,lng,ts}] — voor het scheepsjournaal
@@ -701,7 +702,7 @@ function renderPlanning() {
   const baan = huidigeBaan();
   const nm = baanLengteNm(baan.lines, baan.marks);
   const isWL = WL_MODUS && admin;
-  if (nm == null && !isWL && !raceStart) { sectie.hidden = true; return; }
+  if (nm == null && !isWL && !raceStart && !voorstel) { sectie.hidden = true; return; }
   sectie.hidden = false;
   let h = '';
   if (raceStart) {
@@ -709,7 +710,12 @@ function renderPlanning() {
     const regels = FLEET.map(b => ({ b, t: raceStart + vertragingVan(startPlan, b) })).sort((x, y) => x.t - y.t)
       .map(x => `${dotHtml(x.b)}${esc(naamVan(x.b))} — ${formatKlok(x.t)}` +
         (lussen && lussen[x.b] ? ` · lus +${formatAfstand(lussen[x.b].extraM)}` : '')).join('<br>');
-    h += `<div class="optie"><b>${startNaam(startPlan && startPlan.modus)} gepland</b><br>${regels}</div>`;
+    h += `<div class="optie"><b>🔒 ${startNaam(startPlan && startPlan.modus)} vastgelegd</b><br>${regels}</div>`;
+  } else if (voorstel) {
+    const eens = akkoordVan(voorstel, akkoordData), verlopen = voorstel.t <= Date.now();
+    h += `<div class="optie"><b>📨 Startvoorstel: ${startNaam(voorstel.plan && voorstel.plan.modus).toLowerCase()} om ` +
+      `${formatKlok(voorstel.t)}</b>${verlopen ? ' <span class="waarschuwing">verlopen</span>' : ''}<br>` +
+      FLEET.map(b => `${dotHtml(b)}${esc(naamVan(b))}: ${eens.includes(b) ? '✔ akkoord' : '⏳ nog niet'}`).join('<br>') + '</div>';
   }
   if (nm == null) {
     h += '<div class="sub">Zet een startlijn, boeien en een finishlijn om de verwachte tijd per boot te zien.</div>';
@@ -732,40 +738,68 @@ function renderPlanning() {
   }
   box.innerHTML = h;
   // Startknoppen staan bij de wedstrijdleiding (tab Race); hier alleen hun toestand bijwerken
-  el('btnSeinGelijk').disabled = !!concept;
-  el('btnSeinAchter').disabled = !!concept || nm == null;
-  el('btnSeinLus').disabled = !!concept || nm == null;
-  el('startUitleg').innerHTML = concept ? '<span class="waarschuwing">Bevestig eerst de concept-baan voordat je het startsein geeft.</span>'
+  const vast = !!raceStart;
+  el('btnSeinGelijk').disabled = !!concept || vast;
+  el('btnSeinAchter').disabled = !!concept || vast || nm == null;
+  el('btnSeinLus').disabled = !!concept || vast || nm == null;
+  el('startTijd').disabled = vast;
+  el('btnVoorstelWeg').hidden = vast || !voorstel;
+  if (!vast && !startTijdGekozen) el('startTijd').value = klokHM(voorgesteldeStartTijd());
+  el('startUitleg').innerHTML = vast ? '🔒 De start ligt vast en verandert niet meer. Een nieuwe start kan pas na ' +
+      '<b>Race afronden</b> of <b>Live tijden resetten</b>.'
+    : concept ? '<span class="waarschuwing">Bevestig eerst de concept-baan voordat je een start voorstelt.</span>'
+    : voorstel ? 'Wacht tot alle boten op hun tracker akkoord hebben gegeven; dan ligt de start vast. Houd deze pagina open: ' +
+      'hij legt de start vast. Een nieuw voorstel vervangt het oude, en dan moet iedereen opnieuw akkoord geven.'
     : nm == null ? 'Start A kan altijd. Voor start B (achtervolging) en C (lussen) is een complete baan nodig: startlijn, boeien en finish.'
-    : 'Het startsein valt op het eerstvolgende 5-minutenmoment. Verwachte tijden, vertragingen en lussen staan in de <b>baanplanning</b>.';
+    : 'Kies een starttijd en stel een start voor. Elke boot moet op de tracker akkoord geven; daarna ligt de start vast. ' +
+      'Verwachte tijden, vertragingen en lussen staan in de <b>baanplanning</b>.';
 }
-el('btnSeinGelijk').onclick = () => geefStartsein('gelijk');
-el('btnSeinAchter').onclick = () => geefStartsein('achtervolging');
-el('btnSeinLus').onclick = () => geefStartsein('lus');
+el('btnSeinGelijk').onclick = () => stelStartVoor('gelijk');
+el('btnSeinAchter').onclick = () => stelStartVoor('achtervolging');
+el('btnSeinLus').onclick = () => stelStartVoor('lus');
+el('btnVoorstelWeg').onclick = () => {
+  if (!admin || raceStart || !voorstel || !confirm('Het startvoorstel intrekken?')) return;
+  db.ref(P).update({ voorstel: null, akkoord: null })
+    .then(() => toonWlStatus('Startvoorstel ingetrokken.')).catch(e => toonWlStatus('Mislukt: ' + dbFoutTekst(e)));
+};
 
-// Eerstvolgende 5-minuten-klokmoment, minimaal 5 min vanaf nu
-function volgendeStartTijd() {
+// Voorgestelde starttijd: het eerste 5-minutenmoment minstens 10 minuten vanaf nu,
+// zodat de boten de tijd hebben om akkoord te geven
+const MIN_VOORSTEL_MS = 2 * 60 * 1000;      // een voorstel ligt minstens 2 minuten in de toekomst
+let startTijdGekozen = false;               // zelf een tijd ingevuld? dan niet meer overschrijven
+function voorgesteldeStartTijd() {
   const stap = 5 * 60 * 1000;
-  return Math.ceil((Date.now() + stap) / stap) * stap;
+  return Math.ceil((Date.now() + 2 * stap) / stap) * stap;
+}
+el('startTijd').addEventListener('input', () => { startTijdGekozen = !!el('startTijd').value; });
+function gekozenStartTijd() {
+  const [u, m] = (el('startTijd').value || '').split(':').map(Number);
+  if (isNaN(u) || isNaN(m)) return null;
+  const d = new Date(); d.setHours(u, m, 0, 0);
+  return d.getTime();
 }
 
-function geefStartsein(modus) {
+// De wedstrijdleiding stelt een start voor; de boten geven op de tracker akkoord
+function stelStartVoor(modus) {
   if (!admin) return;
   if (concept) { toonWlStatus('Bevestig eerst de baan.'); return; }
+  if (raceStart) { toonWlStatus('De start ligt al vast. Rond eerst de race af of reset de live tijden.'); return; }
   const nm = baanLengteNm(lijnData, boeien);
   if (modus !== 'gelijk' && nm == null) { toonWlStatus(`Voor een ${startNaam(modus).toLowerCase()} is een complete baan nodig.`); return; }
-  if (raceStart && !confirm('Er is al een start gepland of een race bezig. Die vervangen?')) return;
-  const t = volgendeStartTijd();
+  const t = gekozenStartTijd();
+  if (t == null) { toonWlStatus('Kies eerst een starttijd.'); return; }
+  if (t < Date.now() + MIN_VOORSTEL_MS) { toonWlStatus('Die starttijd ligt te dicht bij nu of in het verleden: kies een tijd minstens 2 minuten vooruit.'); return; }
+  if (voorstel && !confirm('Er staat al een startvoorstel. Vervangen? Iedereen moet dan opnieuw akkoord geven.')) return;
   const plan = nm != null ? maakPlan(nm, windKn) : null;
   const lus = modus === 'lus' ? maakLusPlan(lijnData, boeien) : null;
   if (modus === 'lus' && !lus) { toonWlStatus('Voor een lusstart is een complete baan nodig.'); return; }
   const vert = modus === 'achtervolging' ? plan.vertraging : {};
   const regels = FLEET.map(b => ({ b, t: t + (vert[b] || 0) })).sort((x, y) => x.t - y.t)
     .map(x => `  ${naamVan(x.b)}: ${formatKlok(x.t)}` + (lus ? ` · lus +${formatAfstand(lus.extra[x.b])}` : '')).join('\n');
-  if (!confirm(`${startNaam(modus)} plannen?\n\n${regels}\n\n` +
+  if (!confirm(`${startNaam(modus)} voorstellen?\n\n${regels}\n\n` +
     (lus ? 'Iedereen start tegelijk en vaart een eigen lus van twee extra boeien. Wie het eerst finisht, wint.\n' +
       (lus.past ? '' : '⚠️ De lussen passen niet goed op deze baan (ze overlappen of steken buiten het rak).\n') + '\n' : '') +
-    'De racers zien een grote aftelklok tot hun start.')) return;
+    'Elke boot moet op de tracker akkoord geven. Pas als iedereen akkoord is, ligt de start vast; daarna verandert hij niet meer.')) return;
   const sp = { modus, gezet: Date.now() };
   if (plan) {
     sp.nm = +plan.nm.toFixed(3);
@@ -778,9 +812,22 @@ function geefStartsein(modus) {
     sp.verwacht = {};
     FLEET.forEach(b => { sp.verwacht[b] = Math.round(BOTEN[b].gph * lus.lengte[b] * plan.factor) * 1000; });
   }
-  db.ref(P).update({ raceStart: t, startPlan: sp })
-    .then(() => toonWlStatus(`Start gepland om ${formatKlok(t)} ✓`))
+  db.ref(P).update({ voorstel: { id: Date.now(), t, plan: sp }, akkoord: null })
+    .then(() => toonWlStatus(`📨 Startvoorstel verstuurd: ${formatKlok(t)}. Wacht op akkoord van alle boten.`))
     .catch(e => toonWlStatus('Mislukt: ' + dbFoutTekst(e)));
+}
+
+// Iedereen akkoord? Dan legt het dashboard van de wedstrijdleiding de start vast.
+// De databaseregels staan daarna geen andere starttijd meer toe.
+let bezigMetVastleggen = false;
+function probeerVastleggen() {
+  if (!admin || raceStart || bezigMetVastleggen || !iedereenAkkoord(voorstel, akkoordData) || voorstel.t <= Date.now()) return;
+  bezigMetVastleggen = true;
+  const t = voorstel.t;
+  db.ref(P).update({ raceStart: t, startPlan: voorstel.plan, voorstel: null, akkoord: null })
+    .then(() => { startTijdGekozen = false; toonWlStatus(`🔒 Iedereen akkoord: de start ligt vast om ${formatKlok(t)}.`); })
+    .catch(e => { if (!raceStart) toonWlStatus('Vastleggen mislukt: ' + dbFoutTekst(e)); })
+    .finally(() => { bezigMetVastleggen = false; });
 }
 
 // =========================================================
@@ -850,8 +897,9 @@ function controleerOffline() {
 const wlStatusEl = el('wlStatus');
 function toonWlStatus(bericht) {
   if (bericht) { wlStatusEl.textContent = bericht; return; }
-  wlStatusEl.textContent = !raceStart ? 'Nog geen start gepland.'
-    : (raceStart > Date.now() ? '🔫 Start gepland om ' : '🔫 Gestart om ') + formatKlok(raceStart);
+  wlStatusEl.textContent = raceStart ? (raceStart > Date.now() ? '🔒 Start vastgelegd om ' : '🔫 Gestart om ') + formatKlok(raceStart)
+    : voorstel ? `📨 Startvoorstel voor ${formatKlok(voorstel.t)}: ${akkoordVan(voorstel, akkoordData).length} van ${FLEET.length} boten akkoord.`
+    : 'Nog geen start voorgesteld.';
 }
 
 auth.onAuthStateChanged(async user => {
@@ -1171,7 +1219,8 @@ el('correctie').addEventListener('click', e => {
 
 // --- Race afronden, resetten, boten vrijgeven ---
 function wisLiveRace() {
-  return db.ref(P).update({ times: null, rounded: null, raceStart: null, startPlan: null, tracks: null, gen: Date.now() });
+  return db.ref(P).update({ times: null, rounded: null, raceStart: null, startPlan: null, voorstel: null, akkoord: null,
+    tracks: null, gen: Date.now() });
 }
 async function rondRaceAf() {
   if (!admin) return;
@@ -1273,6 +1322,8 @@ function koppelData() {
   luister(`${P}/marks`, 'value', s => { boeien = alsBoeien(s.val()); tekenBaan(); renderPlanning(); renderConceptBalk(); renderCorrectie(); });
   luister(`${P}/rounded`, 'value', s => { rondingData = s.val() || {}; renderCorrectie(); });
   luister(`${P}/raceStart`, 'value', s => { raceStart = s.val() || null; updateAftel(); renderPlanning(); toonWlStatus(); });
+  luister(`${P}/voorstel`, 'value', s => { voorstel = s.val() || null; renderPlanning(); probeerVastleggen(); });
+  luister(`${P}/akkoord`, 'value', s => { akkoordData = s.val() || {}; renderPlanning(); probeerVastleggen(); });
   luister(`${P}/startPlan`, 'value', s => { startPlan = s.val() || null; updateAftel(); renderPlanning(); tekenBaan(); renderCorrectie(); });
 
   FLEET.forEach(naam => {
@@ -1330,4 +1381,7 @@ metAuth(koppelData, e => meldFout(authFoutTekst(e)));
 verversLijst();
 tekenBaan();
 renderPlanning();
-setInterval(() => { verversLijst(); updateAftel(); controleerOffline(); renderConceptBalk(); renderJournaal(); renderSpel(); }, 1000);
+setInterval(() => {
+  verversLijst(); updateAftel(); controleerOffline(); renderConceptBalk(); renderJournaal(); renderSpel();
+  if (voorstel && !raceStart) renderPlanning();            // 'verlopen' en een nieuwe voorgestelde tijd bijwerken
+}, 1000);

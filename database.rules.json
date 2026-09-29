@@ -78,11 +78,22 @@
           }
         },
 
-        "raceStart": { ".validate": "newData.isNumber()" },
+        "voorstel": {
+          ".validate": "newData.hasChildren(['id', 't', 'plan']) && newData.child('id').isNumber() && newData.child('t').isNumber() && !root.child('races').child($race).child('raceStart').exists()"
+        },
+
+        "akkoord": {
+          "$boot": {
+            ".write": "auth != null && newData.exists() && root.child('races').child($race).child('claims').child($boot).val() === auth.uid",
+            ".validate": "newData.val() === root.child('races').child($race).child('voorstel').child('id').val() && root.child('races').child($race).child('voorstel').child('t').val() > now"
+          }
+        },
+
+        "raceStart": { ".validate": "newData.isNumber() && !data.exists() && newData.val() === root.child('races').child($race).child('voorstel').child('t').val()" },
         "gen": { ".validate": "newData.isNumber()" },
 
         "startPlan": {
-          ".validate": "newData.child('modus').val() === 'gelijk' || newData.child('modus').val() === 'achtervolging' || newData.child('modus').val() === 'lus'"
+          ".validate": "!data.exists() && newData.child('modus').val() === 'gelijk' || newData.child('modus').val() === 'achtervolging' || newData.child('modus').val() === 'lus'"
         },
 
         "lines": {

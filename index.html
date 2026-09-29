@@ -131,6 +131,11 @@
     .wl-tab.actief { background: linear-gradient(#e7c26a, #a67c2e); color: var(--inkt); box-shadow: inset 0 1px 0 #f7e2a6; }
     .wl-paneel .uitleg { margin-bottom: 10px; }
     .btnrow { display: flex; gap: 8px; }
+    .starttijd { display: flex; align-items: center; gap: 12px; margin: 0 0 9px; font-family: var(--font-kap); font-weight: 700;
+      font-size: .9rem; letter-spacing: .04em; color: var(--goud); }
+    .starttijd input { flex: 1; min-height: 50px; padding: 8px 12px; border-radius: 4px; border: 1px solid var(--perkament-rand);
+      background: var(--perkament); color: var(--inkt); font: inherit; font-size: 1.3rem; box-shadow: inset 0 2px 6px rgba(110,70,20,.3); }
+    .starttijd input:disabled { opacity: .5; }
     .btnrow .btn { flex: 1; }
     .wlstatus { font-size: .95rem; color: var(--ivoor-zacht); margin: 4px 0 10px; min-height: 1.2em; line-height: 1.4; font-style: italic; }
     .loginform label { display: block; font-family: var(--font-kap); font-size: .8rem; letter-spacing: .08em; color: var(--goud); margin: 8px 0 4px; }
@@ -330,15 +335,17 @@
         <div class="wl-paneel" data-wl="race" hidden>
           <button class="btn archief" id="btnArchief">✅ Race afronden &amp; opslaan</button>
           <button class="btn reset" id="btnReset">♻︎ Live tijden resetten</button>
+          <label class="starttijd">Starttijd <input type="time" id="startTijd" required></label>
           <div class="btnrow">
             <button class="btn gun" id="btnSeinGelijk">🔫 Start A: gelijk</button>
             <button class="btn gun" id="btnSeinAchter">🔫 Start B: achtervolging</button>
           </div>
           <button class="btn gun" id="btnSeinLus">🔫 Start C: lussen</button>
+          <button class="btn stil" id="btnVoorstelWeg" hidden>✖ Startvoorstel intrekken</button>
           <div class="uitleg">Start C: iedereen tegelijk weg, elke boot een eigen lus van twee extra boeien. Op de kaart
             zie je vaag waar de lussen komen. Liggen ze op een slechte plek, pas dan de baan aan.</div>
-          <div class="uitleg" id="startUitleg">Het startsein valt op het eerstvolgende 5-minutenmoment. Verwachte tijden en
-            vertragingen staan in de <b>baanplanning</b>.</div>
+          <div class="uitleg" id="startUitleg">Kies een starttijd en stel een start voor. Elke boot moet op de tracker akkoord
+            geven; daarna ligt de start vast.</div>
           <details class="correctie" id="correctieBlok">
             <summary>🛠 Boeironding handmatig corrigeren</summary>
             <div class="uitleg">Miste een telefoon een ronding (bijv. GPS uitgevallen)? Tik op een boei om hem
@@ -388,7 +395,9 @@
 
       <div class="kaartje">
         <h3>🚦 De start</h3>
-        <p>De race begint met een <span class="em">startsein</span> op een vast klokmoment; op de schermen telt een
+        <p>De wedstrijdleiding <span class="em">stelt een starttijd voor</span>, en elke boot geeft op de tracker akkoord.
+          Pas als iedereen akkoord is, ligt de start vast. Daarna verandert hij niet meer.
+          De race begint met een <span class="em">startsein</span> op die starttijd; op de schermen telt een
           grote klok ernaartoe af, met een kanonschot op 5 minuten, 1 minuut en bij de start. Je mag de startlijn pas ná
           jouw startsein in de juiste richting kruisen — ben je te vroeg over, dan moet je terug en opnieuw starten.
           <span class="em">De tijd loopt vanaf het startsein</span>, dus hoe later je de lijn kruist, hoe meer tijd

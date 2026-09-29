@@ -36,6 +36,7 @@ const SCHRIJF_INTERVAL = 3000;     // max 1x per 3 sec naar de database
 let lijnen = {}, raceStart = null, startPlan = null, boeien = [];
 let mijnTijden = { start: null, finish: null }, mijnGerond = {}, vorigeRuwe = null, mijnPositie = null;
 let volgDoel = null;               // 'eigen' | bootnaam | null
+let voorstel = null, akkoordData = {}, bekendVoorstel, laatsteVoorstelT = null;   // startvoorstel van de wedstrijdleiding + akkoord per boot
 let mijnKoers = null, koersVan = null;   // koers (graden) voor het kanon
 let kNamen = {};
 const kNaam = b => (kNamen[b] && String(kNamen[b]).trim()) ? String(kNamen[b]).trim() : BOTEN[b].model;
@@ -240,7 +241,50 @@ function updateAftel() {
       `<div class="lbl">${doel ? '➜ volgend doel: ' + doel : 'gefinisht 🏁'}</div>`;
   }
 }
-setInterval(updateAftel, 500);
+setInterval(() => { updateAftel(); renderVoorstel(); }, 500);
+
+// =========================================================
+//  Startvoorstel: akkoord geven op de starttijd
+// =========================================================
+// De wedstrijdleiding stelt een starttijd voor. Elke boot geeft hier akkoord (alleen
+// de telefoon die de boot heeft geclaimd). Als iedereen akkoord is, ligt de start vast.
+function renderVoorstel() {
+  const box = $('voorstel');
+  if (!voorstel || raceStart != null) { box.hidden = true; return; }
+  box.hidden = false;
+  const nu = Date.now(), ik = mijnBoot(), plan = voorstel.plan || {};
+  const verlopen = voorstel.t <= nu, eens = akkoordVan(voorstel, akkoordData), ikEens = eens.includes(ik);
+  const mijnT = voorstel.t + vertragingVan(plan, ik), lus = lussenVan(plan) && lussenVan(plan)[ik];
+  $('voorstelTekst').textContent = `${startNaam(plan.modus)} om ${formatKlok(voorstel.t)}` +
+    (verlopen ? ' (verlopen)' : ` (over ${formatDuur(voorstel.t - nu)})`) +
+    (mijnT !== voorstel.t ? ` · jouw start ${formatKlok(mijnT)}` : '') +
+    (lus ? ` · jouw lus +${formatAfstand(lus.extraM)}` : '') + '.';
+  const lijst = FLEET.map(b => `<span>${eens.includes(b) ? '✔' : '⏳'} ${esc(kNaam(b))}</span>`).join('');
+  if ($('voorstelAkkoord').innerHTML !== lijst) $('voorstelAkkoord').innerHTML = lijst;
+  const knop = $('btnAkkoord');
+  knop.disabled = ikEens || verlopen || watchId === null;
+  knop.textContent = eens.length === FLEET.length ? '✔ Iedereen akkoord: de start wordt vastgelegd…'
+    : ikEens ? '✔ Je bent akkoord. Wacht op de rest…'
+    : verlopen ? 'Voorstel verlopen: wacht op een nieuw voorstel'
+    : watchId === null ? 'Start eerst de tracking om akkoord te geven'
+    : '✔ Akkoord met deze starttijd';
+}
+$('btnAkkoord').addEventListener('click', () => {
+  if (!voorstel || watchId === null || voorstel.t <= Date.now()) return;
+  initAudio();
+  schrijf(db.ref(`${P}/akkoord/${mijnBoot()}`).set(voorstel.id));
+});
+// Nieuw voorstel binnen (niet bij het openen van de pagina): één glas en trillen
+function opVoorstel(v) {
+  if (bekendVoorstel !== undefined && v && v.id !== bekendVoorstel && raceStart == null) {
+    speel(GELUID.startlijn);
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+    meld(`📨 Startvoorstel: ${formatKlok(v.t)}. Geef akkoord op het kaartje hieronder.`, 'goed');
+  }
+  bekendVoorstel = v ? v.id : null;
+  if (v) laatsteVoorstelT = v.t;
+  voorstel = v; renderVoorstel();
+}
 
 // =========================================================
 //  Afgelegde afstand en hoeveel tijd je nog hebt om te winnen
@@ -331,8 +375,8 @@ function checkKruising(huidig) {
   if (!vorigeRuwe) { vorigeRuwe = huidig; return; }
   const A = vorigeRuwe, B = huidig;
 
-  // Startlijn: eerste kruising ná jouw startsein (zonder sein: meteen)
-  if (lijnen.start && lijnen.start.a && mijnTijden.start == null) {
+  // Startlijn: eerste kruising ná jouw startsein (zonder sein: meteen; niet zolang er een startvoorstel open staat)
+  if (lijnen.start && lijnen.start.a && mijnTijden.start == null && !(voorstel && raceStart == null)) {
     const t0 = mijnStart();
     if ((t0 == null || huidig.ts >= t0) && lijnstukkenKruisen(A, B, lijnen.start.a, lijnen.start.b)) {
       mijnTijden.start = huidig.ts;
@@ -574,7 +618,14 @@ document.addEventListener('visibilitychange', () => {
 function koppelData() {
   luister(`${P}/lines`, 'value', s => { lijnen = s.val() || {}; tekenCourse(); });
   luister(`${P}/marks`, 'value', s => { boeien = alsBoeien(s.val()); tekenCourse(); });
-  luister(`${P}/raceStart`, 'value', s => { raceStart = s.val() || null; vorigeRem = null; updateAftel(); updateStartInfo(); });
+  luister(`${P}/raceStart`, 'value', s => {
+    const nieuw = s.val() || null;
+    if (nieuw && raceStart == null && nieuw === laatsteVoorstelT)          // net vastgelegd na ieders akkoord
+      meld(`🔒 Iedereen akkoord: de start ligt vast om ${formatKlok(nieuw)}.`, 'goed');
+    raceStart = nieuw; vorigeRem = null; updateAftel(); updateStartInfo(); renderVoorstel();
+  });
+  luister(`${P}/voorstel`, 'value', s => opVoorstel(s.val() || null));
+  luister(`${P}/akkoord`, 'value', s => { akkoordData = s.val() || {}; renderVoorstel(); });
   luister(`${P}/startPlan`, 'value', s => { startPlan = s.val() || null; vorigeRem = null; updateAftel(); updateStartInfo(); tekenCourse(); });
   luister(`${P}/names`, 'value', s => {
     kNamen = s.val() || {};

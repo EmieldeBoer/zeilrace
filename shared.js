@@ -534,6 +534,11 @@ function vertragingVan(startPlan, boot) {
 // voor iedereen gelijk is: in theorie finisht de hele vloot tegelijk.
 const LUS_RUIMTE_M = 100;          // vrije ruimte rond een lus langs het rak (m)
 const lussenVan = sp => (sp && sp.modus === 'lus' && sp.lussen) || null;
+// --- Startvoorstel: de wedstrijdleiding stelt een starttijd voor, elke boot geeft akkoord ---
+// voorstel = { id, t, plan } (plan = het startPlan dat wordt vastgelegd); akkoord = { boot: voorstel.id }.
+// Pas als alle boten akkoord zijn, wordt het raceStart + startPlan; daarna verandert dat niet meer.
+const akkoordVan = (voorstel, akkoord) => Object.keys(BOTEN).filter(b => voorstel && akkoord && akkoord[b] === voorstel.id);
+const iedereenAkkoord = (voorstel, akkoord) => !!voorstel && akkoordVan(voorstel, akkoord).length === Object.keys(BOTEN).length;
 const startNaam = modus => ({ achtervolging: 'Achtervolgingsstart', lus: 'Lusstart' })[modus] || 'Gelijke start';
 
 // Baan van één boot: de gewone boeien (met vaste id en label), bij een

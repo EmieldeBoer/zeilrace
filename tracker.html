@@ -55,6 +55,13 @@
     .nav { margin-top: 14px; padding: 14px 16px; border-radius: 4px; background: var(--perkament-bg); color: var(--inkt);
       border: 1px solid var(--perkament-rand); box-shadow: var(--perkament-schaduw); }
     .navdoel { font-family: var(--font-kap); font-size: 1.15rem; font-weight: 700; color: var(--bloed); }
+    .voorstel { border: 2px dashed var(--bloed); }
+    .voorstel-tekst { font-size: 1.1rem; line-height: 1.45; margin-top: 4px; }
+    .voorstel-akkoord { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; font-size: .98rem; color: var(--inkt-zacht); }
+    .akkoord-knop { width: 100%; min-height: 56px; margin-top: 12px; border-radius: 6px; cursor: pointer; font-family: var(--font-kap);
+      font-size: 1.05rem; font-weight: 700; letter-spacing: .03em; background: linear-gradient(#4f9a74, var(--verdigris)); color: #f2fff5;
+      border: 1px solid #173a2b; box-shadow: inset 0 1px 0 #86c9a2, 0 3px 0 #10281d; }
+    .akkoord-knop:disabled { opacity: .55; cursor: default; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; margin-top: 10px; }
     .cell .k { font-family: var(--font-kap); font-size: .7rem; color: var(--inkt-zacht); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
     .cell .v { font-size: 1.8rem; font-weight: 700; }
@@ -138,6 +145,14 @@
 
   <button id="knop" class="start">▶︎ Start tracking</button>
   <div class="warn" id="warn" role="status"></div>
+
+  <!-- Startvoorstel van de wedstrijdleiding: elke boot moet akkoord geven -->
+  <div class="nav voorstel" id="voorstel" hidden>
+    <div class="navdoel">📨 Startvoorstel</div>
+    <div class="voorstel-tekst" id="voorstelTekst"></div>
+    <div class="voorstel-akkoord" id="voorstelAkkoord"></div>
+    <button type="button" id="btnAkkoord" class="akkoord-knop">✔ Akkoord met deze starttijd</button>
+  </div>
 
   <!-- Je eigen boot: hetzelfde kaartje als bij 'Andere boten' -->
   <div class="nav eigen-boot" id="nav">

@@ -22,7 +22,8 @@ Realtime Database, gehost op Netlify.
 | `verteller.js` | Het scheepsjournaal: elk uur een notitie over de race (alleen op het dashboard, zonder AI) |
 | `gedeeld.css` | Gedeelde stijlen |
 | `sw.js` | Service worker, alleen voor meldingen (geen caching) |
-| `database.rules.json` | Beveiligingsregels van de database. Plak ze in de Firebase-console. |
+| `database.rules.json` | Beveiligingsregels van de database. Publiceren met `./publiceer-regels.sh` (of plakken in de Firebase-console) |
+| `firebase.json`, `.firebaserc`, `publiceer-regels.sh` | Instellingen en script om de regels vanaf de laptop te publiceren |
 | `_headers` | Extra beveiligingsheaders voor Netlify |
 
 ---
@@ -44,8 +45,7 @@ Zonder deze stappen toont de app *"Firebase Authentication is nog niet ingesteld
      └─ <User UID> : true
    ```
    (Waarde `true` als boolean, niet als tekst.)
-5. **Regels publiceren:** Realtime Database → tab *Rules* → plak de inhoud van
-   `database.rules.json` → **Publish**.
+5. **Regels publiceren:** zie [Regels publiceren](#regels-publiceren) hieronder.
 6. **Domein toestaan:** Authentication → *Settings* → *Authorized domains* → voeg
    `marzeille.netlify.app` toe (`localhost` staat er standaard al).
 
@@ -54,6 +54,8 @@ Na deze stappen geldt:
 - Kijkers kunnen alleen **lezen**.
 - Een telefoon kan alleen schrijven naar de boot die hij heeft **geclaimd**.
 - Start- en finishtijden en boeironden kunnen maar één keer worden gezet.
+- De starttijd ligt pas vast als alle boten akkoord zijn met het voorstel. Daarna kan niemand hem nog wijzigen,
+  ook de wedstrijdleiding niet (alleen wissen met *Race afronden* of *Live tijden resetten*).
 - Alleen de wedstrijdleiding mag de baan, het startsein en de uitslagen wijzigen.
 
 > De `apiKey` in `config.js` is niet geheim; die hoort in een web-app. De beveiliging
@@ -113,9 +115,16 @@ wind van Open-Meteo, weergegeven in Beaufort.
    (geel op de kaart). Pas na **✓ Bevestigen** zien de boten ze. Zo voeg je tijdens de
    race niet per ongeluk een boei toe, maar kun je de baan wel bewust aanpassen,
    bijvoorbeeld bij een windshift.
-2. Geef in de tab **🏁 Race** het startsein: **Start A: gelijk**, **Start B: achtervolging** of **Start C: lussen**.
-   De start valt op het volgende 5-minutenmoment. De verwachte tijden en vertragingen staan in de baanplanning.
-3. Na de race: **Race afronden & opslaan**. De uitslag, de baan en de sporen worden
+2. Kies in de tab **🏁 Race** een **starttijd** (de app stelt het eerste 5-minutenmoment minstens 10 minuten vooruit voor)
+   en stel een start voor: **Start A: gelijk**, **Start B: achtervolging** of **Start C: lussen**.
+   De verwachte tijden en vertragingen staan in de baanplanning.
+3. Elke boot krijgt het voorstel op de tracker (met één glas van de scheepsbel) en tikt **✔ Akkoord**. Dat kan alleen
+   de telefoon die de boot heeft geclaimd, dus eerst *Start tracking*. Zodra alle boten akkoord zijn, legt het dashboard
+   van de wedstrijdleiding de start vast 🔒. Houd dat dashboard dus open tot het zover is.
+   - Een voorstel dat niet op tijd door iedereen is goedgekeurd, verloopt. Stel dan een nieuwe tijd voor.
+   - Een nieuw voorstel vervangt het oude; iedereen moet dan opnieuw akkoord geven. *✖ Startvoorstel intrekken* haalt het weg.
+   - Zolang er een voorstel open staat, telt het passeren van de startlijn nog niet.
+4. Na de race: **Race afronden & opslaan**. De uitslag, de baan en de sporen worden
    bewaard. In de tab *Uitslagen* staat per race een **▶ Replay** met een tijdslider,
    afspelen, **🎬 Video** (MP4 of WebM) en **🖼 Foto**.
 
@@ -212,6 +221,21 @@ python -m http.server 8000 --bind 127.0.0.1
 ```
 Open daarna http://127.0.0.1:8000/index.html en http://127.0.0.1:8000/tracker.html.
 GPS werkt alleen via `localhost`/`127.0.0.1` of via https.
+
+## Regels publiceren
+
+Na elke wijziging in `database.rules.json` moeten de regels opnieuw naar Firebase.
+
+**Met het script** (Node.js nodig):
+1. Eenmalig inloggen: `npx firebase-tools login`. Er opent een browser; log in met een Google-account
+   dat toegang heeft tot het project `marzeille-474a9`.
+2. Publiceren: `./publiceer-regels.sh`
+
+**Met de hand:** Firebase-console → Realtime Database → tab *Rules* → plak de inhoud van
+`database.rules.json` → **Publish**.
+
+Beide manieren vervangen alle regels door die in het bestand. Wijzig de regels dus alleen in het bestand,
+niet in de console.
 
 ## Online zetten (Netlify)
 
