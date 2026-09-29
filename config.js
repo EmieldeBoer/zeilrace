@@ -70,6 +70,39 @@ const RONDINGS_MARGE_MAX_M = 25;
 // ------------------------------------------------------------
 const LUS_MIN_M = 300;
 
+// ------------------------------------------------------------
+//  Bootquotes: uitspraken van aan boord. De verteller verwerkt er
+//  af en toe één in het scheepsjournaal. Een regel is een tekst, of
+//  { tekst, boot, wie } om te zeggen van welke boot (en van wie) hij komt, bijv.
+//    "Wie niet overstag gaat, gaat ten onder.",
+//    { tekst: "Dat was toch groen?", boot: "SO389" },
+// ------------------------------------------------------------
+const BOOT_QUOTES = [
+  // Gillepsie
+  ...[
+    'Onderzeeër: is dat niet gewoon een eiland?',
+    'Als er overheen is gepoept, zou je het dan nog houden?',
+    'Parel in je buik',
+    'Zeilen is voor even, twerken voor het leven',
+    { tekst: 'Skipper by day, alcoholic by night', wie: 'Emiel de Boer' },
+    'Sriracha dop',
+    'Heb je wel eens een aubergine in je reet gehad?',
+    'Kikadewado — kind kan de was doen',
+    'Daar kreeg ik een kleine tia van',
+    'Wakeboarden is gewoon een combi van twerken en snowboarden',
+    "Maak je vaker foto's van je poes?",
+    'Home is where the (homo) lulu is',
+    'Bipolaire piña colada',
+    'Mag ik aan die kan likken?',
+    'Straks gaat Dirk ook mee en heeft Milan Casper-shift',
+    'Hoge cappu-dichtheid',
+    'Moon-paradox: hoe meer je moont, hoe slechter je erin wordt',
+    'Moonflip en flashdive',
+    'Hee, ik plas niet uit mijn kont',
+    'Jari wilde z\'n ari laten zien → vallende ster → gecrashte moonflip',
+  ].map(q => Object.assign({ boot: 'SO519' }, typeof q === 'string' ? { tekst: q } : q)),
+];
+
 // Firebase initialiseren (wordt door beide pagina's gebruikt)
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();

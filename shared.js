@@ -265,7 +265,9 @@ function spoorPuntOp(pts, t) {
 // voortgang langs de baan (dus inclusief kruisen): half het gemiddelde sinds de start,
 // half dat van het laatste kwartier.
 // d = { times, gerond: {boot: {id: ts}}, sporen: {boot: [{lat,lng,ts}]}, posities: {boot: {lat,lng}},
-//       lijnen, boeien, raceStart, startPlan, nu } → [{ boot, status, finish, gecorr, zeker }] op volgorde
+//       lijnen, boeien, raceStart, startPlan, nu }
+//   → [{ boot, status, finish, rest, totaal, gecorr, zeker }] op volgorde
+//     rest = tijd tot de finish (ms), totaal = verzeilde tijd vanaf de eigen start (ms)
 function voorspelEindstand(d) {
   const rijen = [];
   Object.keys(BOTEN).forEach(b => {
@@ -275,7 +277,8 @@ function voorspelEindstand(d) {
     const t = d.times[b] || {}, eigenStart = eigenStartVan(b, t, d.raceStart, d.startPlan);
     if (t.start == null || eigenStart == null) return;                       // nog niet gestart: geen voorspelling
     if (t.finish != null) {
-      rijen.push({ boot: b, status: 'binnen', finish: t.finish, gecorr: gecorrigeerdeTijd(b, t.finish, d.raceStart, d.startPlan, eigenStart), zeker: true });
+      rijen.push({ boot: b, status: 'binnen', finish: t.finish, rest: 0, totaal: t.finish - eigenStart,
+        gecorr: gecorrigeerdeTijd(b, t.finish, d.raceStart, d.startPlan, eigenStart), zeker: true });
       return;
     }
     const pos = d.posities[b]; if (!pos) return;
@@ -295,41 +298,49 @@ function voorspelEindstand(d) {
       : gemiddeld != null && gemiddeld > .1 ? gemiddeld : recent != null && recent > .1 ? recent : null;
     if (!tempo) return;
     const finish = d.nu + rest / tempo * 1000;
-    rijen.push({ boot: b, status: 'onderweg', finish, gecorr: gecorrigeerdeTijd(b, finish, d.raceStart, d.startPlan, eigenStart), zeker: false });
+    rijen.push({ boot: b, status: 'onderweg', finish, rest: finish - d.nu, totaal: finish - eigenStart,
+      gecorr: gecorrigeerdeTijd(b, finish, d.raceStart, d.startPlan, eigenStart), zeker: false });
   });
   return rijen.sort((a, c) => a.gecorr - c.gecorr);
 }
 // Als tabel (naam(b) = weergavenaam). Leeg als er niets te voorspellen valt.
+// Per boot: tijd tot de finish (met de verwachte kloktijd), de totale verzeilde
+// tijd en de gecorrigeerde totale tijd.
 function voorspellingHtml(rijen, naam, eigen) {
   if (!rijen.length) return '';
-  return '<table class="voorspelling"><thead><tr><th class="pos">#</th><th>Boot</th><th class="tijd">Binnen</th>' +
-    '<th class="tijd">Gecorr.</th></tr></thead><tbody>' +
+  // voorspelde rijen staan cursief; het ≈ alleen bij de tijd tot de finish (past op een telefoon)
+  return '<table class="voorspelling"><thead><tr><th class="pos">#</th><th>Boot</th><th class="tijd">Tot finish</th>' +
+    '<th class="tijd">Totaal</th><th class="tijd">Gecorr.</th></tr></thead><tbody>' +
     rijen.map((r, i) => `<tr class="${r.zeker ? 'zeker' : 'verwacht'}${r.boot === eigen ? ' eigen' : ''}">` +
       `<td class="pos">${i + 1}</td><td class="boot-cel"><span class="dot" style="background:${BOTEN[r.boot].kleur}"></span>${esc(naam(r.boot))}</td>` +
-      `<td class="tijd">${r.zeker ? '🏁 ' : '≈ '}${klokHM(r.finish)}</td><td class="tijd">${r.zeker ? '' : '≈ '}${formatDuur(r.gecorr)}</td></tr>`).join('') +
+      `<td class="tijd">${r.zeker ? '🏁 binnen' : '≈ ' + formatDuur(r.rest)}<small class="klok">${klokHM(r.finish)}</small></td>` +
+      `<td class="tijd">${formatDuur(r.totaal)}</td><td class="tijd">${formatDuur(r.gecorr)}</td></tr>`).join('') +
     '</tbody></table>';
 }
 
 // --- Live data van een boot (snelheid, VMG, doel, afstand, tijd) -
-// Optioneel in s: afgelegd (m, sinds de start) en win (uit tijdOmTeWinnen).
+// Optioneel in s: afgelegd (m, sinds de start), win (uit tijdOmTeWinnen) en
+// totFinish (ms, de voorspelde tijd tot de finish uit voorspelEindstand).
 function bootData(s, lijnen, boeien) {
   if (!s || s.lat == null) return { status: 'geen' };
   const kn = v => (v * 1.94384).toFixed(1) + ' kn';
   const spd = s.speed != null ? kn(s.speed) : '—';
-  const extra = { afgelegd: s.afgelegd != null ? formatAfstand(s.afgelegd) : null, win: s.win || null };
+  const extra = { afgelegd: s.afgelegd != null ? formatAfstand(s.afgelegd) : null, win: s.win || null,
+    eta: s.totFinish != null ? '≈ ' + formatDuur(s.totFinish) : '—' };
   if (s.finish != null) return Object.assign({ status: 'finish', spd }, extra);
   const pos = { lat: s.lat, lng: s.lng };
   const doel = doelVanBoot(pos, s.start, s.finish, s.gerond, lijnen, boeien);
-  if (!doel) return Object.assign({ status: 'ok', spd, vmg: '—', doel: '—', afst: '—', eta: '—' }, extra);
+  if (!doel) return Object.assign({ status: 'ok', spd, vmg: '—', doel: '—', afst: '—' }, extra);
   const dist = afstandMeter(pos, doel.punt);
   const vmg = vmgNaarDoel(pos, s.speed, s.heading, doel.punt);
   return Object.assign({
     status: 'ok', spd,
     vmg: vmg != null ? kn(vmg) : '—', vmgNeg: vmg != null && vmg < 0,
-    doel: doel.label, afst: formatAfstand(dist),
-    eta: (s.speed != null && s.speed > 0.3) ? formatDuur(dist / s.speed * 1000) : '—'
+    doel: doel.label, afst: formatAfstand(dist)
   }, extra);
 }
+// Voorspelde tijd tot de finish van boot b uit de rijen van voorspelEindstand (null = onbekend/binnen)
+const totFinishVan = (rijen, b) => { const r = (rijen || []).find(x => x.boot === b && !x.zeker); return r ? r.rest : null; };
 // Als raster met labels (leesbaarder dan één lange zin)
 function bootStatsHtml(d) {
   if (d.status === 'geen') return '<div class="stats-leeg">nog geen positie</div>';
@@ -339,7 +350,7 @@ function bootStatsHtml(d) {
     return '<div class="stats">' + c('Snelheid', d.spd) + afg + '<div class="stats-finish">🏁 gefinisht</div></div>';
   const win = d.win ? c(winLabel(d.win), winWaarde(d.win), d.win.rest == null ? 'neg' : '') : '';
   return '<div class="stats">' + c('Snelheid', d.spd) + c('VMG', d.vmg, d.vmgNeg ? 'neg' : '') +
-    c('Doel', d.doel) + c('Afstand', d.afst) + c('Nog ca.', d.eta) + afg + win + '</div>';
+    c('Doel', d.doel) + c('Afstand', d.afst) + c('Voorspelde tijd tot finish', d.eta) + afg + win + '</div>';
 }
 
 // --- Kaart ------------------------------------------------------

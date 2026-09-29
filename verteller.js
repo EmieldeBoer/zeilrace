@@ -9,6 +9,7 @@
 //  Geen AI: de zinnen worden opgebouwd uit de sporen, tijden en
 //  rondingen. Iedereen die het dashboard opent ziet dezelfde notities,
 //  ook van de uren vóórdat hij keek (ze worden uit de sporen herleid).
+//  Tussendoor: piratenversierzinnen en quotes uit BOOT_QUOTES (config.js).
 //
 //  Verteller.journaal(d) → [{ t, kop, tekst }]   (oud → nieuw)
 //    d = { raceStart, startPlan, times, rounded, boeien, lijnen,
@@ -119,7 +120,8 @@ const Verteller = (() => {
     if (!onderweg.length && !binnen.length) {
       zinnen.push(kies([
         'Het startschot heeft geklonken, maar nog geen schip heeft de startlijn gekruist.',
-        'Het kanon heeft gesproken — nu is het wachten op het eerste schip over de startlijn.']));
+        'Het kanon heeft gesproken — nu is het wachten op het eerste schip over de startlijn.',
+        'Boem! Het kanon heeft gebulderd, maar de lijn is nog onaangeroerd. Arr, wat een treuzelaars, mateys!']));
       const bijLijn = wachtend.filter(v => v.doel && v.afst != null).map(v => `${v.naam} ligt op ${formatAfstand(v.afst)}`);
       if (bijLijn.length) zinnen.push(`${opsomming(bijLijn)} van de lijn.`);
     }
@@ -141,13 +143,17 @@ const Verteller = (() => {
         zinnen.push(kies([
           `${eerste.naam} ligt al binnen en kijkt met een glas rum toe hoe de rest ploetert.`,
           `${eerste.naam} heeft de finish al gehaald en mag het anker laten vallen.`,
-          `${eerste.naam} ligt al veilig in de haven.`]));
+          `${eerste.naam} ligt al veilig in de haven.`,
+          `Arr! ${eerste.naam} ligt al binnen en telt de dubloenen in de schatkist.`]));
       } else if (eerste.start != null && eerste.doel) {
         const nog = eerste.afst != null ? ` Nog ${formatAfstand(eerste.afst)} te gaan.` : '';
+        const doel = doelNaam(eerste.doel.label);
         zinnen.push(kies([
-          `${eerste.naam} voert de vloot aan en zet koers naar ${doelNaam(eerste.doel.label)}.`,
-          `Aan kop vaart ${eerste.naam}, op weg naar ${doelNaam(eerste.doel.label)}.`,
-          `${eerste.naam} leidt de jacht; ${doelNaam(eerste.doel.label)} ligt in het vizier.`]) + nog);
+          `${eerste.naam} voert de vloot aan en zet koers naar ${doel}.`,
+          `Aan kop vaart ${eerste.naam}, op weg naar ${doel}.`,
+          `${eerste.naam} leidt de jacht; ${doel} ligt in het vizier.`,
+          `${eerste.naam} leest de schatkaart het best en gaat voorop, op weg naar ${doel}.`,
+          `Arr, ${eerste.naam} heeft de wind in de zeilen en leidt de vloot naar ${doel}.`]) + nog);
       } else if (eerste.start != null) {
         zinnen.push(`${eerste.naam} ligt voorop.`);
       }
@@ -161,9 +167,11 @@ const Verteller = (() => {
         const gat = tweede.afst - eerste.afst;
         zinnen.push(gat < 150
           ? kies([`${tweede.naam} zit er vlak achter — dit is nog lang niet beslist!`,
-                  `${tweede.naam} ligt op een kanonschot afstand.`])
+                  `${tweede.naam} ligt op een kanonschot afstand.`,
+                  `${tweede.naam} ruikt de buit en zit er vlak achter, matey!`])
           : kies([`${tweede.naam} volgt op ${formatAfstand(gat)}.`,
-                  `${tweede.naam} jaagt erachteraan, ${formatAfstand(gat)} achterstand.`]));
+                  `${tweede.naam} jaagt erachteraan, ${formatAfstand(gat)} achterstand.`,
+                  `${tweede.naam} tuurt door de kijker naar de koploper, ${formatAfstand(gat)} verderop.`]));
       } else if (eerste.finish == null && tweede.benen < eerste.benen) {
         const k = eerste.benen - tweede.benen;
         zinnen.push(`${tweede.naam} moet nog ${k === 1 ? 'één merkteken' : k + ' merktekens'} meer halen dan de koploper.`);
@@ -172,7 +180,8 @@ const Verteller = (() => {
       }
     }
     onderweg.filter(v => v !== eerste && v !== tweede).forEach(v => { if (v.doel && v.afst != null)
-      zinnen.push(`${v.naam} sluit de rij, nog ${formatAfstand(v.afst)} tot ${doelNaam(v.doel.label)}.`); });
+      zinnen.push(kies([`${v.naam} sluit de rij, nog ${formatAfstand(v.afst)} tot ${doelNaam(v.doel.label)}.`,
+        `${v.naam} vaart in de achterhoede met de kaart nog op tafel: nog ${formatAfstand(v.afst)} tot ${doelNaam(v.doel.label)}.`])); });
 
     // 3. Wat er sinds de vorige notitie gebeurde (niet wat de openingszin al vertelde)
     const sinds = o.vorigeT != null ? o.vorigeT : d.raceStart, gebeurd = [];
@@ -195,9 +204,11 @@ const Verteller = (() => {
           zinnen.push(`In ${soortRace(d)} telt de finishvolgorde: ${binnen[0].naam} heeft de race gewonnen.`);
       } else {
         const beste = [...binnen].sort((a, c) => gecorr(d, a.boot, a.finish) - gecorr(d, c.boot, c.finish))[0];
+        const bt = formatDuur(gecorr(d, beste.boot, beste.finish));
         zinnen.push(binnen.length === 1
-          ? `Op gecorrigeerde tijd zet ${beste.naam} de maatstaf: ${formatDuur(gecorr(d, beste.boot, beste.finish))}.`
-          : `Op gecorrigeerde tijd staat ${beste.naam} voorlopig bovenaan (${formatDuur(gecorr(d, beste.boot, beste.finish))}).`);
+          ? kies([`Op gecorrigeerde tijd zet ${beste.naam} de maatstaf: ${bt}.`,
+                  `Op gecorrigeerde tijd zet ${beste.naam} de maatstaf (${bt}) en houdt de schatkist voorlopig stevig vast.`])
+          : `Op gecorrigeerde tijd staat ${beste.naam} voorlopig bovenaan (${bt}).`);
         const tijden = tijdenOp(d, t);
         onderweg.forEach(v => {
           const w = tijdOmTeWinnen(v.boot, tijden, d.raceStart, d.startPlan, t);
@@ -207,7 +218,8 @@ const Verteller = (() => {
           const haalbaar = nodigKn == null ? '' : nodigKn > 12 || (v.kn != null && nodigKn > v.kn * 2)
             ? ` — met nog ${formatAfstand(v.afst)} te gaan is dat niet meer te halen`
             : ` — dat vraagt gemiddeld ${nodigKn.toFixed(1)} kn${v.kn != null ? ` (nu ${v.kn.toFixed(1)} kn)` : ''}`;
-          if (w.rest == null) zinnen.push(`${v.naam} kan ${beste.naam} met de rating niet meer inhalen.`);
+          if (w.rest == null) zinnen.push(kies([`${v.naam} kan ${beste.naam} met de rating niet meer inhalen.`,
+            `${v.naam} kan ${beste.naam} met de rating niet meer inhalen — die schat is verloren, matey.`]));
           else if (w.plek === 1) zinnen.push(`${v.naam} moet vóór ${klokHM(w.tot)} binnen zijn om nog te winnen${haalbaar}.`);
           else zinnen.push(`Voor ${v.naam} zit winnen er niet meer in, maar plek ${w.plek} nog wel: binnen vóór ${klokHM(w.tot)}${haalbaar}.`);
         });
@@ -219,7 +231,8 @@ const Verteller = (() => {
       const snel = onderweg.filter(v => v.kn != null && v.kn > 0.5).sort((a, c) => c.kn - a.kn)[0];
       if (snel && onderweg.length > 1) zinnen.push(kies([
         `${snel.naam} heeft nu de meeste vaart: ${snel.kn.toFixed(1)} knopen.`,
-        `Snelste schip op dit moment: ${snel.naam}, ${snel.kn.toFixed(1)} kn.`]));
+        `Snelste schip op dit moment: ${snel.naam}, ${snel.kn.toFixed(1)} kn.`,
+        `Arr, ${snel.naam} vliegt over het water met ${snel.kn.toFixed(1)} knopen!`]));
     }
 
     // 6. Boten die nog niet over de startlijn zijn. Bij een gelijke start klinkt één
@@ -254,7 +267,9 @@ const Verteller = (() => {
           `${i + 1}. ${v.naam} — ${formatDuur(verzeild(d, v.boot, v.finish))} × ${ratingVan(d, v.boot).toFixed(3)} = ` +
           `${formatDuur(gecorr(d, v.boot, v.finish))}`).join('; ') + '.');
         const [w, t2] = rating;
-        zinnen.push(`${w.naam} wint met ${formatDuur(gecorr(d, t2.boot, t2.finish) - gecorr(d, w.boot, w.finish))} voorsprong op ${t2.naam}.`);
+        const marge = formatDuur(gecorr(d, t2.boot, t2.finish) - gecorr(d, w.boot, w.finish));
+        zinnen.push(kies([`${w.naam} wint met ${marge} voorsprong op ${t2.naam}.`,
+                          `${w.naam} wint met ${marge} voorsprong op ${t2.naam} en gaat er met de schatkist vandoor.`]));
         const stijgers = rating.filter((v, i) => water.indexOf(v) > i);
         if (stijgers.length) zinnen.push(`De rating husselt de volgorde: ${opsomming(stijgers.map(v =>
           `${v.naam} klimt van plek ${water.indexOf(v) + 1} naar ${rating.indexOf(v) + 1}`))}.`);
@@ -264,7 +279,8 @@ const Verteller = (() => {
     }
     if (niet.length) zinnen.push(`${opsomming(niet.map(v => v.naam))} ${niet.length > 1 ? 'kwamen' : 'kwam'} niet binnen.`);
     zinnen.push(niet.length ? 'De race is afgerond.'
-      : kies(['Alle schepen zijn binnen. Tijd voor de buit!', 'De hele vloot ligt binnen — op naar de uitslag!']));
+      : kies(['Alle schepen zijn binnen. Tijd voor de buit!', 'De hele vloot ligt binnen — op naar de uitslag!',
+              'Arr, de hele vloot ligt binnen — open de schatkist en schenk de rum, mateys!']));
     return plat(zinnen.join(' '));
   }
 
@@ -281,19 +297,22 @@ const Verteller = (() => {
       ? k([`${d.naam(s.boot)} gaat als eerste over de startlijn — de achtervolging is begonnen!`,
            `De jacht is geopend: ${d.naam(s.boot)} vertrekt als eerste.`])
       : k([`Eén startschot voor de hele vloot, en ${d.naam(s.boot)} is als eerste over de lijn!`,
-           `Na het startschot van ${klokHM(d.raceStart)} is ${d.naam(s.boot)} als eerste over de startlijn.`]) }));
+           `Na het startschot van ${klokHM(d.raceStart)} is ${d.naam(s.boot)} als eerste over de startlijn.`,
+           `Arr! ${d.naam(s.boot)} steekt als eerste de lijn over — de jacht op de schat is begonnen!`]) }));
     d.boeien.forEach((bo, i) => {
       const id = boeiId(bo, i), r = eerste(b => d.rounded[b] && d.rounded[b][id]);
       if (r) ev.push(Object.assign(r, { soort: 'boei', kop: `boei ${i + 1} als eerste gerond`, voor: k => k([
         `${d.naam(r.boot)} rondt als eerste boei ${i + 1}.`,
-        `Boei ${i + 1} is bereikt: ${d.naam(r.boot)} gaat er als eerste omheen.`]) }));
+        `Boei ${i + 1} is bereikt: ${d.naam(r.boot)} gaat er als eerste omheen.`,
+        `${d.naam(r.boot)} rondt als eerste boei ${i + 1} — weer een kruisje op de schatkaart.`]) }));
     });
     const f = eerste(b => finishVan(d, b));
     if (f && d.deelnemers.length > 1) ev.push(Object.assign(f, { soort: 'finish', kop: 'eerste finish', voor: k => eersteWint(d)
       ? k([`${d.naam(f.boot)} komt als eerste over de finish en wint ${soortRace(d)}! 🏁`,
            `De eerste finish is meteen de winst: ${d.naam(f.boot)} is als eerste binnen! 🏁`])
       : k([`${d.naam(f.boot)} komt als eerste over de finish! 🏁`,
-           `De eerste finish is binnen: ${d.naam(f.boot)} haalt als eerste de haven! 🏁`]) }));
+           `De eerste finish is binnen: ${d.naam(f.boot)} haalt als eerste de haven! 🏁`,
+           `Land in zicht! ${d.naam(f.boot)} komt als eerste over de finish, arr! 🏁`]) }));
     return ev;
   }
 
@@ -315,12 +334,58 @@ const Verteller = (() => {
           const van = huidig, naar = kandidaat;
           uit.push({ t: sinds, boot: naar, soort: 'kop', kop: 'wisseling aan kop', voor: k => k([
             `${d.naam(naar)} neemt de leiding over van ${d.naam(van)}!`,
-            `Wisseling aan kop: ${d.naam(naar)} is ${d.naam(van)} voorbij.`]) });
+            `Wisseling aan kop: ${d.naam(naar)} is ${d.naam(van)} voorbij.`,
+            `Muiterij aan kop! ${d.naam(naar)} ontfutselt ${d.naam(van)} de leiding.`]) });
         }
         huidig = kandidaat; kandidaat = null; teller = 0;
       }
     }
     return uit;
+  }
+
+  // ---- Tussendoor: een piratenversierzin of een quote van aan boord ----
+  // Om de beurt: notitie 2, 5, 8… krijgt een versierzin, notitie 3, 6, 9… een
+  // bootquote (als die er zijn). Ze rouleren, dus binnen een race geen herhaling.
+  const VERSIERZINNEN = [
+    'Ben jij een schatkaart? Want ik raak steeds verdwaald in jouw ogen.',
+    'Jij bent de X op mijn schatkaart.',
+    'Arr, sinds ik jou zag zit mijn hart vol knopen — en geen enkele paalsteek.',
+    'Ben jij de Poolster? Zonder jou vaar ik reddeloos verloren.',
+    'Mag ik je enteren? Ik beloof dat de loopplank blijft liggen.',
+    'Jij glanst meer dan alle dubloenen in mijn schatkist.',
+    'Ik zou alle zeven zeeën bevaren voor één glimlach van jou, matey.',
+    'Is het de wind, of blaas jij me gewoon omver?',
+    'Laat mij je anker zijn in elke storm.',
+    'Mijn kompas wijst niet meer naar het noorden — alleen nog naar jou.',
+    'Jij hebt mijn hart gekaapt, en ik vraag geen losgeld.',
+    'Kom je bij mij aan boord? Ik heb rum, een kaart en plek in de hangmat.',
+    'Ben jij een kanonskogel? Want je raakte me recht in mijn hart.',
+    'Ik zoek geen schat meer — ik heb jou gevonden. Arr.'];
+  const bootQuotes = () => (typeof BOOT_QUOTES !== 'undefined' ? BOOT_QUOTES : [])
+    .map(q => typeof q === 'string' ? { tekst: q } : q).filter(q => q && q.tekst);
+  function tussendoor(d, nr, soort) {
+    if (!d.raceStart || !d.deelnemers || !d.deelnemers.length) return '';
+    const kies = kiezer(Math.floor(d.raceStart / 1000) + nr * 104729);
+    const schuif = Math.floor(d.raceStart / 60000), beurt = Math.floor(nr / 3);
+    const quotes = bootQuotes();
+    if (nr % 3 === 2 && quotes.length) {
+      const q = quotes[(schuif + beurt) % quotes.length];
+      const tekst = `„${q.tekst.replace(/^["„“”']+|["„“”']+$/g, '')}”${q.wie ? ` (${q.wie})` : ''}`;
+      const van = q.boot ? (BOTEN[q.boot] ? d.naam(q.boot) : q.boot) : null;
+      return van
+        ? kies([`Aan boord van ${van} klonk het weer: ${tekst}`, `Zoals ze op ${van} zeggen: ${tekst}`,
+                `Uit het logboek van ${van}: ${tekst}`])
+        : kies([`Zoals ze aan boord zeggen: ${tekst}`, `Een oude zeebonk zou zeggen: ${tekst}`,
+                `${tekst} — wijsheid uit de kombuis.`]);
+    }
+    if (nr % 3 === 1 && soort !== 'einde') {
+      const zin = `„${VERSIERZINNEN[(schuif + beurt) % VERSIERZINNEN.length]}”`, boot = d.naam(kies(d.deelnemers));
+      return kies([`Aan boord van ${boot} oefent iemand alvast voor de haven: ${zin}`,
+                   `Over het water schalt vanaf ${boot}: ${zin}`,
+                   `Gekrabbeld in de kantlijn van het logboek: ${zin}`,
+                   `De stuurman van ${boot} roept naar de concurrentie: ${zin}`]);
+    }
+    return '';
   }
 
   // Maximaal één gebeurtenisnotitie per half uur. Voorrang: eerst de start en de
@@ -363,8 +428,8 @@ const Verteller = (() => {
     }
     uit.sort((a, b) => a.t - b.t || (a.soort === 'einde') - (b.soort === 'einde'));
     uit.forEach((n, i) => {
-      n.tekst = notitie(d, n.t, { soort: n.soort, voor: n.voor, onderwerp: n.onderwerp, uur: n.uur,
-        vorigeT: i ? uit[i - 1].t : null, laatste: i === uit.length - 1 });
+      n.tekst = plat(notitie(d, n.t, { soort: n.soort, voor: n.voor, onderwerp: n.onderwerp, uur: n.uur,
+        vorigeT: i ? uit[i - 1].t : null, laatste: i === uit.length - 1 }) + ' ' + tussendoor(d, i, n.soort));
       delete n.voor; delete n.soort; delete n.onderwerp; delete n.uur;
     });
     return uit;
@@ -372,15 +437,17 @@ const Verteller = (() => {
 
   // Een notitie over dít moment (testknop van de wedstrijdleiding)
   function notitieNu(d) {
-    if (!d.raceStart) return { t: d.nu, kop: `${klokHM(d.nu)} · test`, tekst: 'Er is nog geen startsein gegeven: de vloot ligt nog in de haven.' };
+    if (!d.raceStart) return { t: d.nu, kop: `${klokHM(d.nu)} · test`,
+      tekst: 'Er is nog geen startsein gegeven: de vloot ligt nog in de haven. Arr, de rum wordt vast ingeschonken.' };
     if (d.nu < d.raceStart) return { t: d.nu, kop: `${klokHM(d.nu)} · test`,
-      tekst: `De vloot wacht op het startschot van ${klokHM(d.raceStart)}. De kanonnen worden geladen…` };
+      tekst: `De vloot wacht op het startschot van ${klokHM(d.raceStart)}. De kanonnen worden geladen en de schatkaarten uitgerold…` };
     const eerder = journaal(d);
     const dd = Object.assign({}, d); dd.deelnemers = deelnemers(dd);
     const uur = (d.nu - d.raceStart) / UUR;
     const duur = uur < 1 ? `${Math.round(uur * 60)} min onderweg` : `${uur.toFixed(1).replace('.', ',')} uur onderweg`;
     return { t: d.nu, kop: `${klokHM(d.nu)} · ${duur} · test`,
-      tekst: notitie(dd, d.nu, { soort: 'test', vorigeT: eerder.length ? eerder[eerder.length - 1].t : null, laatste: true }) };
+      tekst: plat(notitie(dd, d.nu, { soort: 'test', vorigeT: eerder.length ? eerder[eerder.length - 1].t : null, laatste: true }) +
+        ' ' + tussendoor(dd, eerder.length, 'test')) };
   }
   // Wanneer komt de volgende vaste notitie?
   function volgende(d) {

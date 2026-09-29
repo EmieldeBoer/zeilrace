@@ -98,7 +98,7 @@ function verversLijst() {
     const t = timesData[naam] || {};
     const s = Object.assign({}, posData[naam], { start: t.start, finish: t.finish, gerond: rondingData[naam],
       afgelegd: t.start != null ? afgelegdM(spoorPunten[naam], t.start, t.finish) : null,
-      win: tijdOmTeWinnen(naam, timesData, raceStart, startPlan, nu) });
+      win: tijdOmTeWinnen(naam, timesData, raceStart, startPlan, nu), totFinish: totFinishVan(voorspelRijen, naam) });
     const eigenNaam = naamVan(naam) !== BOTEN[naam].model;
     k.classList.toggle('offline', !online);
     k.classList.toggle('gekozen', geselecteerd === naam);
@@ -1433,9 +1433,10 @@ tekenBaan();
 renderPlanning();
 // Voorspelde eindstand met rating (tijdens de race)
 let voorspelHtmlCache = '';
+var voorspelRijen = [];     // ook voor 'voorspelde tijd tot finish' in de bootkaarten (var: die worden al eerder getekend)
 function renderVoorspelling() {
   const nu = Date.now(), sectie = el('voorspelSectie');
-  const rijen = raceStart && raceStart <= nu ? voorspelEindstand({ times: timesData, gerond: rondingData, sporen: spoorPunten,
+  const rijen = voorspelRijen = raceStart && raceStart <= nu ? voorspelEindstand({ times: timesData, gerond: rondingData, sporen: spoorPunten,
     posities: posData, lijnen: lijnData, boeien, baanVan: b => baanVanBoot(boeien, lussenVan(startPlan), b),
     raceStart, startPlan, nu }) : [];
   sectie.hidden = !rijen.length;

@@ -130,12 +130,14 @@ body { font-variant-numeric: lining-nums tabular-nums; }
 .voorspel-kaart { background: var(--perkament-bg); color: var(--inkt); border: 1px solid var(--perkament-rand); border-radius: 4px;
   box-shadow: var(--perkament-schaduw); padding: 4px 12px 8px; }
 .voorspelling { width: 100%; border-collapse: collapse; color: var(--inkt); }
-.voorspelling th, .voorspelling td { padding: 7px 5px; border-bottom: 1px solid rgba(107,81,48,.35); text-align: left; }
+.voorspelling th, .voorspelling td { padding: 7px 4px; border-bottom: 1px solid rgba(107,81,48,.35); text-align: left; }
 .voorspelling th { font-family: var(--font-kap); font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--inkt-zacht); }
 .voorspelling td.tijd, .voorspelling th.tijd { text-align: right; white-space: nowrap; }
 .voorspelling td.pos, .voorspelling th.pos { text-align: center; width: 2em; font-weight: 700; }
 .voorspelling .boot-cel { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .voorspelling .dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; border: 1.5px solid var(--inkt); }
+@media (max-width: 420px) { .voorspelling { font-size: .88rem; } .voorspelling .boot-cel { max-width: 104px; } }
+.voorspelling .klok { display: block; font-size: .72rem; color: var(--inkt-zacht); font-weight: 400; }
 .voorspelling tr.verwacht td { font-style: italic; }
 .voorspelling tr.eigen td { font-weight: 700; }
 .voorspelling tr:first-child td { color: var(--bloed); }

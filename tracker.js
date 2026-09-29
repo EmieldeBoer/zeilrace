@@ -198,7 +198,8 @@ function renderEigenBoot() {
   const uitDb = botStatus[b] || {};
   const basis = uitDb.lat != null ? uitDb : mijnPositie ? Object.assign({}, uitDb, { lat: mijnPositie.lat, lng: mijnPositie.lng,
     speed: mijnSnelheid, heading: mijnHeading, start: t.start, finish: t.finish, gerond: mijnGerond }) : null;
-  const s = basis && Object.assign({}, basis, { afgelegd: afgelegdVan(b, tijden[b]), win: tijdOmTeWinnen(b, tijden, raceStart, startPlan, Date.now()) });
+  const s = basis && Object.assign({}, basis, { afgelegd: afgelegdVan(b, tijden[b]), win: tijdOmTeWinnen(b, tijden, raceStart, startPlan, Date.now()),
+    totFinish: totFinishVan(voorspelRijen, b) });
   const html = bootStatsHtml(bootData(s, lijnen, baanVan(b)));
   if ($('eigenStats').innerHTML !== html) $('eigenStats').innerHTML = html;
 }
@@ -333,7 +334,8 @@ function renderAndereBoten() {
     const eigenNaam = kNaam(naam) !== BOTEN[naam].model;
     k.querySelector('.ab-type').textContent = (eigenNaam ? BOTEN[naam].model + ' · ' : '') + 'rating ' + BOTEN[naam].rating.toFixed(3);
     k.querySelector('.ab-status').textContent = online ? '' : (s.ts ? geleden(nu - s.ts) : 'geen data');
-    const extra = { afgelegd: afgelegdVan(naam, tijden[naam]), win: tijdOmTeWinnen(naam, tijden, raceStart, startPlan, nu) };
+    const extra = { afgelegd: afgelegdVan(naam, tijden[naam]), win: tijdOmTeWinnen(naam, tijden, raceStart, startPlan, nu),
+      totFinish: totFinishVan(voorspelRijen, naam) };
     k.querySelector('.ab-stats').innerHTML = bootStatsHtml(bootData(Object.assign({}, s, extra), lijnen, baanVan(naam)));
   });
 }
@@ -341,10 +343,11 @@ setInterval(renderAndereBoten, 1000);
 
 // Voorspelde eindstand met rating (tijdens de race), uit dezelfde gegevens als 'Andere boten'
 let voorspelHtmlCache = '';
+var voorspelRijen = [];     // ook voor 'voorspelde tijd tot finish' in de bootkaarten (var: die worden al eerder getekend)
 function renderVoorspelling() {
   const nu = Date.now(), tijden = tijdenNu(), gerond = {}, posities = {};
   FLEET.forEach(b => { const s = botStatus[b] || {}; gerond[b] = s.gerond || {}; if (s.lat != null) posities[b] = s; });
-  const rijen = raceStart && raceStart <= nu ? voorspelEindstand({ times: tijden, gerond, sporen: kSpoorPunten, posities,
+  const rijen = voorspelRijen = raceStart && raceStart <= nu ? voorspelEindstand({ times: tijden, gerond, sporen: kSpoorPunten, posities,
     lijnen, boeien, baanVan, raceStart, startPlan, nu }) : [];
   $('voorspelBlok').hidden = !rijen.length;
   const html = voorspellingHtml(rijen, kNaam, mijnBoot());

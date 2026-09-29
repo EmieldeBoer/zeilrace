@@ -142,11 +142,15 @@ wind van Open-Meteo, weergegeven in Beaufort.
   samen met een uurnotitie, dan worden ze één notitie.
 - De slotnotitie geeft de uitslag op het water én met de rating, ook als de race wordt afgerond terwijl er nog
   boten varen. Boten die niet uitvaren, blijven buiten het verhaal.
+- De verteller praat als een piraat (arr, matey, schatkisten en -kaarten). Om de paar notities volgt een
+  piratenversierzin of een quote van aan boord uit `BOOT_QUOTES` in `config.js` (een tekst, of `{ tekst, boot, wie }`).
 
-**🔮 Voorspelde eindstand** (tijdens de race, op het dashboard en de tracker): de verwachte uitslag met rating. Per boot
-de resterende baan (naar het volgende doel en langs de nog te ronden boeien naar de finish, bij een lusstart de eigen
-baan) gedeeld door het tempo langs de baan: half het gemiddelde sinds de start, half dat van het laatste kwartier.
-Boten die binnen zijn staan er met hun echte tijd (🏁).
+**🔮 Voorspelde eindstand** (tijdens de race, op het dashboard en de tracker): per boot de tijd tot de finish (met de
+verwachte kloktijd), de totale verzeilde tijd en de gecorrigeerde totale tijd, gesorteerd op die laatste. De tijd tot de
+finish is de resterende baan (naar het volgende doel en langs de nog te ronden boeien naar de finish, bij een lusstart de
+eigen baan) gedeeld door het tempo langs de baan: half het gemiddelde sinds de start, half dat van het laatste kwartier.
+Boten die binnen zijn staan er met hun echte tijd (🏁). Dezelfde tijd staat als **Voorspelde tijd tot finish** in de
+bootkaarten.
 
 **🏁 Finish uit spoor** (tab Uitslagen, alleen wedstrijdleiding): voor een opgeslagen race met een boot zonder finish
 (bijv. als de finishlijn tijdens de race is verlengd) haalt de knop de eerste kruising van de finishlijn uit het spoor,
