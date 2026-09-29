@@ -111,7 +111,8 @@ wind van Open-Meteo, weergegeven in Beaufort.
 ## Gebruik op de racedag
 
 **Wedstrijdleiding** (`/?wl`, inloggen met e-mail en wachtwoord):
-1. Zet de start- en finishlijn en de boeien uit. Wijzigingen zijn eerst een **concept**
+1. Zet de start- en finishlijn en de boeien uit. Bij een lijn is het eerste punt vrij; het tweede snapt naar
+   een van de acht windstreken (N, NO, O, …) en een lengte van 0,5, 1, 1,5 … zm. Wijzigingen zijn eerst een **concept**
    (geel op de kaart). Pas na **✓ Bevestigen** zien de boten ze. Zo voeg je tijdens de
    race niet per ongeluk een boei toe, maar kun je de baan wel bewust aanpassen,
    bijvoorbeeld bij een windshift.

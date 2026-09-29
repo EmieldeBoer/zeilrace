@@ -544,6 +544,19 @@ function lusIcoon(letter, kleur) {
   return L.divIcon({ className: '', html: `<div class="boei lus" style="background:${kleur}">${letter}</div>`,
     iconSize: [22, 22], iconAnchor: [11, 11] });
 }
+// Het tweede punt van een start- of finishlijn snapt: vanaf a naar een van de acht
+// windstreken, met een lengte in stappen van LIJN_STAP_ZM (minstens één stap).
+// → { punt, streek: 'NO', zm: 0.5 }
+const WINDSTREKEN_8 = ['N', 'NO', 'O', 'ZO', 'Z', 'ZW', 'W', 'NW'], LIJN_STAP_ZM = 0.5;
+function snapLijnPunt(a, p) {
+  const ky = 6371000 * Math.PI / 180, kx = ky * Math.cos(a.lat * Math.PI / 180);   // m per graad (zoals afstandMeter)
+  const dx = (p.lng - a.lng) * kx, dy = (p.lat - a.lat) * ky;
+  const i = ((Math.round(Math.atan2(dx, dy) / (Math.PI / 4)) % 8) + 8) % 8, hoek = i * Math.PI / 4;
+  const zm = Math.max(1, Math.round(Math.hypot(dx, dy) / 1852 / LIJN_STAP_ZM)) * LIJN_STAP_ZM, m = zm * 1852;
+  return { streek: WINDSTREKEN_8[i], zm,
+    punt: { lat: +(a.lat + Math.cos(hoek) * m / ky).toFixed(6), lng: +(a.lng + Math.sin(hoek) * m / kx).toFixed(6) } };
+}
+const zmTekst = zm => String(zm).replace('.', ',') + ' zm';
 // Start- of finishlijn (t = 'start' | 'finish') met duidelijke uiteinden: aan elk eind
 // een rond merkteken in de lijnkleur. Zet de lagen in `lagen` en geeft de lijn terug
 // (voor een label). opties = extra opties voor de lijn (bijv. een ander streepjespatroon).

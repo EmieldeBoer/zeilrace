@@ -701,8 +701,11 @@ function tekenBaan() {
   ['start', 'finish'].forEach(t => {
     const ln = lines[t];
     if (!(ln && ln.a && ln.b)) return;
+    // bij een gesnapte lijn in het concept ook de windstreek en de lengte (ook zichtbaar op een telefoon)
+    const s = isConcept ? snapLijnPunt(ln.a, ln.b) : null;
+    const maat = s && afstandMeter(s.punt, ln.b) < 2 ? ` · ${s.streek} ${zmTekst(s.zm)}` : '';
     tekenStartFinish(kaart, ln, t, baanLagen, { weight: isConcept ? 5 : 4, dashArray: isConcept ? '3 7' : '7 7' })
-      .bindTooltip((isConcept ? '✎ ' : '') + (t === 'start' ? 'START' : 'FINISH'),
+      .bindTooltip((isConcept ? '✎ ' : '') + (t === 'start' ? 'START' : 'FINISH') + maat,
         { permanent: true, direction: 'center', className: 'lijn-label' });
   });
   const lussen = lussenVan(startPlan);
@@ -996,7 +999,10 @@ function beginConcept() {
     marks: boeien.map((b, i) => Object.assign({}, b, { id: boeiId(b, i) }))
   };
 }
-function wisTijdelijk() { tijdMarkers.forEach(m => kaart.removeLayer(m)); tijdMarkers = []; tijdPunten = []; }
+function wisTijdelijk() {
+  tijdMarkers.forEach(m => kaart.removeLayer(m)); tijdMarkers = []; tijdPunten = [];
+  if (snapVoorbeeld) { kaart.removeLayer(snapVoorbeeld); snapVoorbeeld = null; }
+}
 function zetModus(modus, tekst) {
   instelModus = modus; wisTijdelijk();
   ['btnStart:start', 'btnFinish:finish', 'btnBoei:boei', 'btnBoeiWeg:weg'].forEach(p => {
@@ -1054,8 +1060,9 @@ function annuleerConcept() {
   conceptGewijzigd('Wijzigingen geannuleerd.');
 }
 
-el('btnStart').onclick = () => { beginConcept(); zetModus('start', 'Tik 2 punten voor de startlijn op de kaart…'); renderConceptBalk(); };
-el('btnFinish').onclick = () => { beginConcept(); zetModus('finish', 'Tik 2 punten voor de finishlijn op de kaart…'); renderConceptBalk(); };
+const lijnUitleg = ': het eerste punt is vrij, het tweede snapt naar een windstreek (N, NO, O, …) en een lengte van 0,5, 1, 1,5 … zm.';
+el('btnStart').onclick = () => { beginConcept(); zetModus('start', 'Tik 2 punten voor de startlijn op de kaart' + lijnUitleg); renderConceptBalk(); };
+el('btnFinish').onclick = () => { beginConcept(); zetModus('finish', 'Tik 2 punten voor de finishlijn op de kaart' + lijnUitleg); renderConceptBalk(); };
 el('btnBoei').onclick = () => {
   if (instelModus === 'boei') { zetModus(null, 'Klaar met boeien plaatsen.'); return; }
   beginConcept(); zetModus('boei', 'Tik boeien op de kaart in de te varen volgorde. Versleep een boei om hem te verplaatsen.');
@@ -1074,13 +1081,17 @@ el('btnAnnuleer').onclick = annuleerConcept;
 
 kaart.on('click', e => {
   if (!admin || !concept || !instelModus) return;
-  const p = { lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6) };
+  let p = { lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6) };
   if (instelModus === 'boei') {
     concept.marks.push(Object.assign({ id: nieuwId() }, p));
     conceptGewijzigd(`Boei ${concept.marks.length} geplaatst (concept). Tik nog een boei, of druk op de knop om te stoppen.`);
   } else if (instelModus === 'start' || instelModus === 'finish') {
+    // het eerste punt is vrij, het tweede snapt naar een windstreek en een hele of halve zeemijl
+    const snap = tijdPunten.length === 1 ? snapLijnPunt(tijdPunten[0], p) : null;
+    if (snap) p = snap.punt;
     tijdPunten.push(p);
-    tijdMarkers.push(L.circleMarker(e.latlng, { radius: 6, color: '#fff', weight: 2, fillColor: '#ffe08a', fillOpacity: 1 }).addTo(kaart));
+    tijdMarkers.push(L.circleMarker([p.lat, p.lng], { radius: 6, color: '#fff', weight: 2, fillColor: '#ffe08a', fillOpacity: 1 }).addTo(kaart));
+    if (!snap) toonWlStatus('Eerste punt gezet. Tik het tweede punt: de lijn snapt naar N, NO, O, … en een lengte van 0,5, 1, 1,5 … zm.');
     if (tijdPunten.length === 2) {
       const t = instelModus;
       concept.lines[t] = { a: tijdPunten[0], b: tijdPunten[1] };
@@ -1088,11 +1099,23 @@ kaart.on('click', e => {
       const weg = concept.marks.length;
       concept.marks = [];
       zetModus(null);
-      conceptGewijzigd(`${t === 'start' ? 'Startlijn' : 'Finishlijn'} aangepast (concept)` +
+      conceptGewijzigd(`${t === 'start' ? 'Startlijn' : 'Finishlijn'} aangepast: ${snap.streek}, ${zmTekst(snap.zm)} (concept)` +
         (weg ? ` en ${weg === 1 ? 'de boei is' : 'alle ' + weg + ' boeien zijn'} weggehaald — zet ze opnieuw uit.` : '.') +
         ' Vergeet niet te bevestigen.');
     }
   }
+});
+// Voorbeeld van de gesnapte lijn onder de muis, na het eerste punt
+var snapVoorbeeld = null;          // var: wisTijdelijk (hierboven) ruimt hem op
+kaart.on('mousemove', e => {
+  if (!(instelModus === 'start' || instelModus === 'finish') || tijdPunten.length !== 1) {
+    if (snapVoorbeeld) { kaart.removeLayer(snapVoorbeeld); snapVoorbeeld = null; }
+    return;
+  }
+  const a = tijdPunten[0], s = snapLijnPunt(a, e.latlng), lijn = [[a.lat, a.lng], [s.punt.lat, s.punt.lng]];
+  if (!snapVoorbeeld) snapVoorbeeld = L.polyline(lijn, { color: LIJN_KLEUR[instelModus], weight: 3, dashArray: '4 6', opacity: .8, interactive: false })
+    .bindTooltip('', { permanent: true, direction: 'top', className: 'lijn-label' }).addTo(kaart);
+  snapVoorbeeld.setLatLngs(lijn).setTooltipContent(`${s.streek} · ${zmTekst(s.zm)}`);
 });
 
 // =========================================================
