@@ -167,7 +167,7 @@ function doelVanBoot(pos, start, finish, gerond, lijnen, boeien) {
   if (start == null) return (lijnen.start && lijnen.start.a)
     ? { label: 'Startlijn', punt: dichtstbijPuntOpLijn(pos, lijnen.start.a, lijnen.start.b) } : null;
   const v = boeien.findIndex((b, i) => (gerond || {})[boeiId(b, i)] == null);
-  if (v !== -1) return { label: 'Boei ' + (v + 1), punt: { lat: boeien[v].lat, lng: boeien[v].lng } };
+  if (v !== -1) return { label: boeien[v].label || 'Boei ' + (v + 1), punt: { lat: boeien[v].lat, lng: boeien[v].lng } };
   return (lijnen.finish && lijnen.finish.a)
     ? { label: 'Finish', punt: dichtstbijPuntOpLijn(pos, lijnen.finish.a, lijnen.finish.b) } : null;
 }
@@ -202,12 +202,14 @@ function afgelegdM(pts, van, tot) {
 // startlijn). Gecorrigeerd:
 //   gelijke start   → verzeild × rating
 //   achtervolging   → tijd vanaf het eerste startsein (finishvolgorde telt)
+//   lusstart        → idem: de rating zit al in de lengte van de lus
 function eigenStartVan(boot, t, raceStart, startPlan) {
   return raceStart != null ? raceStart + vertragingVan(startPlan, boot) : (t || {}).start;
 }
-const isAchtervolging = (raceStart, startPlan) => raceStart != null && !!startPlan && startPlan.modus === 'achtervolging';
+const eersteBinnenWint = (raceStart, startPlan) => raceStart != null && !!startPlan &&
+  (startPlan.modus === 'achtervolging' || startPlan.modus === 'lus');
 function gecorrigeerdeTijd(boot, eind, raceStart, startPlan, eigenStart) {
-  return isAchtervolging(raceStart, startPlan) ? eind - raceStart : (eind - eigenStart) * BOTEN[boot].rating;
+  return eersteBinnenWint(raceStart, startPlan) ? eind - raceStart : (eind - eigenStart) * BOTEN[boot].rating;
 }
 
 // --- Hoeveel tijd heeft een boot nog om te winnen? --------------
@@ -225,7 +227,7 @@ function tijdOmTeWinnen(boot, times, raceStart, startPlan, nu) {
     .filter(c => c != null && !isNaN(c)).sort((a, b) => a - b);
   if (!binnen.length) return null;
   for (let i = 0; i < binnen.length; i++) {
-    const tot = isAchtervolging(raceStart, startPlan) ? raceStart + binnen[i] : eigenStart + binnen[i] / BOTEN[boot].rating;
+    const tot = eersteBinnenWint(raceStart, startPlan) ? raceStart + binnen[i] : eigenStart + binnen[i] / BOTEN[boot].rating;
     if (tot > nu) return { plek: i + 1, tot, rest: tot - nu };
   }
   return { plek: 1, tot: null, rest: null };
@@ -423,13 +425,20 @@ function boeiIcoon(i, concept) {
   return L.divIcon({ className: '', html: `<div class="boei${concept ? ' concept' : ''}">${i + 1}</div>`,
     iconSize: [26, 26], iconAnchor: [13, 13] });
 }
-// Paarse rondingslijnen (getekend korter dan de 10 km die meetelt)
-function tekenRondingslijnen(kaart, boeien, lijnen, lagen) {
+// Lusboei (lusstart): letter A of B in de kleur van de boot
+function lusIcoon(letter, kleur) {
+  return L.divIcon({ className: '', html: `<div class="boei lus" style="background:${kleur}">${letter}</div>`,
+    iconSize: [22, 22], iconAnchor: [11, 11] });
+}
+// Paarse rondingslijnen (getekend korter dan de 10 km die meetelt).
+// Optioneel een eigen kleur en een filter op de boeien die getekend worden.
+function tekenRondingslijnen(kaart, boeien, lijnen, lagen, kleur, filter) {
   boeien.forEach((boei, i) => {
+    if (filter && !filter(boei)) return;
     const { prev, next } = boeiPrevNext(i, boeien, lijnen);
     const rl = rondingsLijn(boei, prev, next, 6, 150);
     if (rl) lagen.push(L.polyline([[rl.a.lat, rl.a.lng], [rl.b.lat, rl.b.lng]],
-      { color: '#e05fd8', weight: 3, dashArray: '4 6', interactive: false }).addTo(kaart));
+      { color: kleur || '#e05fd8', weight: 3, dashArray: '4 6', interactive: false }).addTo(kaart));
   });
 }
 
@@ -514,6 +523,96 @@ function maakPlan(nm, windKn) {
 }
 function vertragingVan(startPlan, boot) {
   return (startPlan && startPlan.modus === 'achtervolging' && startPlan.vertraging && startPlan.vertraging[boot]) || 0;
+}
+
+// --- Lusstart: iedereen tegelijk weg, elke boot een eigen lus ---
+// Een lus is een paar boeien naast een rak: boei A ligt verderop, boei B
+// iets terug. De boot vaart langs de lus naar A, keert terug naar B en gaat
+// dan verder naar het volgende punt: een kleine α. Omdat de lus heen en
+// terug langs het rak loopt, kost hij bij elke windrichting ongeveer even
+// veel. Elke lus maakt de baan precies zo veel langer dat gph × baanlengte
+// voor iedereen gelijk is: in theorie finisht de hele vloot tegelijk.
+const LUS_RUIMTE_M = 100;          // vrije ruimte rond een lus langs het rak (m)
+const lussenVan = sp => (sp && sp.modus === 'lus' && sp.lussen) || null;
+const startNaam = modus => ({ achtervolging: 'Achtervolgingsstart', lus: 'Lusstart' })[modus] || 'Gelijke start';
+
+// Baan van één boot: de gewone boeien (met vaste id en label), bij een
+// lusstart met de eigen lus erin. lus.na = id van de boei vóór het rak, of 'start'.
+function baanVanBoot(boeien, lussen, boot) {
+  const baan = boeien.map((b, i) => Object.assign({}, b, { id: boeiId(b, i), nr: i + 1, label: 'Boei ' + (i + 1) }));
+  const lus = lussen && lussen[boot];
+  if (!lus) return baan;
+  let na = lus.na === 'start' ? 0 : baan.findIndex(b => b.id === lus.na) + 1;
+  if (na === 0 && lus.na !== 'start') na = baan.length;          // die boei is weg: de lus vlak voor de finish
+  baan.splice(na, 0, ...alsBoeien(lus.boeien).map((b, i) =>
+    Object.assign({}, b, { letter: 'AB'[i], label: 'Lusboei ' + 'AB'[i], lus: boot })));
+  return baan;
+}
+// De lus van een boot als lijn: vorige punt → A → B → volgende punt (om te tekenen)
+function lusPad(boeien, lijnen, lussen, boot) {
+  const baan = baanVanBoot(boeien, lussen, boot), i = baan.findIndex(b => b.lus);
+  if (i === -1 || !baan[i + 1]) return null;
+  const { prev } = boeiPrevNext(i, baan, lijnen), { next } = boeiPrevNext(i + 1, baan, lijnen);
+  return [prev, baan[i], baan[i + 1], next].filter(Boolean);
+}
+
+// Lus op het rak P → N met het midden op s meter van P, aan kant +1 (links van
+// de vaarrichting) of −1. Zoekt de halve lengte w waarbij de omweg precies
+// extraM meter is. De diepte (afstand tot het rak) groeit mee met de lus.
+function lusOpRak(P, N, s, kant, extraM) {
+  const kx = 111000 * Math.cos(P.lat * Math.PI / 180), ky = 111000;
+  const dx = (N.lng - P.lng) * kx, dy = (N.lat - P.lat) * ky, L = Math.hypot(dx, dy);
+  const ux = dx / L, uy = dy / L;                                  // langs het rak; links ervan is (−uy, ux)
+  const diepte = w => Math.min(250, Math.max(60, w / 2));
+  const omweg = w => Math.hypot(s + w, diepte(w)) + 2 * w + Math.hypot(L - s + w, diepte(w)) - L;
+  let lo = 0, hi = extraM / 4 + 1;                                 // omweg(w) ≥ 4w, dus w ≤ extraM / 4
+  for (let k = 0; k < 50; k++) { const m = (lo + hi) / 2; if (omweg(m) < extraM) lo = m; else hi = m; }
+  const w = Math.max(20, lo), h = diepte(w) * kant;
+  const punt = x => ({ lat: +(P.lat + (uy * x + ux * h) / ky).toFixed(6), lng: +(P.lng + (ux * x - uy * h) / kx).toFixed(6) });
+  return { a: punt(s + w), b: punt(s - w) };
+}
+
+// Lussen voor de hele vloot. De langzaamste boot krijgt LUS_MIN_M extra, de
+// rest zo veel meer dat gph × baanlengte gelijk is. De grootste lus kiest als
+// eerste een rak (het rak met de meeste vrije ruimte); lussen op hetzelfde rak
+// liggen achter elkaar, om en om links en rechts.
+// Geeft { lussen, extra: {boot: m}, lengte: {boot: zm}, past } of null zonder complete baan.
+function maakLusPlan(lijnen, boeien) {
+  if (!(lijnen.start && lijnen.start.a && lijnen.finish && lijnen.finish.a)) return null;
+  const pts = [lijnMidden(lijnen.start), ...boeien, lijnMidden(lijnen.finish)], raken = [];
+  let basisM = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const L = afstandMeter(pts[i - 1], pts[i]);
+    basisM += L;
+    if (L > 1) raken.push({ P: pts[i - 1], N: pts[i], L, na: i === 1 ? 'start' : boeiId(boeien[i - 2], i - 2), boten: [] });
+  }
+  if (!raken.length) return null;
+  const traagst = Math.max(...Object.values(BOTEN).map(b => b.gph));
+  const extra = {}, ruimte = {}, lengte = {};
+  Object.keys(BOTEN).forEach(b => {
+    extra[b] = Math.round(traagst / BOTEN[b].gph * (basisM + LUS_MIN_M) - basisM);
+    ruimte[b] = extra[b] / 2 + 2 * LUS_RUIMTE_M;                  // een lus is ongeveer extra / 2 lang
+    lengte[b] = (basisM + extra[b]) / 1852;
+  });
+  const vrij = r => r.L - r.boten.reduce((s, b) => s + ruimte[b], 0);
+  Object.keys(BOTEN).sort((a, b) => extra[b] - extra[a])
+    .forEach(b => raken.reduce((best, r) => vrij(r) > vrij(best) ? r : best).boten.push(b));
+  const lussen = {};
+  let past = true;
+  raken.forEach(r => {
+    if (!r.boten.length) return;
+    const gat = vrij(r) / (r.boten.length + 1);
+    if (gat < 0) past = false;
+    let x = 0;
+    r.boten.forEach((b, k) => {
+      x += gat + ruimte[b] / 2;
+      const { a, b: terug } = lusOpRak(r.P, r.N, x, k % 2 ? -1 : 1, extra[b]);
+      x += ruimte[b] / 2;
+      lussen[b] = { na: r.na, extraM: extra[b],
+        boeien: [Object.assign({ id: `lus-${b}-a` }, a), Object.assign({ id: `lus-${b}-b` }, terug)] };
+    });
+  });
+  return { lussen, extra, lengte, past };
 }
 
 // --- Geluid (Web Audio — gesynthetiseerd, geen bestanden nodig) ---

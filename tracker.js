@@ -41,6 +41,9 @@ let kNamen = {};
 const kNaam = b => (kNamen[b] && String(kNamen[b]).trim()) ? String(kNamen[b]).trim() : BOTEN[b].model;
 // Jouw eigen starttijd (bij een achtervolgingsstart later dan het eerste sein)
 const mijnStart = () => raceStart != null ? raceStart + vertragingVan(startPlan, mijnBoot()) : null;
+// De baan van een boot: bij een lusstart met de eigen lus erin
+const baanVan = b => baanVanBoot(boeien, lussenVan(startPlan), b);
+const mijnBaan = () => baanVan(mijnBoot());
 
 // =========================================================
 //  Kaart: baan, rondingslijnen, alle boten + zoom/volg-knoppen
@@ -101,12 +104,14 @@ function tekenCourse() {
       { color: t === 'start' ? '#2ea043' : '#e6194b', weight: 4, dashArray: '7 7' })
       .addTo(kaart).bindTooltip(t === 'start' ? 'START' : 'FINISH', { permanent: true, direction: 'center', className: 'lijn-label' }));
   });
-  tekenRondingslijnen(kaart, boeien, lijnen, kBaan);     // paars: hier moet je overheen om te ronden
-  boeien.forEach((b, i) => kBaan.push(L.marker([b.lat, b.lng], { icon: boeiIcoon(i) })
-    .addTo(kaart).bindTooltip(esc(b.naam || 'Boei ' + (i + 1)), { direction: 'top', offset: [0, -12] })));
+  // Alleen je eigen lus: de lussen van de andere boten doen voor jou niet mee
+  const baan = mijnBaan(), kleur = BOTEN[mijnBoot()].kleur;
+  tekenRondingslijnen(kaart, baan, lijnen, kBaan);       // paars: hier moet je overheen om te ronden
+  baan.forEach(b => kBaan.push(L.marker([b.lat, b.lng], { icon: b.lus ? lusIcoon(b.letter, kleur) : boeiIcoon(b.nr - 1) })
+    .addTo(kaart).bindTooltip(esc(b.label), { direction: 'top', offset: [0, -12] })));
   const route = [];
   if (lijnen.start && lijnen.start.a) { const m = lijnMidden(lijnen.start); route.push([m.lat, m.lng]); }
-  boeien.forEach(b => route.push([b.lat, b.lng]));
+  baan.forEach(b => route.push([b.lat, b.lng]));
   if (lijnen.finish && lijnen.finish.a) { const m = lijnMidden(lijnen.finish); route.push([m.lat, m.lng]); }
   if (route.length >= 2) kBaan.push(L.polyline(route, { color: '#9fb4cd', weight: 2, dashArray: '3 8', opacity: .8, interactive: false }).addTo(kaart));
   fitEen();
@@ -152,12 +157,13 @@ setInterval(() => toonWind(windPlek()), 5 * 60 * 1000);
 //  Navigatie naar het volgende doel
 // =========================================================
 let navVorige = null, mijnSnelheid = null, mijnHeading = null;
-const volgendDoel = pos => doelVanBoot(pos, mijnTijden.start, mijnTijden.finish, mijnGerond, lijnen, boeien);
+const volgendDoel = pos => doelVanBoot(pos, mijnTijden.start, mijnTijden.finish, mijnGerond, lijnen, mijnBaan());
+const kleinLabel = l => l.charAt(0).toLowerCase() + l.slice(1);     // 'Lusboei A' → 'lusboei A'
 function volgendDoelLabel() {
   if (mijnTijden.finish != null) return null;
   if (mijnTijden.start == null) return 'de startlijn';
-  const v = boeien.findIndex((b, i) => mijnGerond[boeiId(b, i)] == null);
-  return v !== -1 ? 'boei ' + (v + 1) : 'de finish';
+  const v = mijnBaan().find(b => mijnGerond[b.id] == null);
+  return v ? kleinLabel(v.label) : 'de finish';
 }
 // Bij elke eigen GPS-positie: snelheid/koers onthouden, lijn naar het doel op de kaart
 function updateNav(lat, lng, speedMps, heading, nu) {
@@ -191,16 +197,17 @@ function renderEigenBoot() {
     speed: mijnPositie ? mijnSnelheid : botStatus[b].speed, heading: mijnPositie ? mijnHeading : botStatus[b].heading,
     start: t.start, finish: t.finish, gerond: mijnGerond,
     afgelegd: afgelegdVan(b, t), win: tijdOmTeWinnen(b, tijden, raceStart, startPlan, Date.now()) } : null;
-  const html = bootStatsHtml(bootData(s, lijnen, boeien));
+  const html = bootStatsHtml(bootData(s, lijnen, baanVan(b)));
   if ($('eigenStats').innerHTML !== html) $('eigenStats').innerHTML = html;
 }
 function updateStartInfo() {
   const box = $('startinfo'), t0 = mijnStart();
   if (t0 == null) { box.hidden = true; return; }
-  const achter = startPlan && startPlan.modus === 'achtervolging';
+  const modus = startPlan && startPlan.modus;
   const verw = startPlan && startPlan.verwacht && startPlan.verwacht[mijnBoot()];
+  const lus = lussenVan(startPlan) && lussenVan(startPlan)[mijnBoot()];
   box.hidden = false;
-  box.textContent = `${achter ? 'Achtervolgingsstart' : 'Gelijke start'} · jouw start ${formatKlok(t0)}` +
+  box.textContent = `${startNaam(modus)} · jouw start ${formatKlok(t0)}` + (lus ? ` · jouw lus +${formatAfstand(lus.extraM)}` : '') +
     (verw ? ` · verwachte tijd ${formatDuur(verw)}` : '');
 }
 
@@ -282,7 +289,7 @@ function renderAndereBoten() {
     k.querySelector('.ab-type').textContent = (eigenNaam ? BOTEN[naam].model + ' · ' : '') + 'rating ' + BOTEN[naam].rating.toFixed(3);
     k.querySelector('.ab-status').textContent = online ? '' : (s.ts ? geleden(nu - s.ts) : 'geen data');
     const extra = { afgelegd: afgelegdVan(naam, tijden[naam]), win: tijdOmTeWinnen(naam, tijden, raceStart, startPlan, nu) };
-    k.querySelector('.ab-stats').innerHTML = bootStatsHtml(bootData(Object.assign({}, s, extra), lijnen, boeien));
+    k.querySelector('.ab-stats').innerHTML = bootStatsHtml(bootData(Object.assign({}, s, extra), lijnen, baanVan(naam)));
   });
 }
 setInterval(renderAndereBoten, 1000);
@@ -291,29 +298,31 @@ setInterval(renderAndereBoten, 1000);
 //  Detectie: startlijn, boeien (rondingslijn), finish
 // =========================================================
 function checkBoei(huidig, boot) {
-  if (mijnTijden.start == null || mijnTijden.finish != null || !boeien.length || !vorigeRuwe) return;
-  const v = boeien.findIndex((b, i) => mijnGerond[boeiId(b, i)] == null);
+  const baan = mijnBaan();
+  if (mijnTijden.start == null || mijnTijden.finish != null || !baan.length || !vorigeRuwe) return;
+  const v = baan.findIndex(b => mijnGerond[b.id] == null);
   if (v === -1) return;
-  const { prev, next } = boeiPrevNext(v, boeien, lijnen);
+  const { prev, next } = boeiPrevNext(v, baan, lijnen);
   const marge = Math.min(huidig.acc || 10, RONDINGS_MARGE_MAX_M);
-  const lijn = rondingsLijn(boeien[v], prev, next, marge, RONDINGS_LIJN_M);
+  const lijn = rondingsLijn(baan[v], prev, next, marge, RONDINGS_LIJN_M);
   if (!lijn || !lijnstukkenKruisen(vorigeRuwe, huidig, lijn.a, lijn.b)) return;
-  const id = boeiId(boeien[v], v);
+  const id = baan[v].id;
   mijnGerond[id] = huidig.ts;
   schrijf(db.ref(`${P}/rounded/${boot}/${id}`).set(huidig.ts));
   speel(GELUID.boei);
-  meld(`🟠 Boei ${v + 1} gerond om ${formatKlok(huidig.ts)}`, 'goed');
+  meld(`🟠 ${baan[v].label} gerond om ${formatKlok(huidig.ts)}`, 'goed');
 }
 
 // De database is leidend: zo komen handmatige correcties van de
 // wedstrijdleiding (boei gerond / teruggedraaid) direct op de boot aan.
 function volgGerond(gerond) {
-  const nieuw = boeien.map((b, i) => [i, boeiId(b, i)]).filter(([, id]) => gerond[id] != null && mijnGerond[id] == null);
-  const weg = boeien.map((b, i) => [i, boeiId(b, i)]).filter(([, id]) => gerond[id] == null && mijnGerond[id] != null);
+  const baan = mijnBaan();
+  const nieuw = baan.filter(b => gerond[b.id] != null && mijnGerond[b.id] == null).map(b => b.label);
+  const weg = baan.filter(b => gerond[b.id] == null && mijnGerond[b.id] != null).map(b => kleinLabel(b.label));
   mijnGerond = Object.assign({}, gerond);
-  if (nieuw.length) meld(`🟠 Boei ${nieuw.map(([i]) => i + 1).join(', ')} gerond (door de wedstrijdleiding)`, 'goed');
+  if (nieuw.length) meld(`🟠 ${nieuw.join(', ')} gerond (door de wedstrijdleiding)`, 'goed');
   else if (weg.length) setTimeout(() => {     // niet melden als het een race-reset was (tijden ook weg)
-    if (mijnTijden.start != null) meld(`↩️ Wedstrijdleiding: boei ${weg.map(([i]) => i + 1).join(', ')} moet je nog ronden`, 'fout');
+    if (mijnTijden.start != null) meld(`↩️ Wedstrijdleiding: ${weg.join(', ')} moet je nog ronden`, 'fout');
   }, 500);
 }
 
@@ -335,7 +344,7 @@ function checkKruising(huidig) {
   checkBoei(huidig, boot);
 
   // Finish: pas na de start én als alle boeien gerond zijn
-  const alleGerond = boeien.every((b, i) => mijnGerond[boeiId(b, i)] != null);
+  const alleGerond = mijnBaan().every(b => mijnGerond[b.id] != null);
   if (lijnen.finish && lijnen.finish.a && mijnTijden.start != null && mijnTijden.finish == null && alleGerond &&
       lijnstukkenKruisen(A, B, lijnen.finish.a, lijnen.finish.b)) {
     mijnTijden.finish = huidig.ts;
@@ -444,7 +453,7 @@ function bewaarNaam() {
   const ref = db.ref(`${P}/names/${mijnBoot()}`);
   return n ? ref.set(n) : ref.remove();
 }
-bootSelect.addEventListener('change', () => { laadNaam(); markeerEigen(); renderAndereBoten(); renderEigenBoot(); updateAftel(); updateStartInfo(); });
+bootSelect.addEventListener('change', () => { laadNaam(); markeerEigen(); renderAndereBoten(); renderEigenBoot(); updateAftel(); updateStartInfo(); tekenCourse(); });
 
 async function vraagWakeLock() {
   try {
@@ -566,7 +575,7 @@ function koppelData() {
   luister(`${P}/lines`, 'value', s => { lijnen = s.val() || {}; tekenCourse(); });
   luister(`${P}/marks`, 'value', s => { boeien = alsBoeien(s.val()); tekenCourse(); });
   luister(`${P}/raceStart`, 'value', s => { raceStart = s.val() || null; vorigeRem = null; updateAftel(); updateStartInfo(); });
-  luister(`${P}/startPlan`, 'value', s => { startPlan = s.val() || null; vorigeRem = null; updateAftel(); updateStartInfo(); });
+  luister(`${P}/startPlan`, 'value', s => { startPlan = s.val() || null; vorigeRem = null; updateAftel(); updateStartInfo(); tekenCourse(); });
   luister(`${P}/names`, 'value', s => {
     kNamen = s.val() || {};
     Object.keys(kMarkers).forEach(n => kMarkers[n].setTooltipContent(schipLabel(n)));

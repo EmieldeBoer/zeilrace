@@ -78,7 +78,7 @@ function snelheidKleur(f) {
   return 'rgb(' + c0.map((c, k) => Math.round(c + (c1[k] - c) * r)).join(',') + ')';
 }
 
-// o = { titel, klok(t) → tekst, sporen: [{kleur, naam, pts, finishS}], baan: {lines, marks} }
+// o = { titel, klok(t) → tekst, sporen: [{kleur, naam, pts, finishS}], baan: {lines, marks}, lussen }
 // Geeft { canvas, teken(t), eind } terug; de achtergrond wordt één keer geladen.
 async function maakScene(o, W = 1600, H = 1200) {
   // De themaletters moeten geladen zijn vóór we op het canvas tekenen
@@ -87,10 +87,12 @@ async function maakScene(o, W = 1600, H = 1200) {
   const KOP = Math.round(H * 0.092), VOET = 40, RAND = 60, kaartH = H - KOP - VOET;
   const lijnen = (o.baan && o.baan.lines) || {};
   const boeien = alsBoeien(o.baan && o.baan.marks);
+  const lusPaden = o.lussen ? Object.keys(BOTEN).map(b => ({ b, pad: lusPad(boeien, lijnen, o.lussen, b) })).filter(x => x.pad) : [];
   const alle = [];
   o.sporen.forEach(s => s.pts.forEach(p => alle.push(p)));
   ['start', 'finish'].forEach(t => { const l = lijnen[t]; if (l && l.a) alle.push([l.a.lat, l.a.lng], [l.b.lat, l.b.lng]); });
   boeien.forEach(b => alle.push([b.lat, b.lng]));
+  lusPaden.forEach(x => x.pad.forEach(p => alle.push([p.lat, p.lng])));
   if (!alle.length) return null;
   const eind = Math.max(0, ...o.sporen.map(s => s.pts.length ? s.pts[s.pts.length - 1][2] : 0));
 
@@ -137,13 +139,20 @@ async function maakScene(o, W = 1600, H = 1200) {
     a.setLineDash([16, 10]); a.lineWidth = 6; a.strokeStyle = kleur; pad(a, [p1, p2]); a.setLineDash([]);
     omlijnd(a, tekst, (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2 - 16, kleur, 'bold 20px Cinzel, Georgia, serif', 'center');
   });
-  boeien.forEach((bo, i) => {
-    const [x, y] = xy(bo.lat, bo.lng);
-    a.beginPath(); a.arc(x, y, 16, 0, 2 * Math.PI); a.fillStyle = '#d98b2b'; a.fill();
+  const boeiRondje = (x, y, r, kleur, tekst, tekstKleur) => {
+    a.beginPath(); a.arc(x, y, r, 0, 2 * Math.PI); a.fillStyle = kleur; a.fill();
     a.lineWidth = 3; a.strokeStyle = '#2b1b0d'; a.stroke();
-    a.fillStyle = '#2b1b0d'; a.font = 'bold 17px Cinzel, Georgia, serif';
-    a.textAlign = 'center'; a.textBaseline = 'middle'; a.fillText(String(i + 1), x, y + 1);
+    a.fillStyle = tekstKleur; a.font = `bold ${Math.round(r * 1.05)}px Cinzel, Georgia, serif`;
+    a.textAlign = 'center'; a.textBaseline = 'middle'; a.fillText(tekst, x, y + 1);
+  };
+  // Lusstart: per boot een lijn in de bootkleur door de eigen lus
+  lusPaden.forEach(({ b, pad: lp }) => {
+    a.setLineDash([4, 9]); a.lineWidth = 3; a.strokeStyle = BOTEN[b].kleur; pad(a, lp.map(p => xy(p.lat, p.lng))); a.setLineDash([]);
   });
+  boeien.forEach((bo, i) => { const [x, y] = xy(bo.lat, bo.lng); boeiRondje(x, y, 16, '#d98b2b', String(i + 1), '#2b1b0d'); });
+  lusPaden.forEach(({ b, pad: lp }) => lp.filter(p => p.lus).forEach(p => {
+    const [x, y] = xy(p.lat, p.lng); boeiRondje(x, y, 13, BOTEN[b].kleur, p.letter, '#fff');
+  }));
   a.restore();
   a.textBaseline = 'alphabetic';
   a.fillStyle = '#1a120b'; a.fillRect(0, 0, W, KOP); a.fillRect(0, H - VOET, W, VOET);

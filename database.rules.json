@@ -82,7 +82,7 @@
         "gen": { ".validate": "newData.isNumber()" },
 
         "startPlan": {
-          ".validate": "newData.child('modus').val() === 'gelijk' || newData.child('modus').val() === 'achtervolging'"
+          ".validate": "newData.child('modus').val() === 'gelijk' || newData.child('modus').val() === 'achtervolging' || newData.child('modus').val() === 'lus'"
         },
 
         "lines": {

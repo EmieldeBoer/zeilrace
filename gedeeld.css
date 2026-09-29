@@ -58,6 +58,7 @@ body { font-variant-numeric: lining-nums tabular-nums; }
 .boei { width: 26px; height: 26px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f3b35a, var(--oranje) 60%, #9a5a14);
   border: 2px solid var(--inkt); color: var(--inkt); font-weight: 700; font-size: 13px; font-family: var(--font-kap);
   display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px rgba(234,216,174,.8), 0 2px 5px #000a; }
+.boei.lus { width: 22px; height: 22px; font-size: 12px; color: #fff; text-shadow: 0 1px 2px #000; }
 .boei.concept { background: var(--goud); border-color: var(--messing-donker); box-shadow: 0 0 0 4px rgba(240,199,94,.45); cursor: move; }
 .lijn-label { background: transparent; border: none; box-shadow: none; font-family: var(--font-kap);
   color: var(--inkt); font-weight: 700; font-size: 12px; text-shadow: 0 0 3px var(--perkament), 0 0 3px var(--perkament), 0 0 5px var(--perkament); }

@@ -25,8 +25,13 @@ const Verteller = (() => {
   }
   const plat = s => s.replace(/\s+/g, ' ').trim();
   const opsomming = a => a.length <= 1 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' en ' + a[a.length - 1];
-  const doelNaam = l => l === 'Startlijn' ? 'de startlijn' : l === 'Finish' ? 'de finish' : l.toLowerCase();
+  const doelNaam = l => l === 'Startlijn' ? 'de startlijn' : l === 'Finish' ? 'de finish' : l.charAt(0).toLowerCase() + l.slice(1);
   const isAchter = d => !!(d.startPlan && d.startPlan.modus === 'achtervolging');
+  const isLus = d => !!(d.startPlan && d.startPlan.modus === 'lus');
+  const eersteWint = d => isAchter(d) || isLus(d);          // de rating zit in de start of in de lus
+  const soortRace = d => isLus(d) ? 'de lusrace' : 'de achtervolging';
+  // De baan van een boot: bij een lusstart met de eigen lus erin
+  const baanVan = (d, b) => baanVanBoot(d.boeien, lussenVan(d.startPlan), b);
 
   // Laatste spoorpunt op of vóór tijdstip t
   function puntOp(pts, t) {
@@ -63,13 +68,13 @@ const Verteller = (() => {
       const rd = d.rounded[b] || {};
       const s0 = startVan(d, b), start = s0 != null && s0 <= t ? s0 : null;
       const f0 = finishVan(d, b), finish = f0 != null && f0 <= t ? f0 : null;
-      const gerond = {};
-      d.boeien.forEach((bo, i) => { const id = boeiId(bo, i); if (rd[id] != null && rd[id] <= t) gerond[id] = rd[id]; });
+      const gerond = {}, baan = baanVan(d, b);
+      baan.forEach(bo => { if (rd[bo.id] != null && rd[bo.id] <= t) gerond[bo.id] = rd[bo.id]; });
       const aantalGerond = Object.keys(gerond).length;
       const p = puntOp(d.sporen[b], t);
       let doel = null, afst = null;
       if (p && finish == null) {
-        doel = doelVanBoot(p, start, finish, gerond, d.lijnen, d.boeien);
+        doel = doelVanBoot(p, start, finish, gerond, d.lijnen, baan);
         if (doel) afst = afstandMeter(p, doel.punt);
       }
       // voortgang: start + gerond + finish; binnen een rak telt de afstand tot het doel,
@@ -96,7 +101,7 @@ const Verteller = (() => {
   const verzeild = (d, b, f) => f - eigenStartVan(b, {}, d.raceStart, d.startPlan);
   // De rating die in déze race gold (bij oude races uit de bewaarde uitslag), anders de huidige
   const ratingVan = (d, b) => (d.ratings && d.ratings[b]) || BOTEN[b].rating;
-  const gecorr = (d, b, f) => isAchter(d) ? f - d.raceStart : verzeild(d, b, f) * ratingVan(d, b);
+  const gecorr = (d, b, f) => eersteWint(d) ? f - d.raceStart : verzeild(d, b, f) * ratingVan(d, b);
 
   // ---- Eén notitie op tijdstip t ----
   // o = { soort: 'uur'|'start'|'boei'|'finish'|'kop'|'einde'|'test', voor, onderwerp, vorigeT, laatste }
@@ -176,6 +181,8 @@ const Verteller = (() => {
       const nrs = d.boeien.map((bo, i) => [i + 1, rd[boeiId(bo, i)]])
         .filter(([, ts]) => ts != null && ts > sinds && ts <= t && !(o.soort === 'boei' && ts === t)).map(([n]) => n);
       if (nrs.length) gebeurd.push(`${v.naam} rondde boei ${opsomming(nrs.map(String))}`);
+      const lusKlaar = rd[`lus-${v.boot}-b`];
+      if (lussenVan(d.startPlan) && lusKlaar != null && lusKlaar > sinds && lusKlaar <= t) gebeurd.push(`${v.naam} voer de eigen lus`);
       if (v.finish != null && v.finish > sinds && !(o.soort === 'finish' && v.boot === o.onderwerp))
         gebeurd.push(`${v.naam} kwam om ${klokHM(v.finish)} over de finish`);
     });
@@ -183,9 +190,9 @@ const Verteller = (() => {
 
     // 4. De stand met de rating: wie staat er op gecorrigeerde tijd voor, en wie kan nog winnen?
     if (binnen.length) {
-      if (isAchter(d)) {
+      if (eersteWint(d)) {
         if (!(o.soort === 'finish' && o.onderwerp === binnen[0].boot))      // de openingszin zei het al
-          zinnen.push(`In de achtervolging telt de finishvolgorde: ${binnen[0].naam} heeft de race gewonnen.`);
+          zinnen.push(`In ${soortRace(d)} telt de finishvolgorde: ${binnen[0].naam} heeft de race gewonnen.`);
       } else {
         const beste = [...binnen].sort((a, c) => gecorr(d, a.boot, a.finish) - gecorr(d, c.boot, c.finish))[0];
         zinnen.push(binnen.length === 1
@@ -238,9 +245,9 @@ const Verteller = (() => {
     if (binnen.length) {
       const water = [...binnen].sort((a, c) => a.finish - c.finish);
       zinnen.push('Op het water: ' + water.map((v, i) => `${i + 1}. ${v.naam} (${formatDuur(verzeild(d, v.boot, v.finish))})`).join(', ') + '.');
-      if (isAchter(d)) {
-        zinnen.push(`In de achtervolging telt de finishvolgorde: ${water[0].naam} wint! De ratings zaten al in de ` +
-          `startvertragingen (${d.deelnemers.map(b => `${d.naam(b)} ${ratingVan(d, b).toFixed(3)}`).join(', ')}).`);
+      if (eersteWint(d)) {
+        zinnen.push(`In ${soortRace(d)} telt de finishvolgorde: ${water[0].naam} wint! De ratings zaten al in de ` +
+          `${isLus(d) ? 'lengte van de lussen' : 'startvertragingen'} (${d.deelnemers.map(b => `${d.naam(b)} ${ratingVan(d, b).toFixed(3)}`).join(', ')}).`);
       } else if (binnen.length > 1) {
         const rating = [...binnen].sort((a, c) => gecorr(d, a.boot, a.finish) - gecorr(d, c.boot, c.finish));
         zinnen.push('De uitslag met de rating (verzeilde tijd × rating): ' + rating.map((v, i) =>
@@ -282,8 +289,8 @@ const Verteller = (() => {
         `Boei ${i + 1} is bereikt: ${d.naam(r.boot)} gaat er als eerste omheen.`]) }));
     });
     const f = eerste(b => finishVan(d, b));
-    if (f && d.deelnemers.length > 1) ev.push(Object.assign(f, { soort: 'finish', kop: 'eerste finish', voor: k => isAchter(d)
-      ? k([`${d.naam(f.boot)} komt als eerste over de finish en wint de achtervolging! 🏁`,
+    if (f && d.deelnemers.length > 1) ev.push(Object.assign(f, { soort: 'finish', kop: 'eerste finish', voor: k => eersteWint(d)
+      ? k([`${d.naam(f.boot)} komt als eerste over de finish en wint ${soortRace(d)}! 🏁`,
            `De eerste finish is meteen de winst: ${d.naam(f.boot)} is als eerste binnen! 🏁`])
       : k([`${d.naam(f.boot)} komt als eerste over de finish! 🏁`,
            `De eerste finish is binnen: ${d.naam(f.boot)} haalt als eerste de haven! 🏁`]) }));
@@ -389,15 +396,16 @@ const Verteller = (() => {
     const uit = {};
     FLEET.forEach(b => {
       const start = startVan(d, b), pts = d.sporen[b];
-      if (start == null || !pts || !d.boeien.length) return;
+      const baan = baanVan(d, b);
+      if (start == null || !pts || !baan.length) return;
       const tot = finishVan(d, b), gerond = uit[b] = {};
       let v = 0;
-      for (let i = 1; i < pts.length && v < d.boeien.length; i++) {
+      for (let i = 1; i < pts.length && v < baan.length; i++) {
         if (pts[i].ts < start) continue;
         if (tot != null && pts[i].ts > tot) break;
-        const { prev, next } = boeiPrevNext(v, d.boeien, d.lijnen);
-        const lijn = rondingsLijn(d.boeien[v], prev, next, RONDINGS_MARGE_MAX_M, RONDINGS_LIJN_M);
-        if (lijn && lijnstukkenKruisen(pts[i - 1], pts[i], lijn.a, lijn.b)) { gerond[boeiId(d.boeien[v], v)] = pts[i].ts; v++; }
+        const { prev, next } = boeiPrevNext(v, baan, d.lijnen);
+        const lijn = rondingsLijn(baan[v], prev, next, RONDINGS_MARGE_MAX_M, RONDINGS_LIJN_M);
+        if (lijn && lijnstukkenKruisen(pts[i - 1], pts[i], lijn.a, lijn.b)) { gerond[baan[v].id] = pts[i].ts; v++; }
       }
     });
     return uit;
@@ -413,10 +421,10 @@ const Verteller = (() => {
     });
     // De ratings van toen: gecorrigeerd / verzeild uit de bewaarde uitslag (gelijke start)
     const ratings = {};
-    if ((res.modus || 'gelijk') !== 'achtervolging') Object.entries(res.uitslag || {}).forEach(([b, u]) => {
+    if (!['achtervolging', 'lus'].includes(res.modus || 'gelijk')) Object.entries(res.uitslag || {}).forEach(([b, u]) => {
       if (u && u.corrected > 0 && u.elapsed > 0) ratings[b] = u.corrected / u.elapsed;   // niet afronden: tijden moeten kloppen
     });
-    const d = { raceStart: res.gun, startPlan: { modus: res.modus || 'gelijk', vertraging: res.vertraging || null },
+    const d = { raceStart: res.gun, startPlan: { modus: res.modus || 'gelijk', vertraging: res.vertraging || null, lussen: res.lussen || null },
       times: res.tijden || {}, boeien: alsBoeien(res.baan && res.baan.marks), lijnen: (res.baan && res.baan.lines) || {},
       sporen, naam, wind: null, rounded: {}, afgerond: true, ratings };
     d.rounded = res.rondingen || rondingenUitSporen(d);

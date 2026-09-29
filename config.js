@@ -61,6 +61,15 @@ const RONDINGS_LIJN_M = 10000;
 // ------------------------------------------------------------
 const RONDINGS_MARGE_MAX_M = 25;
 
+// ------------------------------------------------------------
+//  Lusstart (start C): iedereen start tegelijk en elke boot vaart
+//  een eigen lus van twee extra boeien, zo lang dat de verwachte
+//  tijden gelijk worden. Ook de langzaamste boot vaart een lus, zodat
+//  iedereen even vaak moet ronden. LUS_MIN_M = de extra afstand van
+//  die kleinste lus (m); de andere lussen worden langer.
+// ------------------------------------------------------------
+const LUS_MIN_M = 300;
+
 // Firebase initialiseren (wordt door beide pagina's gebruikt)
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();

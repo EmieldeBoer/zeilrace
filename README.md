@@ -73,12 +73,14 @@ GPH is het aantal seconden per zeemijl. Hoe lager, hoe sneller de boot. Het zijn
 charterboten met onbekende zeilen en lading, dus de ratings zijn een redelijke schatting,
 geen officieel certificaat. Aanpassen kan in `config.js` (`gph`).
 
-**Uitslagen** tellen met rating: gecorrigeerde tijd = verzeilde tijd × rating (Time-on-Time).
+**Uitslagen** tellen bij een gelijke start met rating: gecorrigeerde tijd = verzeilde tijd × rating (Time-on-Time).
+Bij een achtervolgings- of lusstart zit de rating al in de start of de baan: daar wint wie het eerst binnen is.
 Per race staat de verzeilde tijd er ter informatie bij, en een uitklapbaar **📜 Scheepsjournaal**
 (bewaard bij het afronden; bij oudere races achteraf opgemaakt uit de sporen).
 
 **⚖️ Ratingcheck** (tab Uitslagen): per race de rating waarmee elke boot precies gelijk was geëindigd,
-geschaald op dezelfde gemiddelde rating, plus het gemiddelde over alle races. Vanaf 3 races per boot
+geschaald op dezelfde gemiddelde rating, plus het gemiddelde over alle races. Bij een lusstart rekent hij met de
+baanlengte van elke boot. Vanaf 3 races per boot
 geeft hij een advies voor `config.js`. Bemanning, starts en het soort baan tellen mee: beoordeel dus
 meerdere races met verschillende omstandigheden.
 
@@ -86,6 +88,18 @@ meerdere races met verschillende omstandigheden.
 - **A · Gelijke start:** iedereen tegelijk weg. De rating corrigeert achteraf.
 - **B · Achtervolgingsstart:** de langzaamste boot start eerst. De anderen starten later,
   met het verschil in verwachte tijd. Wie het eerst finisht, wint.
+- **C · Lusstart:** iedereen tegelijk weg. Elke boot krijgt automatisch een eigen lus: twee extra
+  boeien (A en B) naast een rak. De boot vaart langs de lus naar A, keert terug naar B en vaart
+  dan verder, een kleine α. De lus maakt de baan per boot zo veel langer dat GPH × baanlengte voor
+  iedereen gelijk is. Wie het eerst finisht, wint.
+  - Ook de langzaamste boot vaart een lus (`LUS_MIN_M` in `config.js`, standaard 300 m), zodat iedereen even vaak rondt.
+  - De grootste lus kiest als eerste een rak, steeds het rak met de meeste vrije ruimte. Lussen op hetzelfde rak liggen
+    achter elkaar, om en om aan de linker- en rechterkant.
+  - Omdat de lus heen en terug langs het rak loopt, kost hij bij elke windrichting ongeveer even veel.
+  - Passen de lussen niet goed op de baan, dan waarschuwt de baanplanning. Maak dan de raken langer.
+  - De lussen worden bij het startsein vastgelegd. De tracker toont alleen je eigen lus; het dashboard toont ze allemaal in de bootkleur.
+
+  **Let op:** publiceer na deze update de nieuwe `database.rules.json`, anders weigert de database de lusstart.
 
 De verwachte tijd is GPH × baanlengte × windfactor. De windfactor komt uit de actuele
 wind van Open-Meteo, weergegeven in Beaufort.
@@ -99,7 +113,7 @@ wind van Open-Meteo, weergegeven in Beaufort.
    (geel op de kaart). Pas na **✓ Bevestigen** zien de boten ze. Zo voeg je tijdens de
    race niet per ongeluk een boei toe, maar kun je de baan wel bewust aanpassen,
    bijvoorbeeld bij een windshift.
-2. Geef in de tab **🏁 Race** het startsein: **Start A: gelijk** of **Start B: achtervolging**.
+2. Geef in de tab **🏁 Race** het startsein: **Start A: gelijk**, **Start B: achtervolging** of **Start C: lussen**.
    De start valt op het volgende 5-minutenmoment. De verwachte tijden en vertragingen staan in de baanplanning.
 3. Na de race: **Race afronden & opslaan**. De uitslag, de baan en de sporen worden
    bewaard. In de tab *Uitslagen* staat per race een **▶ Replay** met een tijdslider,
@@ -174,7 +188,7 @@ verplaatsing, en sprongen die sneller dan 25 kn zouden zijn, tellen niet mee.
 **Om te winnen:** zodra er een boot binnen is, zie je bij elke boot die nog vaart hoeveel tijd hij nog heeft om die
 boot op gecorrigeerde tijd te verslaan (met de rating). Op de tracker staat ook het klokmoment waarvoor je binnen
 moet zijn. Lukt winnen niet meer, dan staat er hoeveel tijd je nog hebt voor de volgende plek, of *te laat*.
-Bij een achtervolgingsstart wint wie het eerst binnen is, dus daar is het na de eerste finish meteen *te laat*.
+Bij een achtervolgings- of lusstart wint wie het eerst binnen is, dus daar is het na de eerste finish meteen *te laat*.
 
 **Afstanden** staan in zeemijl (zm). De replay loopt van hooguit 15 minuten vóór het startschot tot de finish van de laatste boot.
 
