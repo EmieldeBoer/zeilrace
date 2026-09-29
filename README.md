@@ -95,8 +95,8 @@ meerdere races met verschillende omstandigheden.
   dan verder, een kleine α. De lus maakt de baan per boot zo veel langer dat GPH × baanlengte voor
   iedereen gelijk is. Wie het eerst finisht, wint.
   - Ook de langzaamste boot vaart een lus (`LUS_MIN_M` in `config.js`, standaard 300 m), zodat iedereen even vaak rondt.
-  - De grootste lus kiest als eerste een rak, steeds het rak met de meeste vrije ruimte. Lussen op hetzelfde rak liggen
-    achter elkaar, om en om aan de linker- en rechterkant.
+  - Alle lussen liggen op het langste rak en delen boei A: die ligt voor iedereen op dezelfde plek, vlak voor het eind
+    van het rak. Alleen boei B verschilt: hoe sneller de boot, hoe verder B terug ligt.
   - Omdat de lus heen en terug langs het rak loopt, kost hij bij elke windrichting ongeveer even veel.
   - Passen de lussen niet goed op de baan, dan waarschuwt de baanplanning. Maak dan de raken langer.
   - De lussen worden bij het startsein vastgelegd. De tracker toont alleen je eigen lus; het dashboard toont ze allemaal in de bootkleur.
@@ -149,8 +149,8 @@ wind van Open-Meteo, weergegeven in Beaufort.
 verwachte kloktijd), de totale verzeilde tijd en de gecorrigeerde totale tijd, gesorteerd op die laatste. De tijd tot de
 finish is de resterende baan (naar het volgende doel en langs de nog te ronden boeien naar de finish, bij een lusstart de
 eigen baan) gedeeld door het tempo langs de baan: half het gemiddelde sinds de start, half dat van het laatste kwartier.
-Boten die binnen zijn staan er met hun echte tijd (🏁). Dezelfde tijd staat als **Voorspelde tijd tot finish** in de
-bootkaarten.
+Boten die binnen zijn staan er met hun echte tijd (🏁). Dezelfde voorspelling staat onder **Voorspelling** in de
+bootkaarten: tijd tot finish, eindtijd (verzeilde tijd) en eindtijd met rating.
 
 **🏁 Finish uit spoor** (tab Uitslagen, alleen wedstrijdleiding): voor een opgeslagen race met een boot zonder finish
 (bijv. als de finishlijn tijdens de race is verlengd) haalt de knop de eerste kruising van de finishlijn uit het spoor,

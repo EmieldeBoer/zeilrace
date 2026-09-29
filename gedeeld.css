@@ -92,6 +92,12 @@ body { font-variant-numeric: lining-nums tabular-nums; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stats .neg .v { color: var(--bloed); }
 .stats-finish { align-self: end; color: var(--bloed); font-weight: 700; font-family: var(--font-kap); }
+/* Voorspelling: over de volle breedte, drie kolommen */
+.stats > .stats-voorspel { grid-column: 1 / -1; border-top: 1px dotted rgba(107,81,48,.35); padding-top: 6px; }
+.stats-voorspel .kop { font-size: .68rem; color: var(--inkt-zacht); font-family: var(--font-kap); font-style: italic; letter-spacing: .06em; }
+.stats-voorspel > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 10px; margin-top: 2px; }
+.stats-voorspel > div > div { display: flex; flex-direction: column; min-width: 0; }
+.stats-voorspel .v { font-size: 1rem; font-style: italic; }
 .stats-leeg { margin-top: 6px; color: var(--inkt-zacht); font-size: .95rem; font-style: italic; }
 
 .banner { background: linear-gradient(180deg, #7a1d12, #5a130b); color: #ffe9dc; border: 1px solid var(--bloed-licht); padding: 10px 12px;

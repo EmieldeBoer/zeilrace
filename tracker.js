@@ -101,9 +101,8 @@ function tekenCourse() {
   ['start', 'finish'].forEach(t => {
     const ln = lijnen[t];
     if (!(ln && ln.a && ln.b)) return;
-    kBaan.push(L.polyline([[ln.a.lat, ln.a.lng], [ln.b.lat, ln.b.lng]],
-      { color: t === 'start' ? '#2ea043' : '#e6194b', weight: 4, dashArray: '7 7' })
-      .addTo(kaart).bindTooltip(t === 'start' ? 'START' : 'FINISH', { permanent: true, direction: 'center', className: 'lijn-label' }));
+    tekenStartFinish(kaart, ln, t, kBaan)
+      .bindTooltip(t === 'start' ? 'START' : 'FINISH', { permanent: true, direction: 'center', className: 'lijn-label' });
   });
   // Alleen je eigen lus: de lussen van de andere boten doen voor jou niet mee
   const baan = mijnBaan(), kleur = BOTEN[mijnBoot()].kleur;
@@ -199,7 +198,7 @@ function renderEigenBoot() {
   const basis = uitDb.lat != null ? uitDb : mijnPositie ? Object.assign({}, uitDb, { lat: mijnPositie.lat, lng: mijnPositie.lng,
     speed: mijnSnelheid, heading: mijnHeading, start: t.start, finish: t.finish, gerond: mijnGerond }) : null;
   const s = basis && Object.assign({}, basis, { afgelegd: afgelegdVan(b, tijden[b]), win: tijdOmTeWinnen(b, tijden, raceStart, startPlan, Date.now()),
-    totFinish: totFinishVan(voorspelRijen, b) });
+    voorspel: voorspellingVan(voorspelRijen, b) });
   const html = bootStatsHtml(bootData(s, lijnen, baanVan(b)));
   if ($('eigenStats').innerHTML !== html) $('eigenStats').innerHTML = html;
 }
@@ -335,7 +334,7 @@ function renderAndereBoten() {
     k.querySelector('.ab-type').textContent = (eigenNaam ? BOTEN[naam].model + ' · ' : '') + 'rating ' + BOTEN[naam].rating.toFixed(3);
     k.querySelector('.ab-status').textContent = online ? '' : (s.ts ? geleden(nu - s.ts) : 'geen data');
     const extra = { afgelegd: afgelegdVan(naam, tijden[naam]), win: tijdOmTeWinnen(naam, tijden, raceStart, startPlan, nu),
-      totFinish: totFinishVan(voorspelRijen, naam) };
+      voorspel: voorspellingVan(voorspelRijen, naam) };
     k.querySelector('.ab-stats').innerHTML = bootStatsHtml(bootData(Object.assign({}, s, extra), lijnen, baanVan(naam)));
   });
 }

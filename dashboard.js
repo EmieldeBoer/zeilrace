@@ -98,7 +98,7 @@ function verversLijst() {
     const t = timesData[naam] || {};
     const s = Object.assign({}, posData[naam], { start: t.start, finish: t.finish, gerond: rondingData[naam],
       afgelegd: t.start != null ? afgelegdM(spoorPunten[naam], t.start, t.finish) : null,
-      win: tijdOmTeWinnen(naam, timesData, raceStart, startPlan, nu), totFinish: totFinishVan(voorspelRijen, naam) });
+      win: tijdOmTeWinnen(naam, timesData, raceStart, startPlan, nu), voorspel: voorspellingVan(voorspelRijen, naam) });
     const eigenNaam = naamVan(naam) !== BOTEN[naam].model;
     k.classList.toggle('offline', !online);
     k.classList.toggle('gekozen', geselecteerd === naam);
@@ -509,8 +509,7 @@ function openReplay(nr) {
   const lines = (data.baan && data.baan.lines) || {}, marks = alsBoeien(data.baan && data.baan.marks);
   ['start', 'finish'].forEach(t => {
     const ln = lines[t]; if (!(ln && ln.a)) return;
-    rp.lagen.push(L.polyline([[ln.a.lat, ln.a.lng], [ln.b.lat, ln.b.lng]],
-      { color: t === 'start' ? '#2ea043' : '#e6194b', weight: 4, dashArray: '7 7', interactive: false }).addTo(rp.kaart));
+    tekenStartFinish(rp.kaart, ln, t, rp.lagen, { interactive: false });
   });
   marks.forEach((b, i) => rp.lagen.push(L.marker([b.lat, b.lng], { icon: boeiIcoon(i), interactive: false }).addTo(rp.kaart)));
   tekenLussen(rp.kaart, marks, lines, data.lussen, rp.lagen, b => (data.sporen.find(s => s.boot === b) || {}).naam || naamVan(b));
@@ -702,10 +701,9 @@ function tekenBaan() {
   ['start', 'finish'].forEach(t => {
     const ln = lines[t];
     if (!(ln && ln.a && ln.b)) return;
-    baanLagen.push(L.polyline([[ln.a.lat, ln.a.lng], [ln.b.lat, ln.b.lng]],
-      { color: t === 'start' ? '#2ea043' : '#e6194b', weight: isConcept ? 5 : 4, dashArray: isConcept ? '3 7' : '7 7' })
-      .addTo(kaart).bindTooltip((isConcept ? '✎ ' : '') + (t === 'start' ? 'START' : 'FINISH'),
-        { permanent: true, direction: 'center', className: 'lijn-label' }));
+    tekenStartFinish(kaart, ln, t, baanLagen, { weight: isConcept ? 5 : 4, dashArray: isConcept ? '3 7' : '7 7' })
+      .bindTooltip((isConcept ? '✎ ' : '') + (t === 'start' ? 'START' : 'FINISH'),
+        { permanent: true, direction: 'center', className: 'lijn-label' });
   });
   const lussen = lussenVan(startPlan);
   if (admin) {                                                        // alleen voor de wedstrijdleiding
@@ -848,7 +846,7 @@ function stelStartVoor(modus) {
     .map(x => `  ${naamVan(x.b)}: ${formatKlok(x.t)}` + (lus ? ` · lus +${formatAfstand(lus.extra[x.b])}` : '')).join('\n');
   if (!confirm(`${startNaam(modus)} voorstellen?\n\n${regels}\n\n` +
     (lus ? 'Iedereen start tegelijk en vaart een eigen lus van twee extra boeien. Wie het eerst finisht, wint.\n' +
-      (lus.past ? '' : '⚠️ De lussen passen niet goed op deze baan (ze overlappen of steken buiten het rak).\n') + '\n' : '') +
+      (lus.past ? '' : '⚠️ De lussen passen niet goed op deze baan (het langste rak is te kort voor de grootste lus).\n') + '\n' : '') +
     'Elke boot moet op de tracker akkoord geven. Pas als iedereen akkoord is, ligt de start vast; daarna verandert hij niet meer.')) return;
   const sp = { modus, gezet: Date.now() };
   if (plan) {

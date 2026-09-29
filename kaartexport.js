@@ -137,6 +137,10 @@ async function maakScene(o, W = 1600, H = 1200) {
     const l = lijnen[t]; if (!l || !l.a) return;
     const p1 = xy(l.a.lat, l.a.lng), p2 = xy(l.b.lat, l.b.lng);
     a.setLineDash([16, 10]); a.lineWidth = 6; a.strokeStyle = kleur; pad(a, [p1, p2]); a.setLineDash([]);
+    [p1, p2].forEach(([x, y]) => {                                   // duidelijke uiteinden
+      a.beginPath(); a.arc(x, y, 10, 0, 2 * Math.PI); a.fillStyle = kleur; a.fill();
+      a.lineWidth = 3; a.strokeStyle = '#2b1b0d'; a.stroke();
+    });
     omlijnd(a, tekst, (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2 - 16, kleur, 'bold 20px Cinzel, Georgia, serif', 'center');
   });
   const boeiRondje = (x, y, r, kleur, tekst, tekstKleur) => {
