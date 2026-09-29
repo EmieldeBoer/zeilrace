@@ -727,8 +727,8 @@ function lussenOpRak(P, N, xA, h, extra) {
 
 // Lussen voor de hele vloot. De langzaamste boot krijgt LUS_MIN_M extra, de
 // rest zo veel meer dat gph × baanlengte gelijk is. Alle lussen liggen op het
-// langste rak en delen boei A (vlak voor het eind van dat rak); alleen boei B
-// ligt per boot ergens anders.
+// langste rak en delen boei A; alleen boei B ligt per boot ergens anders. Het
+// geheel (van A tot de verste B) ligt in het midden van het rak.
 // Geeft { lussen, extra: {boot: m}, lengte: {boot: zm}, past } of null zonder complete baan.
 function maakLusPlan(lijnen, boeien) {
   if (!(lijnen.start && lijnen.start.a && lijnen.finish && lijnen.finish.a)) return null;
@@ -747,9 +747,16 @@ function maakLusPlan(lijnen, boeien) {
     lengte[b] = (basisM + extra[b]) / 1852;
   });
   const r = raken.reduce((best, x) => x.L > best.L ? x : best);
-  // A ligt LUS_RUIMTE_M vóór het eind van het rak, zijwaarts zo ver als de langste lus vraagt
+  // A zo dat het midden tussen A en de verste B op het midden van het rak valt (de
+  // lengte van de lussen hangt licht af van de plek: een paar keer bijstellen), maar
+  // nooit dichter dan LUS_RUIMTE_M bij het eind. Zijwaarts zo ver als de langste lus vraagt.
   const h = Math.min(250, Math.max(60, Math.max(...Object.values(extra)) / 8));
-  const xA = r.L - LUS_RUIMTE_M;
+  let xA = r.L / 2, plan;
+  for (let k = 0; k < 4; k++) {
+    plan = lussenOpRak(r.P, r.N, xA, h, extra);
+    const span = xA - Math.min(...Object.values(plan.xB));
+    xA = Math.min(r.L - LUS_RUIMTE_M, r.L / 2 + span / 2);
+  }
   const { a, b, xB } = lussenOpRak(r.P, r.N, xA, h, extra);
   const lussen = {};
   let past = xA > LUS_RUIMTE_M;
