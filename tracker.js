@@ -893,6 +893,8 @@ function vrijNummer(lijst, max) {
 function kanonSalvo() { kanonschot(); setTimeout(() => kanonschot(), 150); }
 // Klaar met herladen: 1 minuut na je laatste salvo (uit de database, dus ook na herladen van de pagina)
 const herlaadKlaar = mij => Math.max(herladenTot, (mij && mij.laatsteSchot || 0) + SPEL.herlaadMs);
+// Na een treffer ligt je kanon 1 minuut stil
+const geraaktKlaar = mij => (mij && mij.geraakt || 0) + SPEL.geraaktMs;
 
 async function vuur() {
   initAudio();
@@ -901,7 +903,7 @@ async function vuur() {
   if (watchId === null) { tip('Start eerst de tracking — dan weet het kanon waar je schip ligt.'); return; }
   const mij = st.boten[ik];
   if (mij.levens <= 0) { tip('Je schip is gezonken… ☠️'); return; }
-  if (Date.now() < herlaadKlaar(mij)) return;
+  if (Date.now() < herlaadKlaar(mij) || Date.now() < geraaktKlaar(mij)) return;
   const nr = vrijNummer(spelData && spelData.schoten && spelData.schoten[ik], SPEL.schoten);
   if (nr == null || mij.gebruikt >= SPEL.schoten) { tip('Je kruit is op!'); return; }
   if (!mijnPositie || mijnKoers == null) { tip('Vaar eerst een stukje: het kanon moet weten waar je boeg wijst.'); return; }
@@ -957,11 +959,15 @@ function renderSpel() {
   paneel.hidden = false;
   $('spelStatus').textContent = Piraat.statusTekst(st, kNaam);
   const mij = st.boten[ik], knop = $('btnVuur'), herlaad = Math.max(0, herlaadKlaar(mij) - Date.now());
+  const stil = Math.max(0, geraaktKlaar(mij) - Date.now());
+  const wacht = ms => formatDuur(Math.ceil(ms / 1000) * 1000);
   $('spelMijn').textContent = watchId === null ? 'Start de tracking om mee te vechten.'
     : `${kNaam(ik)}: ${Piraat.harten(mij.levens)} · ${SPEL.schoten - mij.gebruikt} salvo's · ${mij.hits} raak`;
-  knop.disabled = !st.bezig || watchId === null || mij.levens <= 0 || mij.gebruikt >= SPEL.schoten || herlaad > 0;
+  knop.disabled = !st.bezig || watchId === null || mij.levens <= 0 || mij.gebruikt >= SPEL.schoten || herlaad > 0 || stil > 0;
   knop.textContent = !st.bezig ? '⚓ De zeeslag is voorbij' : mij.levens <= 0 ? '☠️ Gezonken'
-    : mij.gebruikt >= SPEL.schoten ? '🪣 Het kruit is op' : herlaad > 0 ? `⏳ Herladen… ${formatDuur(Math.ceil(herlaad / 1000) * 1000)}` : '💥 Vuur het kanon!';
+    : mij.gebruikt >= SPEL.schoten ? '🪣 Het kruit is op'
+    : stil > 0 ? `💫 Geraakt! Kanon ligt stil… ${wacht(Math.max(stil, herlaad))}`
+    : herlaad > 0 ? `⏳ Herladen… ${wacht(herlaad)}` : '💥 Vuur het kanon!';
   const html = Piraat.scoreHtml(st, kNaam, ik);
   if (html !== scoreCache) { $('spelStand').innerHTML = html; scoreCache = html; }
 
@@ -970,7 +976,7 @@ function renderSpel() {
     if (mij.levens < vorigeMij.levens) {
       const doorVeld = mij.straf > vorigeMij.straf;
       meld(mij.levens <= 0 ? '☠️ Je schip is gezonken! Het spel is voor jou voorbij.'
-        : doorVeld ? `⚠️ Buiten het speelveld: een leven kwijt. Nog ${mij.levens}.` : `💥 Geraakt! Nog ${mij.levens} ${mij.levens === 1 ? 'leven' : 'levens'}.`, 'fout');
+        : doorVeld ? `⚠️ Buiten het speelveld: een leven kwijt. Nog ${mij.levens}.` : `💥 Geraakt! Nog ${mij.levens} ${mij.levens === 1 ? 'leven' : 'levens'}. Je kanon ligt 1 minuut stil.`, 'fout');
       if (!doorVeld && navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 400]);
     }
   }

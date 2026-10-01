@@ -3,7 +3,8 @@
 //  breedzijde-zeeslagen). Elke tracker kan het kanon afvuren: een salvo
 //  van kogels, haaks op de koers, naar bakboord én stuurboord. Komt een
 //  kogel binnen 20 m van een andere boot, dan is het raak.
-//  Elke boot heeft 3 levens en 10 salvo's. Buiten het speelveld (een cirkel
+//  Elke boot heeft 3 levens en 10 salvo's. Wie geraakt is, kan 1 minuut
+//  niet schieten. Buiten het speelveld (een cirkel
 //  van de wedstrijdleiding) kost elke 20 seconden een leven.
 //
 //  Database: races/{race}/spel = { start, eind?, veld: {lat,lng,r},
@@ -15,6 +16,7 @@
 const SPEL = {
   levens: 3, schoten: 10, bereikM: 150, raakM: 20, strafMs: 20000,
   herlaadMs: 60000,           // kanon herladen tussen twee salvo's (1 minuut)
+  geraaktMs: 60000,           // na een treffer ligt je kanon zo lang stil (1 minuut)
   kogelsPerKant: 10,          // de 'wolk' van kogels per breedzijde
   spreidingGr: 8              // kogels waaieren ± zoveel graden uit
 };
@@ -56,7 +58,7 @@ const Piraat = (() => {
   // posTs = { boot: tijd van de laatste positie } → wie doet er mee.
   function stand(spel, posTs) {
     const boten = {};
-    FLEET.forEach(b => { boten[b] = { boot: b, levens: SPEL.levens, hits: 0, gebruikt: 0, straf: 0, dood: null, laatsteSchot: null }; });
+    FLEET.forEach(b => { boten[b] = { boot: b, levens: SPEL.levens, hits: 0, gebruikt: 0, straf: 0, dood: null, laatsteSchot: null, geraakt: null }; });
     if (!spel || !spel.start) return { bezig: false, over: null, boten, deelnemers: [], volgorde: [], geldig: [], veld: spel && spel.veld };
     const ev = [];
     Object.entries(spel.schoten || {}).forEach(([b, l]) => Object.entries(l || {}).forEach(([nr, s]) =>
@@ -84,9 +86,10 @@ const Piraat = (() => {
         if (!ik.levens) ik.dood = e.t;
       } else {
         if (ik.gebruikt >= SPEL.schoten) continue;
+        if (ik.geraakt != null && e.t < ik.geraakt + SPEL.geraaktMs) continue;   // net geraakt: het kanon ligt stil
         ik.gebruikt++; ik.laatsteSchot = e.t;
         const raak = Object.keys(e.s.raak || {}).filter(d => boten[d] && d !== e.b && boten[d].levens > 0);
-        raak.forEach(d => { boten[d].levens--; ik.hits++; if (!boten[d].levens) boten[d].dood = e.t; });
+        raak.forEach(d => { boten[d].levens--; boten[d].geraakt = e.t; ik.hits++; if (!boten[d].levens) boten[d].dood = e.t; });
         geldig.push({ id: e.id, boot: e.b, schot: e.s, raak });
       }
       if (klaar()) over = e.t;

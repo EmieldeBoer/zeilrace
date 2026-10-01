@@ -192,6 +192,7 @@ ervoor en erna. Zonder winddata is een gijp daar niet van te onderscheiden.
 2. **🏴‍☠️ Start zeeslag** geeft alle schepen 3 levens en 10 salvo's.
 3. Op de tracker vuurt **💥 Vuur het kanon!** een breedzijde af, haaks op de koers en naar beide kanten: 10 kogels per kant,
    150 m ver. Een kogel binnen 20 m van een ander schip is raak. Na elk salvo moet het kanon 1 minuut herladen.
+   Wie geraakt wordt, kan daarna 1 minuut niet schieten.
 4. Buiten de cirkel kost elke 20 seconden een leven.
 5. Het spel is voorbij als er nog maar één schip drijft of als het kruit op is. Winnaar: de meeste levens, dan de meeste treffers,
    dan de meeste salvo's over.
