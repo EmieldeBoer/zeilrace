@@ -1237,7 +1237,7 @@ kaart.on('click', e => {
 });
 el('btnSpelStart').onclick = () => {
   if (!admin) return;
-  const geenVeld = !(spelData && spelData.veld) ? '\n\nLet op: er is nog geen speelveld getekend (dan zijn er ook geen buitkisten).' : '';
+  const geenVeld = !(spelData && spelData.veld) ? '\n\nLet op: er is nog geen speelveld getekend (dan zijn er ook geen schatkisten).' : '';
   if (!confirm('Nieuwe zeeslag starten? Alle schepen krijgen weer 3 levens en 10 salvo\'s.' + geenVeld)) return;
   db.ref(`${P}/spel`).update({ start: Date.now(), eind: null, schoten: null, straf: null, buit: null })
     .then(() => toonWlStatus('🏴‍☠️ De zeeslag is begonnen!'))

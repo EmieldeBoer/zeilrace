@@ -6,9 +6,9 @@
 //  Elke boot heeft 3 levens en 10 salvo's. Wie geraakt is, kan 1 minuut
 //  niet schieten. Buiten het speelveld (een cirkel
 //  van de wedstrijdleiding) kost elke 20 seconden een leven.
-//  In het speelveld drijven 100 buitkisten, op plekken die iedereen zelf
+//  In het speelveld drijven 20 schatkisten, op plekken die iedereen zelf
 //  uitrekent. Elke kist verhuist na 4 minuten naar een nieuwe plek; een
-//  gepakte kist komt dan ook terug. Vaar erlangs (binnen 25 m) en je
+//  gepakte kist komt dan ook terug. Vaar erlangs (binnen 50 m) en je
 //  volgende salvo reikt twee keer zo ver. Je kunt één kist tegelijk hebben.
 //
 //  Database: races/{race}/spel = { start, eind?, veld: {lat,lng,r},
@@ -24,9 +24,9 @@ const SPEL = {
   geraaktMs: 60000,           // na een treffer ligt je kanon zo lang stil (1 minuut)
   kogelsPerKant: 10,          // de 'wolk' van kogels per breedzijde
   spreidingGr: 8,             // kogels waaieren ± zoveel graden uit
-  kistAantal: 100,            // zoveel buitkisten drijven er tegelijk in het speelveld
+  kistAantal: 20,             // zoveel schatkisten drijven er tegelijk in het speelveld
   kistDuurMs: 240000,         // na 4 minuten verhuist een kist naar een nieuwe plek
-  kistPakM: 25,               // zo dichtbij moet je langs een kist varen
+  kistPakM: 50,               // zo dichtbij moet je langs een kist varen (de cirkel om de kist)
   kistBereik: 2               // met een kist reikt je volgende salvo zoveel keer zo ver
 };
 
@@ -151,7 +151,7 @@ const Piraat = (() => {
   }
   const harten = n => '❤️'.repeat(Math.max(0, n)) + '🖤'.repeat(Math.max(0, SPEL.levens - n));
   // Levens, en een kist als het volgende salvo extra ver reikt
-  const levensTekst = b => harten(b.levens) + (b.kist && b.levens > 0 ? ' 📦' : '');
+  const levensTekst = b => harten(b.levens) + (b.kist && b.levens > 0 ? ' 💰' : '');
 
   // ---- Scorebord ----
   function scoreHtml(st, naam, eigen) {
@@ -202,7 +202,19 @@ const Piraat = (() => {
     const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html: '<div class="kanon-raak">💥</div>', iconSize: [44, 44] }), interactive: false }).addTo(kaart);
     setTimeout(() => kaart.removeLayer(m), 2600);
   }
-  // Buitkisten op de kaart: alleen de kisten die erbij komen of weg zijn, worden bijgewerkt.
+  // Een open schatkist met goud (SVG, 34 × 30 px)
+  const SCHATKIST = '<svg viewBox="0 0 32 28" width="34" height="30" aria-hidden="true">' +
+    '<path d="M4 13 L6.5 3 H25.5 L28 13 Z" fill="#6e3a16" stroke="#2b1b0d" stroke-width="1.4" stroke-linejoin="round"/>' +   // open deksel
+    '<path d="M8.5 3.5 L7.5 13 M23.5 3.5 L24.5 13" stroke="#d9a93a" stroke-width="2"/>' +                                   // beslag op het deksel
+    '<path d="M4 14.5 Q7 8.5 11 11 Q15 6.5 19 10 Q24 7 28 14.5 Z" fill="#f2c94c" stroke="#a87b12" stroke-width="1"/>' +       // het goud
+    '<circle cx="11" cy="10.5" r="1.6" fill="#fff3b0"/><circle cx="20" cy="9.5" r="1.3" fill="#fff3b0"/>' +                 // glinstering
+    '<rect x="3" y="13" width="26" height="12.5" rx="1.5" fill="#9a5520" stroke="#2b1b0d" stroke-width="1.4"/>' +             // de kist
+    '<path d="M3.7 19.2 H28.3" stroke="#5e3311" stroke-width="1"/>' +
+    '<rect x="7" y="13" width="3" height="12.5" fill="#d9a93a"/><rect x="22" y="13" width="3" height="12.5" fill="#d9a93a"/>' +
+    '<rect x="13.5" y="15" width="5" height="6" rx="1" fill="#f3d36b" stroke="#2b1b0d" stroke-width="1"/>' +                // slot
+    '<circle cx="16" cy="17.6" r=".9" fill="#2b1b0d"/></svg>';
+  // Schatkisten op de kaart, elk met de cirkel waarbinnen je hem pakt (kistPakM).
+  // Alleen de kisten die erbij komen of weg zijn, worden bijgewerkt.
   // De animatie zit op een binnenste div: Leaflet zet de marker zelf op zijn plek met transform.
   // Elke kist dobbert in een eigen ritme (verschoven animatie).
   function kistLagen(kaart, lijst, oud) {
@@ -210,9 +222,12 @@ const Piraat = (() => {
     Object.keys(laag.markers).forEach(nr => { if (!nu.has(nr)) { laag.groep.removeLayer(laag.markers[nr]); delete laag.markers[nr]; } });
     lijst.forEach(k => {
       if (laag.markers[k.nr]) return;
-      const html = `<div class="buitkist" style="animation-delay:-${(k.nr * 0.37 % 2.4).toFixed(2)}s">📦</div>`;
-      laag.markers[k.nr] = L.marker([k.lat, k.lng], { icon: L.divIcon({ className: '', html, iconSize: [34, 34] }),
-        interactive: false, keyboard: false }).addTo(laag.groep);
+      const html = `<div class="buitkist" style="animation-delay:-${(k.nr * 0.37 % 2.4).toFixed(2)}s">${SCHATKIST}</div>`;
+      laag.markers[k.nr] = L.layerGroup([
+        L.circle([k.lat, k.lng], { radius: SPEL.kistPakM, color: '#b8860b', weight: 2, dashArray: '4 6',
+          fillColor: '#f0c75e', fillOpacity: 0.15, interactive: false }),
+        L.marker([k.lat, k.lng], { icon: L.divIcon({ className: '', html, iconSize: [34, 30] }), interactive: false, keyboard: false })
+      ]).addTo(laag.groep);
     });
     return laag;
   }

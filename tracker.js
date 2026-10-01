@@ -924,7 +924,7 @@ async function vuur() {
   try { await db.ref(`${P}/spel/schoten/${ik}/${nr}`).set(schot); }
   catch (e) { herladenTot = 0; meld(dbFoutTekst(e), 'fout'); }
   if (schot.raak) meld(`🎯 Raak! ${Object.keys(schot.raak).map(kNaam).join(' en ')} ${Object.keys(schot.raak).length > 1 ? 'zijn' : 'is'} geraakt!`, 'goed');
-  else if (schot.groot) meld(`📦 Je zware salvo vloog ${Piraat.bereik(schot)} m ver, maar raakte niets.`);
+  else if (schot.groot) meld(`💰 Je zware salvo vloog ${Piraat.bereik(schot)} m ver, maar raakte niets.`);
   renderSpel();
 }
 $('btnVuur').addEventListener('click', vuur);
@@ -949,7 +949,7 @@ function controleerVeld() {
   if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
 }
 
-// Buitkisten: vaar er binnen 25 m langs en je volgende salvo reikt twee keer zo ver.
+// Schatkisten: vaar er binnen 50 m langs (de cirkel om de kist) en je volgende salvo reikt twee keer zo ver.
 // Wie de kist het eerst in de database zet, heeft hem (transactie).
 function controleerKist() {
   const st = spelStand, ik = mijnBoot();
@@ -962,7 +962,7 @@ function controleerKist() {
   db.ref(`${P}/spel/buit/${k.nr}`).transaction(nu => nu ? undefined : { boot: ik, ts: Date.now() })
     .then(r => {
       if (!r.committed) return;
-      meld(`📦 Buit binnen! Je volgende salvo reikt twee keer zo ver (${Piraat.bereik({ groot: true })} m).`, 'goed');
+      meld(`💰 Schat binnen! Je volgende salvo reikt twee keer zo ver (${Piraat.bereik({ groot: true })} m).`, 'goed');
       scheepsbel(1);
       if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
     })
@@ -999,7 +999,7 @@ function renderSpel() {
     : mij.gebruikt >= SPEL.schoten ? '🪣 Het kruit is op'
     : stil > 0 ? `💫 Geraakt! Kanon ligt stil… ${wacht(Math.max(stil, herlaad))}`
     : herlaad > 0 ? `⏳ Herladen… ${wacht(herlaad)}`
-    : mij.kist ? `💥 Vuur het kanon! (📦 ${Piraat.bereik({ groot: true })} m)` : '💥 Vuur het kanon!';
+    : mij.kist ? `💥 Vuur het kanon! (💰 ${Piraat.bereik({ groot: true })} m)` : '💥 Vuur het kanon!';
   const html = Piraat.scoreHtml(st, kNaam, ik);
   if (html !== scoreCache) { $('spelStand').innerHTML = html; scoreCache = html; }
 

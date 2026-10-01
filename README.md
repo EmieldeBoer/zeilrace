@@ -193,9 +193,9 @@ ervoor en erna. Zonder winddata is een gijp daar niet van te onderscheiden.
 3. Op de tracker vuurt **💥 Vuur het kanon!** een breedzijde af, haaks op de koers en naar beide kanten: 10 kogels per kant,
    150 m ver. Een kogel binnen 20 m van een ander schip is raak. Na elk salvo moet het kanon 1 minuut herladen.
    Wie geraakt wordt, kan daarna 1 minuut niet schieten.
-4. In het speelveld drijven 100 📦 buitkisten. Elke kist verhuist na 4 minuten naar een nieuwe plek, en een gepakte kist
-   komt dan ook terug. Vaar er binnen 25 m langs en je volgende salvo reikt twee keer zo ver (300 m). Je kunt één kist
-   tegelijk hebben; wie er een heeft, krijgt 📦 achter de levens en langere richtlijnen op de kaart.
+4. In het speelveld drijven 20 schatkisten. Elke kist verhuist na 4 minuten naar een nieuwe plek, en een gepakte kist
+   komt dan ook terug. Vaar binnen de gele cirkel om de kist (50 m) en je volgende salvo reikt twee keer zo ver (300 m).
+   Je kunt één kist tegelijk hebben; wie er een heeft, krijgt 💰 achter de levens en langere richtlijnen op de kaart.
 5. Buiten de cirkel kost elke 20 seconden een leven.
 6. Het spel is voorbij als er nog maar één schip drijft of als het kruit op is. Winnaar: de meeste levens, dan de meeste treffers,
    dan de meeste salvo's over.
@@ -203,7 +203,7 @@ ervoor en erna. Zonder winddata is een gijp daar niet van te onderscheiden.
    Zolang er geen zeeslag gestart is, zie je niets van het spel: geen scorebord, geen regelkaartje en geen speelveld
    (behalve voor de wedstrijdleiding). De boten zijn dan eenvoudige scheepjes in kaartstijl; tijdens de zeeslag worden
    het piratenschepen (sloep, brigantijn, fregat, op schaal van de echte romplengte).
-Instellingen (bereik, levens, herladen, buitkisten) staan bovenaan `piraat.js`. **Let op:** publiceer na deze update de nieuwe
+Instellingen (bereik, levens, herladen, schatkisten) staan bovenaan `piraat.js`. **Let op:** publiceer na deze update de nieuwe
 `database.rules.json`, anders weigert de database de schoten.
 
 **Signalen** (tik één keer op de pagina, anders mag de telefoon geen geluid maken):
