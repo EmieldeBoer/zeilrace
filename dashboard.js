@@ -110,7 +110,8 @@ function verversLijst() {
     meta.classList.toggle('live', !!online);
     k.querySelector('.stats-plek').innerHTML = bootStatsHtml(bootData(s, lijnData, baanVan(naam)));
     if (markers[naam]) zetSchipStaat(markers[naam], { gekozen: geselecteerd === naam, wrak: isWrak(naam),
-      spel: !!(spelStand && spelStand.start) });          // zeeslag gestart → piratenschepen
+      spel: !!(spelStand && spelStand.start), spook: spookStaat(naam) });   // zeeslag gestart → piratenschepen
+    if (sporen[naam]) sporen[naam].setStyle({ opacity: spookStaat(naam) === 'weg' ? 0 : .75 });
   });
 }
 
@@ -1158,7 +1159,12 @@ el('btnJournaalNu').addEventListener('click', () => {
 // =========================================================
 let spelData = null, spelStand = null, spelVeldLaag = null, spelVeldSleutel = '', bekendeSchoten = null, spelScoreCache = '';
 const scheepsKoers = {}, koersPunt = {}, richtLagen = {}, labelCache = {};
-let kistLaag = null, kistSleutel = '';
+let kistLaag = null, kistSleutel = '', mijnLaag = null, mijnSleutel = '', bekendeKnallen = null;
+// Spookschip: de wedstrijdleiding ziet het doorzichtig, de rest (ook tegenstanders die hier meekijken) niet
+function spookStaat(b) {
+  if (!(spelStand && spelStand.bezig && Piraat.spook(spelStand.boten[b], Date.now()))) return null;
+  return WL_MODUS && admin ? 'half' : 'weg';
+}
 let veldModus = false, veldMidden = null, veldMarker = null;
 
 const isWrak = b => !!(spelStand && spelStand.start && spelStand.deelnemers.includes(b) && spelStand.boten[b].levens <= 0);
@@ -1170,8 +1176,8 @@ function spelPosTijden() { const t = {}; FLEET.forEach(b => { if (laatsteTs[b]) 
 const schipPos = b => posData[b] ? { lat: posData[b].lat, lng: posData[b].lng } : null;
 function tekenRichtlijnen(b) {
   const st = spelStand;
-  const actief = st && st.bezig && st.deelnemers.includes(b) && st.boten[b].levens > 0;
-  if (actief) richtLagen[b] = Piraat.richtlijnen(kaart, schipPos(b), scheepsKoers[b], richtLagen[b], false, st.boten[b].kist);
+  const actief = st && st.bezig && st.deelnemers.includes(b) && st.boten[b].levens > 0 && spookStaat(b) !== 'weg';
+  if (actief) richtLagen[b] = Piraat.richtlijnen(kaart, schipPos(b), scheepsKoers[b], richtLagen[b], false, st.boten[b].lading);
   else if (richtLagen[b]) { kaart.removeLayer(richtLagen[b]); richtLagen[b] = null; }
 }
 function renderSpel() {
@@ -1184,6 +1190,9 @@ function renderSpel() {
   el('regelSpel').hidden = !st.start;
   const kisten = st.bezig ? Piraat.kisten(spelData, Date.now()) : [], kSleutel = kisten.map(k => k.nr).join(',');
   if (kSleutel !== kistSleutel) { kistLaag = Piraat.kistLagen(kaart, kisten, kistLaag); kistSleutel = kSleutel; }
+  // zeemijnen: alleen de wedstrijdleiding ziet ze liggen
+  const mijnen = st.bezig && WL_MODUS && admin ? st.mijnen.filter(m => m.actief) : [], mSleutel = mijnen.map(m => m.id).join(',');
+  if (mSleutel !== mijnSleutel) { mijnLaag = Piraat.mijnLagen(kaart, mijnen, mijnLaag); mijnSleutel = mSleutel; }
   FLEET.forEach(b => {
     if (markers[b]) { const l = schipLabel(b); if (labelCache[b] !== l) { markers[b].setTooltipContent(l); labelCache[b] = l; } }
     tekenRichtlijnen(b);
@@ -1201,10 +1210,17 @@ function koppelSpel() {
     const ids = new Set(st.geldig.map(g => g.id));
     if (bekendeSchoten) st.geldig.forEach(g => {         // nieuwe salvo's laten vliegen
       if (bekendeSchoten.has(g.id) || Date.now() - g.schot.ts > 20000) return;
-      Piraat.animeer(kaart, g.schot, g.raak, schipPos);
+      Piraat.animeer(kaart, g.schot, g.raak, schipPos, g.geblokt);
       kanonschot();
     });
     bekendeSchoten = ids;
+    const knallen = st.mijnen.filter(m => m.knal);       // ontplofte zeemijnen
+    if (bekendeKnallen) knallen.forEach(m => {
+      if (bekendeKnallen.has(m.id) || Date.now() - m.knal > 20000) return;
+      Piraat.ontploffing(kaart, m, m.geblokt ? '🛡️' : '💥');
+      kanonschot(true);
+    });
+    bekendeKnallen = new Set(knallen.map(m => m.id));
     renderSpel(); verversLijst();
   });
 }
@@ -1239,7 +1255,7 @@ el('btnSpelStart').onclick = () => {
   if (!admin) return;
   const geenVeld = !(spelData && spelData.veld) ? '\n\nLet op: er is nog geen speelveld getekend (dan zijn er ook geen schatkisten).' : '';
   if (!confirm('Nieuwe zeeslag starten? Alle schepen krijgen weer 3 levens en 10 salvo\'s.' + geenVeld)) return;
-  db.ref(`${P}/spel`).update({ start: Date.now(), eind: null, schoten: null, straf: null, buit: null })
+  db.ref(`${P}/spel`).update({ start: Date.now(), eind: null, schoten: null, straf: null, buit: null, mijnen: null, mijnraak: null })
     .then(() => toonWlStatus('🏴‍☠️ De zeeslag is begonnen!'))
     .catch(err => toonWlStatus('Mislukt: ' + dbFoutTekst(err)));
 };
@@ -1250,7 +1266,7 @@ el('btnSpelStop').onclick = () => {
     db.ref(`${P}/spel/eind`).set(Date.now()).catch(err => toonWlStatus('Mislukt: ' + dbFoutTekst(err)));
   } else {
     if (!confirm('De uitslag van de zeeslag van het scherm halen? (Het speelveld blijft staan.)')) return;
-    db.ref(`${P}/spel`).update({ start: null, eind: null, schoten: null, straf: null, buit: null })
+    db.ref(`${P}/spel`).update({ start: null, eind: null, schoten: null, straf: null, buit: null, mijnen: null, mijnraak: null })
       .catch(err => toonWlStatus('Mislukt: ' + dbFoutTekst(err)));
   }
 };

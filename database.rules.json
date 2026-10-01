@@ -131,6 +131,8 @@
                 "lng": { ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180" },
                 "koers": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 360" },
                 "groot": { ".validate": "newData.val() === true" },
+                "breed": { ".validate": "newData.val() === true" },
+                "voor": { ".validate": "newData.val() === true" },
                 "raak": { "$doel": { ".validate": "newData.val() === true && $doel !== $boot && $doel.length <= 30" } },
                 "$other": { ".validate": false }
               }
@@ -141,6 +143,26 @@
               "$nr": {
                 ".write": "auth != null && !data.exists() && root.child('races').child($race).child('claims').child($boot).val() === auth.uid && root.child('races').child($race).child('spel').child('start').exists() && !root.child('races').child($race).child('spel').child('eind').exists()",
                 ".validate": "$nr.matches(/^[0-2]$/) && newData.isNumber() && newData.val() >= root.child('races').child($race).child('spel').child('start').val()"
+              }
+            }
+          },
+          "mijnen": {
+            "$boot": {
+              "$nr": {
+                ".write": "auth != null && !data.exists() && root.child('races').child($race).child('claims').child($boot).val() === auth.uid && root.child('races').child($race).child('spel').child('start').exists() && !root.child('races').child($race).child('spel').child('eind').exists()",
+                ".validate": "$nr.matches(/^[0-9]$/) && newData.hasChildren(['ts', 'lat', 'lng'])",
+                "ts": { ".validate": "newData.isNumber() && newData.val() >= root.child('races').child($race).child('spel').child('start').val() && newData.val() <= now + 60000" },
+                "lat": { ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90" },
+                "lng": { ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180" },
+                "$other": { ".validate": false }
+              }
+            }
+          },
+          "mijnraak": {
+            "$boot": {
+              "$mijn": {
+                ".write": "auth != null && !data.exists() && root.child('races').child($race).child('claims').child($boot).val() === auth.uid && root.child('races').child($race).child('spel').child('start').exists() && !root.child('races').child($race).child('spel').child('eind').exists()",
+                ".validate": "$mijn.length <= 40 && newData.isNumber() && newData.val() >= root.child('races').child($race).child('spel').child('start').val() && newData.val() <= now + 60000"
               }
             }
           },

@@ -182,6 +182,13 @@ body { font-variant-numeric: lining-nums tabular-nums; }
   box-shadow: inset 0 2px 0 #f0a070, 0 4px 0 #2a0804, 0 6px 16px rgba(0,0,0,.5); text-shadow: 0 2px 0 #000; }
 .vuur-knop:active:not(:disabled) { transform: translateY(3px); box-shadow: inset 0 2px 0 #f0a070, 0 1px 0 #2a0804; }
 .vuur-knop:disabled { filter: grayscale(.8); opacity: .6; cursor: default; }
+.vuur-knop[hidden] { display: none; }
+.mijn-knop { min-height: 54px; font-size: 1.5rem; background: radial-gradient(ellipse at 50% 30%, #5b4a3a, #2b1b0d 70%);
+  box-shadow: inset 0 2px 0 #8a7560, 0 4px 0 #120a04, 0 6px 16px rgba(0,0,0,.5); }
+.spel-effecten { font-weight: 400; font-size: .95rem; margin-top: 2px; }
+.zeemijn { font-size: 20px; line-height: 26px; text-align: center; filter: drop-shadow(0 1px 2px #000a); }
+.schip.spook .schip-svg { opacity: .4; }
+.onzichtbaar { visibility: hidden !important; }
 .kanon-raak { font-size: 40px; line-height: 44px; text-align: center; animation: kanonRaak 2.6s ease-out forwards; }
 @keyframes kanonRaak { 0% { transform: scale(.3); opacity: 1; } 20% { transform: scale(1.4); } 100% { transform: scale(1); opacity: 0; } }
 /* Schatkist in het speelveld: glimt en dobbert op de golven */

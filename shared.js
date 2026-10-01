@@ -505,13 +505,18 @@ function zetKoers(m, koers) {
   m._koers = koers;
   const e = m.getElement(); if (e) e.querySelector('.schip-draai').style.transform = `rotate(${koers}deg)`;
 }
-function zetSchipStaat(m, staat) {                  // { eigen, gekozen, wrak, spel }
+function zetSchipStaat(m, staat) {                  // { eigen, gekozen, wrak, spel, spook: 'half' | 'weg' }
   m._staat = staat;
   const e = m.getElement(); if (!e) return;
   e.classList.toggle('eigen', !!staat.eigen);
   e.classList.toggle('gekozen', !!staat.gekozen);
   e.classList.toggle('wrak', !!staat.wrak);
   e.classList.toggle('zeeslag', !!staat.spel);     // piratenspel bezig → piratenschip (niet 'spel': dat is het spelpaneel)
+  // spookschip: doorzichtig (voor jezelf en de wedstrijdleiding) of helemaal weg (voor de anderen), ook het label
+  e.classList.toggle('spook', staat.spook === 'half');
+  e.classList.toggle('onzichtbaar', staat.spook === 'weg');
+  const t = m.getTooltip && m.getTooltip(), te = t && t.getElement && t.getElement();
+  if (te) te.classList.toggle('onzichtbaar', staat.spook === 'weg');
 }
 // Koers uit twee posities (als de GPS geen koers geeft): alleen bij genoeg verplaatsing
 function koersUitBeweging(vorige, nu, minM = 6) {

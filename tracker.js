@@ -117,14 +117,19 @@ function tekenCourse() {
   fitEen();
 }
 
-// Schepen op de kaart: eigen schip met een gouden gloed, gezonken = wrak
+// Schepen op de kaart: eigen schip met een gouden gloed, gezonken = wrak.
+// Een spookschip van een ander zie je niet (ook zijn spoor niet); je eigen spookschip is doorzichtig.
+const isSpook = n => !!(spelStand && spelStand.bezig && Piraat.spook(spelStand.boten[n], Date.now()));
 function markeerEigen() {
   const spel = !!(spelStand && spelStand.start);          // zeeslag gestart → piratenschepen
-  Object.keys(kMarkers).forEach(n => zetSchipStaat(kMarkers[n], {
-    eigen: n === mijnBoot(), spel,
-    wrak: !!(spel && spelStand.boten[n].levens <= 0 && spelStand.deelnemers.includes(n)) }));
+  Object.keys(kMarkers).forEach(n => {
+    const eigen = n === mijnBoot(), spook = isSpook(n) ? (eigen ? 'half' : 'weg') : null;
+    zetSchipStaat(kMarkers[n], { eigen, spel, spook,
+      wrak: !!(spel && spelStand.boten[n].levens <= 0 && spelStand.deelnemers.includes(n)) });
+    if (kSporen[n]) kSporen[n].setStyle({ opacity: spook === 'weg' ? 0 : .75 });
+  });
 }
-// Label boven het schip: naam, en tijdens de zeeslag de levens (en een buitkist)
+// Label boven het schip: naam, en tijdens de zeeslag de levens (en schild of lading)
 function schipLabel(n) {
   const inSpel = spelStand && spelStand.start && spelStand.deelnemers.includes(n);
   return esc(kNaam(n)) + (inSpel ? ' ' + Piraat.levensTekst(spelStand.boten[n]) : '');
@@ -866,7 +871,8 @@ const Kompas = (() => {
 // =========================================================
 let spelData = null, spelStand = null, spelVeldLaag = null, spelVeldSleutel = '', bekendeSchoten = null;
 let herladenTot = 0, buitenSinds = null, vorigeMij = null, vorigBezig = null, scoreCache = '';
-let kistLaag = null, kistSleutel = '', kistBezig = false;
+let kistLaag = null, kistSleutel = '', kistBezig = false, mijnLaag = null, mijnSleutel = '', bekendeKnallen = null;
+const mijnGemeld = new Set();    // mijnen waar we al overheen voeren (één melding per mijn)
 const kistMislukt = new Set();   // kisten waarvan het pakken door de database geweigerd werd: niet elke seconde opnieuw
 const scheepsKoers = {}, richtLagen = {}, labelCache = {};
 
@@ -883,8 +889,8 @@ function schipPos(b) {
 }
 function tekenRichtlijnen(b) {
   const st = spelStand;
-  const actief = st && st.bezig && st.deelnemers.includes(b) && st.boten[b].levens > 0;
-  if (actief) richtLagen[b] = Piraat.richtlijnen(kaart, schipPos(b), scheepsKoers[b], richtLagen[b], b === mijnBoot(), st.boten[b].kist);
+  const actief = st && st.bezig && st.deelnemers.includes(b) && st.boten[b].levens > 0 && !(b !== mijnBoot() && isSpook(b));
+  if (actief) richtLagen[b] = Piraat.richtlijnen(kaart, schipPos(b), scheepsKoers[b], richtLagen[b], b === mijnBoot(), st.boten[b].lading);
   else if (richtLagen[b]) { kaart.removeLayer(richtLagen[b]); richtLagen[b] = null; }
 }
 function vrijNummer(lijst, max) {
@@ -893,10 +899,13 @@ function vrijNummer(lijst, max) {
   return null;
 }
 function kanonSalvo() { kanonschot(); setTimeout(() => kanonschot(), 150); }
-// Klaar met herladen: 1 minuut na je laatste salvo (uit de database, dus ook na herladen van de pagina)
-const herlaadKlaar = mij => Math.max(herladenTot, (mij && mij.laatsteSchot || 0) + SPEL.herlaadMs);
-// Na een treffer ligt je kanon 1 minuut stil
+// Klaar met herladen: 1 minuut na je laatste salvo (uit de database, dus ook na herladen van de pagina),
+// een halve minuut tijdens 'snel herladen'
+const herlaadKlaar = mij => Math.max(herladenTot, mij && mij.laatsteSchot ? mij.laatsteSchot + Piraat.herlaadDuur(mij, mij.laatsteSchot) : 0);
+// Na een treffer ligt je kanon 1 minuut stil, na een boobytrap 5 minuten
 const geraaktKlaar = mij => (mij && mij.geraakt || 0) + SPEL.geraaktMs;
+const stilKlaar = mij => Math.max(geraaktKlaar(mij), mij ? mij.valTot : 0);
+const groteLetter = t => t.charAt(0).toUpperCase() + t.slice(1);
 
 async function vuur() {
   initAudio();
@@ -905,12 +914,13 @@ async function vuur() {
   if (watchId === null) { tip('Start eerst de tracking — dan weet het kanon waar je schip ligt.'); return; }
   const mij = st.boten[ik];
   if (mij.levens <= 0) { tip('Je schip is gezonken… ☠️'); return; }
-  if (Date.now() < herlaadKlaar(mij) || Date.now() < geraaktKlaar(mij)) return;
+  if (Date.now() < herlaadKlaar(mij) || Date.now() < stilKlaar(mij)) return;
   const nr = vrijNummer(spelData && spelData.schoten && spelData.schoten[ik], SPEL.schoten);
   if (nr == null || mij.gebruikt >= SPEL.schoten) { tip('Je kruit is op!'); return; }
   if (!mijnPositie || mijnKoers == null) { tip('Vaar eerst een stukje: het kanon moet weten waar je boeg wijst.'); return; }
   const schot = { ts: Date.now(), lat: +mijnPositie.lat.toFixed(6), lng: +mijnPositie.lng.toFixed(6), koers: Math.round(mijnKoers) % 360 };
-  if (mij.kist) schot.groot = true;                     // met een buitkist: dubbel bereik
+  const vlag = Piraat.SCHOT_VLAG[mij.lading], lading = vlag ? BUIT[mij.lading] : null;
+  if (vlag) schot[vlag] = true;                         // lading uit een kist: verder, breder of ook vooruit
   // Raak? Met de laatst bekende posities van de andere (levende) schepen
   const raak = {};
   st.deelnemers.forEach(b => {
@@ -919,15 +929,49 @@ async function vuur() {
     if (Piraat.raakt(schot, s)) raak[b] = true;
   });
   if (Object.keys(raak).length) schot.raak = raak;
-  herladenTot = Date.now() + SPEL.herlaadMs;
+  herladenTot = Date.now() + Piraat.herlaadDuur(mij, Date.now());
   if (navigator.vibrate) navigator.vibrate(120);
   try { await db.ref(`${P}/spel/schoten/${ik}/${nr}`).set(schot); }
   catch (e) { herladenTot = 0; meld(dbFoutTekst(e), 'fout'); }
-  if (schot.raak) meld(`🎯 Raak! ${Object.keys(schot.raak).map(kNaam).join(' en ')} ${Object.keys(schot.raak).length > 1 ? 'zijn' : 'is'} geraakt!`, 'goed');
-  else if (schot.groot) meld(`💰 Je zware salvo vloog ${Piraat.bereik(schot)} m ver, maar raakte niets.`);
+  const geraakt = Object.keys(raak).filter(b => !st.boten[b].schild), afgekaatst = Object.keys(raak).filter(b => st.boten[b].schild);
+  if (geraakt.length) meld(`🎯 Raak! ${geraakt.map(kNaam).join(' en ')} ${geraakt.length > 1 ? 'zijn' : 'is'} geraakt!` +
+    (afgekaatst.length ? ` Het schild van ${afgekaatst.map(kNaam).join(' en ')} ving de kogel op.` : ''), 'goed');
+  else if (afgekaatst.length) meld(`🛡️ Het schild van ${afgekaatst.map(kNaam).join(' en ')} ving je kogel op.`);
+  else if (lading) meld(`${lading.icoon} Je salvo met ${lading.naam} raakte niets.`);
   renderSpel();
 }
 $('btnVuur').addEventListener('click', vuur);
+
+// Een zeemijn leggen (uit een kist): wie er later binnen 25 m langs vaart, verliest een leven
+async function legMijn() {
+  const st = spelStand, ik = mijnBoot(), mij = st && st.boten[ik];
+  if (!st || !st.bezig || watchId === null || !mij || mij.levens <= 0 || mij.lading !== 'mijn') return;
+  if (!mijnPositie) { tip('Nog geen GPS-positie: waar moet de mijn liggen?'); return; }
+  const nr = vrijNummer(spelData && spelData.mijnen && spelData.mijnen[ik], 10);
+  if (nr == null) { tip('Je hebt al 10 mijnen gelegd!'); return; }
+  try {
+    await db.ref(`${P}/spel/mijnen/${ik}/${nr}`).set({ ts: Date.now(), lat: +mijnPositie.lat.toFixed(6), lng: +mijnPositie.lng.toFixed(6) });
+    meld('💣 Zeemijn gelegd. Jij kunt er gerust overheen varen, de anderen niet.', 'goed');
+    if (navigator.vibrate) navigator.vibrate(80);
+  } catch (e) { meld(dbFoutTekst(e), 'fout'); }
+}
+$('btnMijn').addEventListener('click', legMijn);
+
+// Over de mijn van een ander gevaren? Dat meldt je eigen tracker (die weet precies waar je bent).
+function controleerMijn() {
+  const st = spelStand, ik = mijnBoot();
+  if (!st || !st.bezig || watchId === null || !mijnPositie || !st.deelnemers.includes(ik) || st.boten[ik].levens <= 0) return;
+  st.mijnen.filter(m => m.actief && m.boot !== ik && !mijnGemeld.has(st.start + '/' + m.id) && afstandMeter(m, mijnPositie) <= SPEL.mijnM)
+    .forEach(m => {
+      mijnGemeld.add(st.start + '/' + m.id);
+      schrijf(db.ref(`${P}/spel/mijnraak/${ik}/${m.id}`).set(Date.now()));
+    });
+}
+function tekenMijnen(st) {
+  const lijst = st.bezig ? st.mijnen.filter(m => m.actief && m.boot === mijnBoot()) : [];   // alleen je eigen mijnen
+  const sleutel = lijst.map(m => m.id).join(',');
+  if (sleutel !== mijnSleutel) { mijnLaag = Piraat.mijnLagen(kaart, lijst, mijnLaag); mijnSleutel = sleutel; }
+}
 
 // Buiten het speelveld: elke 20 seconden een leven kwijt
 function controleerVeld() {
@@ -949,22 +993,23 @@ function controleerVeld() {
   if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
 }
 
-// Schatkisten: vaar er binnen 50 m langs (de cirkel om de kist) en je volgende salvo reikt twee keer zo ver.
+// Schatkisten: vaar er binnen 50 m langs (de cirkel om de kist) en je krijgt wat erin zit (BUIT in piraat.js).
 // Wie de kist het eerst in de database zet, heeft hem (transactie).
 function controleerKist() {
   const st = spelStand, ik = mijnBoot();
   if (kistBezig || !st || !st.bezig || watchId === null || !mijnPositie || !st.deelnemers.includes(ik)) return;
   const mij = st.boten[ik];
-  if (mij.levens <= 0 || mij.kist) return;                       // één kist tegelijk
+  if (mij.levens <= 0 || mij.lading) return;                     // met lading aan boord pak je geen kist
   const k = Piraat.kisten(spelData, Date.now()).find(k => !kistMislukt.has(st.start + '/' + k.nr) && afstandMeter(k, mijnPositie) <= SPEL.kistPakM);
   if (!k) return;
   kistBezig = true;
   db.ref(`${P}/spel/buit/${k.nr}`).transaction(nu => nu ? undefined : { boot: ik, ts: Date.now() })
     .then(r => {
       if (!r.committed) return;
-      meld(`💰 Schat binnen! Je volgende salvo reikt twee keer zo ver (${Piraat.bereik({ groot: true })} m).`, 'goed');
-      scheepsbel(1);
-      if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
+      const soort = Piraat.inhoud(spelData, k.nr), b = BUIT[soort];
+      meld(`${b.icoon} ${groteLetter(b.naam)}! ${b.tekst}`, soort === 'val' ? 'fout' : 'goed');
+      if (soort === 'val') { kanonschot(); if (navigator.vibrate) navigator.vibrate([300, 100, 300]); }
+      else { scheepsbel(1); if (navigator.vibrate) navigator.vibrate([80, 60, 80]); }
     })
     .catch(e => { kistMislukt.add(st.start + '/' + k.nr); meld(dbFoutTekst(e), 'fout'); })
     .finally(() => { kistBezig = false; });
@@ -986,33 +1031,40 @@ function renderSpel() {
   markeerEigen();
   FLEET.forEach(tekenRichtlijnen);
   tekenKisten(st);
+  tekenMijnen(st);
   if (!st.start) { paneel.hidden = true; return; }
   paneel.hidden = false;
   $('spelStatus').textContent = Piraat.statusTekst(st, kNaam);
   const mij = st.boten[ik], knop = $('btnVuur'), herlaad = Math.max(0, herlaadKlaar(mij) - Date.now());
-  const stil = Math.max(0, geraaktKlaar(mij) - Date.now());
-  const wacht = ms => formatDuur(Math.ceil(ms / 1000) * 1000);
-  $('spelMijn').textContent = watchId === null ? 'Start de tracking om mee te vechten.'
-    : `${kNaam(ik)}: ${Piraat.levensTekst(mij)} · ${SPEL.schoten - mij.gebruikt} salvo's · ${mij.hits} raak`;
+  const nu = Date.now(), stil = Math.max(0, stilKlaar(mij) - nu), val = mij.valTot > nu && mij.valTot >= geraaktKlaar(mij);
+  const wacht = ms => formatDuur(Math.ceil(ms / 1000) * 1000), effecten = Piraat.effectenTekst(mij, nu);
+  $('spelMijn').innerHTML = watchId === null ? 'Start de tracking om mee te vechten.'
+    : esc(`${kNaam(ik)}: ${Piraat.levensTekst(mij)} · ${SPEL.schoten - mij.gebruikt} salvo's · ${mij.hits} raak`) +
+      (effecten && mij.levens > 0 ? `<div class="spel-effecten">${esc(effecten)}</div>` : '');
+  $('btnMijn').hidden = !(st.bezig && watchId !== null && mij.levens > 0 && mij.lading === 'mijn');
   knop.disabled = !st.bezig || watchId === null || mij.levens <= 0 || mij.gebruikt >= SPEL.schoten || herlaad > 0 || stil > 0;
   knop.textContent = !st.bezig ? '⚓ De zeeslag is voorbij' : mij.levens <= 0 ? '☠️ Gezonken'
     : mij.gebruikt >= SPEL.schoten ? '🪣 Het kruit is op'
-    : stil > 0 ? `💫 Geraakt! Kanon ligt stil… ${wacht(Math.max(stil, herlaad))}`
+    : stil > 0 ? (val ? `🪤 Boobytrap! Kanon onklaar… ${wacht(Math.max(stil, herlaad))}` : `💫 Geraakt! Kanon ligt stil… ${wacht(Math.max(stil, herlaad))}`)
     : herlaad > 0 ? `⏳ Herladen… ${wacht(herlaad)}`
-    : mij.kist ? `💥 Vuur het kanon! (💰 ${Piraat.bereik({ groot: true })} m)` : '💥 Vuur het kanon!';
+    : mij.lading === 'bereik' ? `💥 Vuur het kanon! (🔭 ${Piraat.bereik({ groot: true })} m)`
+    : mij.lading === 'breed' ? '💥 Vuur het kanon! (↔️ breed)'
+    : mij.lading === 'voor' ? '💥 Vuur het kanon! (⬆️ + voorkanon)' : '💥 Vuur het kanon!';
   const html = Piraat.scoreHtml(st, kNaam, ik);
   if (html !== scoreCache) { $('spelStand').innerHTML = html; scoreCache = html; }
 
   // Geraakt? (alleen melden als het tijdens deze sessie gebeurt)
   if (vorigeMij && vorigeMij.start === st.start && st.deelnemers.includes(ik)) {
     if (mij.levens < vorigeMij.levens) {
-      const doorVeld = mij.straf > vorigeMij.straf;
+      const doorVeld = mij.straf > vorigeMij.straf, doorMijn = mij.mijnRaak > vorigeMij.mijnRaak;
+      const nog = `Nog ${mij.levens} ${mij.levens === 1 ? 'leven' : 'levens'}. Je kanon ligt 1 minuut stil.`;
       meld(mij.levens <= 0 ? '☠️ Je schip is gezonken! Het spel is voor jou voorbij.'
-        : doorVeld ? `⚠️ Buiten het speelveld: een leven kwijt. Nog ${mij.levens}.` : `💥 Geraakt! Nog ${mij.levens} ${mij.levens === 1 ? 'leven' : 'levens'}. Je kanon ligt 1 minuut stil.`, 'fout');
+        : doorVeld ? `⚠️ Buiten het speelveld: een leven kwijt. Nog ${mij.levens}.`
+        : doorMijn ? `💣 Op een zeemijn gevaren! ${nog}` : `💥 Geraakt! ${nog}`, 'fout');
       if (!doorVeld && navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 400]);
-    }
+    } else if (mij.geblokt > vorigeMij.geblokt) meld('🛡️ Je schild ving een treffer op! Het is nu op.', 'goed');
   }
-  vorigeMij = { start: st.start, levens: mij.levens, straf: mij.straf };
+  vorigeMij = { start: st.start, levens: mij.levens, straf: mij.straf, mijnRaak: mij.mijnRaak, geblokt: mij.geblokt };
   // Einde van de zeeslag (alleen als je hem zag eindigen)
   if (vorigBezig && vorigBezig.start === st.start && vorigBezig.bezig && !st.bezig && st.winnaar) {
     const ikWin = st.winnaar.boot === ik && !st.gelijk;
@@ -1030,11 +1082,19 @@ function koppelSpel() {
     // Nieuwe salvo's laten vliegen (niet de oude bij het openen van de pagina)
     if (bekendeSchoten) st.geldig.forEach(g => {
       if (bekendeSchoten.has(g.id) || Date.now() - g.schot.ts > 20000) return;
-      Piraat.animeer(kaart, g.schot, g.raak, schipPos);
+      Piraat.animeer(kaart, g.schot, g.raak, schipPos, g.geblokt);
       kanonSalvo();
     });
     bekendeSchoten = ids;
+    // Ontplofte zeemijnen (voor iedereen te zien)
+    const knallen = st.mijnen.filter(m => m.knal);
+    if (bekendeKnallen) knallen.forEach(m => {
+      if (bekendeKnallen.has(m.id) || Date.now() - m.knal > 20000) return;
+      Piraat.ontploffing(kaart, m, m.geblokt ? '🛡️' : '💥');
+      kanonschot(true);
+    });
+    bekendeKnallen = new Set(knallen.map(m => m.id));
     renderSpel();
   });
 }
-setInterval(() => { if (spelData) { controleerVeld(); renderSpel(); controleerKist(); } }, 1000);
+setInterval(() => { if (spelData) { controleerVeld(); renderSpel(); controleerKist(); controleerMijn(); } }, 1000);
