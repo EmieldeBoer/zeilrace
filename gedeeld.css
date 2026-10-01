@@ -152,8 +152,8 @@ body { font-variant-numeric: lining-nums tabular-nums; }
 .schip { background: none; border: none; }
 .schip-draai { transition: transform .8s ease; }   /* maat + draaipunt per model: zie maakSchip() */
 .schip-svg { display: block; filter: drop-shadow(0 2px 2px rgba(0,0,0,.55)); }
-.schip-svg.piraat, .schip.spel .schip-svg.kaart { display: none; }    /* standaard: eenvoudig kaartscheepje */
-.schip.spel .schip-svg.piraat { display: block; }                      /* tijdens de zeeslag: piratenschip */
+.schip-svg.piraat, .schip.zeeslag .schip-svg.kaart { display: none; }    /* standaard: eenvoudig kaartscheepje */
+.schip.zeeslag .schip-svg.piraat { display: block; }                      /* tijdens de zeeslag: piratenschip */
 .schip-svg.kaart { filter: saturate(.8) sepia(.15) drop-shadow(0 1px 1px rgba(43,27,13,.45)); }   /* verbleekte inkt */
 .schip.eigen .schip-svg { filter: drop-shadow(0 0 3px #f0c75e) drop-shadow(0 0 6px #f0c75e) drop-shadow(0 2px 2px rgba(0,0,0,.55)); }
 .schip.gekozen .schip-svg { filter: drop-shadow(0 0 4px #fff) drop-shadow(0 2px 2px rgba(0,0,0,.55)); }

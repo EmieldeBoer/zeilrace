@@ -493,7 +493,7 @@ const schipLabelOffset = boot => [0, -schipMaat(boot).ay + 4];
 function maakSchip(latlng, boot) {
   const { b, h, ax, ay } = schipMaat(boot);
   const icon = L.divIcon({ className: 'schip',
-    // beide uiterlijken zitten erin; de klasse 'spel' op de marker kiest het piratenschip
+    // beide uiterlijken zitten erin; de klasse 'zeeslag' op de marker kiest het piratenschip
     html: `<div class="schip-draai" style="width:${b}px;height:${h}px;transform-origin:${ax}px ${ay}px">${schipSvg(boot, 'kaart')}${schipSvg(boot, 'piraat')}</div>`,
     iconSize: [b, h], iconAnchor: [ax, ay] });
   const m = L.marker(latlng, { icon, keyboard: false, riseOnHover: true });
@@ -511,7 +511,7 @@ function zetSchipStaat(m, staat) {                  // { eigen, gekozen, wrak, s
   e.classList.toggle('eigen', !!staat.eigen);
   e.classList.toggle('gekozen', !!staat.gekozen);
   e.classList.toggle('wrak', !!staat.wrak);
-  e.classList.toggle('spel', !!staat.spel);        // piratenspel bezig → piratenschip
+  e.classList.toggle('zeeslag', !!staat.spel);     // piratenspel bezig → piratenschip (niet 'spel': dat is het spelpaneel)
 }
 // Koers uit twee posities (als de GPS geen koers geeft): alleen bij genoeg verplaatsing
 function koersUitBeweging(vorige, nu, minM = 6) {
