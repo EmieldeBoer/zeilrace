@@ -193,9 +193,9 @@ ervoor en erna. Zonder winddata is een gijp daar niet van te onderscheiden.
 3. Op de tracker vuurt **💥 Vuur het kanon!** een breedzijde af, haaks op de koers en naar beide kanten: 10 kogels per kant,
    150 m ver. Een kogel binnen 20 m van een ander schip is raak. Na elk salvo moet het kanon 1 minuut herladen.
    Wie geraakt wordt, kan daarna 1 minuut niet schieten.
-4. Elke 2 minuten drijft er een 📦 buitkist het speelveld in (na 4 minuten zinkt hij weer). Vaar er binnen 25 m langs
-   en je volgende salvo reikt twee keer zo ver (300 m). Je kunt één kist tegelijk hebben; wie er een heeft, krijgt 📦
-   achter de levens en langere richtlijnen op de kaart.
+4. In het speelveld drijven 100 📦 buitkisten. Elke kist verhuist na 4 minuten naar een nieuwe plek, en een gepakte kist
+   komt dan ook terug. Vaar er binnen 25 m langs en je volgende salvo reikt twee keer zo ver (300 m). Je kunt één kist
+   tegelijk hebben; wie er een heeft, krijgt 📦 achter de levens en langere richtlijnen op de kaart.
 5. Buiten de cirkel kost elke 20 seconden een leven.
 6. Het spel is voorbij als er nog maar één schip drijft of als het kruit op is. Winnaar: de meeste levens, dan de meeste treffers,
    dan de meeste salvo's over.

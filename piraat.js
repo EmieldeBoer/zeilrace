@@ -6,8 +6,9 @@
 //  Elke boot heeft 3 levens en 10 salvo's. Wie geraakt is, kan 1 minuut
 //  niet schieten. Buiten het speelveld (een cirkel
 //  van de wedstrijdleiding) kost elke 20 seconden een leven.
-//  In het speelveld drijven buitkisten: elke 2 minuten een nieuwe, op een
-//  vaste plek die iedereen zelf uitrekent. Vaar erlangs (binnen 25 m) en je
+//  In het speelveld drijven 100 buitkisten, op plekken die iedereen zelf
+//  uitrekent. Elke kist verhuist na 4 minuten naar een nieuwe plek; een
+//  gepakte kist komt dan ook terug. Vaar erlangs (binnen 25 m) en je
 //  volgende salvo reikt twee keer zo ver. Je kunt één kist tegelijk hebben.
 //
 //  Database: races/{race}/spel = { start, eind?, veld: {lat,lng,r},
@@ -23,8 +24,8 @@ const SPEL = {
   geraaktMs: 60000,           // na een treffer ligt je kanon zo lang stil (1 minuut)
   kogelsPerKant: 10,          // de 'wolk' van kogels per breedzijde
   spreidingGr: 8,             // kogels waaieren ± zoveel graden uit
-  kistElkeMs: 120000,         // elke 2 minuten drijft er een nieuwe buitkist het speelveld in
-  kistDuurMs: 240000,         // een kist die niemand pakt, zinkt na 4 minuten
+  kistAantal: 100,            // zoveel buitkisten drijven er tegelijk in het speelveld
+  kistDuurMs: 240000,         // na 4 minuten verhuist een kist naar een nieuwe plek
   kistPakM: 25,               // zo dichtbij moet je langs een kist varen
   kistBereik: 2               // met een kist reikt je volgende salvo zoveel keer zo ver
 };
@@ -37,24 +38,30 @@ const Piraat = (() => {
 
   const bereik = schot => SPEL.bereikM * (schot && schot.groot ? SPEL.kistBereik : 1);
 
-  // ---- Buitkisten: kist nr verschijnt op start + (nr+1) × kistElkeMs ----
-  // De plek volgt uit start en nr (vast zaad), dus iedereen ziet dezelfde kisten.
+  // ---- Buitkisten: kist nr = ronde × kistAantal + plek ----
+  // Elke plek begint een nieuwe ronde (nieuwe kist, nieuwe plaats) om de kistDuurMs,
+  // per plek een beetje verschoven zodat niet alle kisten tegelijk verhuizen.
+  // De plaats volgt uit start en nr (vast zaad), dus iedereen ziet dezelfde kisten.
+  const kistVerschuiving = plek => plek * SPEL.kistDuurMs / SPEL.kistAantal;
   function kist(spel, nr) {
-    const v = spel.veld, van = spel.start + (nr + 1) * SPEL.kistElkeMs;
+    const plek = nr % SPEL.kistAantal, ronde = Math.floor(nr / SPEL.kistAantal);
+    const begin = spel.start + kistVerschuiving(plek) + ronde * SPEL.kistDuurMs;
+    const v = spel.veld, van = ronde ? begin : spel.start;
     let s = (Math.floor(spel.start / 1000) + nr * 7919) % 2147483647 || 1;
     const rnd = () => (s = s * 16807 % 2147483647) / 2147483647;
     rnd(); rnd();
     const r = v.r * 0.85 * Math.sqrt(rnd()), hoek = rnd() * 360;   // gelijkmatig verdeeld over de cirkel
-    return Object.assign({ nr, van, tot: van + SPEL.kistDuurMs }, richting(v, hoek, r));
+    return Object.assign({ nr, van, tot: begin + SPEL.kistDuurMs }, richting(v, hoek, r));
   }
   // De kisten die op tijdstip 'nu' in het water liggen en nog niet gepakt zijn
   function kisten(spel, nu) {
     if (!spel || !spel.start || !spel.veld || !spel.veld.r) return [];
     const eind = Math.min(nu, spel.eind || Infinity), uit = [];
-    const laatste = Math.floor((eind - spel.start) / SPEL.kistElkeMs) - 1;
-    for (let nr = Math.max(0, laatste - Math.ceil(SPEL.kistDuurMs / SPEL.kistElkeMs)); nr <= laatste; nr++) {
-      const k = kist(spel, nr);
-      if (k.van <= eind && eind < k.tot && !(spel.buit && spel.buit[nr])) uit.push(k);
+    if (eind < spel.start) return uit;
+    for (let plek = 0; plek < SPEL.kistAantal; plek++) {
+      const ronde = Math.max(0, Math.floor((eind - spel.start - kistVerschuiving(plek)) / SPEL.kistDuurMs));
+      const nr = ronde * SPEL.kistAantal + plek;
+      if (!(spel.buit && spel.buit[nr])) uit.push(kist(spel, nr));
     }
     return uit;
   }
@@ -195,15 +202,19 @@ const Piraat = (() => {
     const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html: '<div class="kanon-raak">💥</div>', iconSize: [44, 44] }), interactive: false }).addTo(kaart);
     setTimeout(() => kaart.removeLayer(m), 2600);
   }
-  // Buitkisten op de kaart (alleen opnieuw tekenen als er iets verandert).
+  // Buitkisten op de kaart: alleen de kisten die erbij komen of weg zijn, worden bijgewerkt.
   // De animatie zit op een binnenste div: Leaflet zet de marker zelf op zijn plek met transform.
+  // Elke kist dobbert in een eigen ritme (verschoven animatie).
   function kistLagen(kaart, lijst, oud) {
-    if (oud) kaart.removeLayer(oud);
-    if (!lijst.length) return null;
-    const g = L.layerGroup();
-    lijst.forEach(k => L.marker([k.lat, k.lng], { icon: L.divIcon({ className: '', html: '<div class="buitkist">📦</div>', iconSize: [34, 34] }),
-      interactive: false, keyboard: false }).addTo(g));
-    return g.addTo(kaart);
+    const laag = oud || { groep: L.layerGroup().addTo(kaart), markers: {} }, nu = new Set(lijst.map(k => String(k.nr)));
+    Object.keys(laag.markers).forEach(nr => { if (!nu.has(nr)) { laag.groep.removeLayer(laag.markers[nr]); delete laag.markers[nr]; } });
+    lijst.forEach(k => {
+      if (laag.markers[k.nr]) return;
+      const html = `<div class="buitkist" style="animation-delay:-${(k.nr * 0.37 % 2.4).toFixed(2)}s">📦</div>`;
+      laag.markers[k.nr] = L.marker([k.lat, k.lng], { icon: L.divIcon({ className: '', html, iconSize: [34, 34] }),
+        interactive: false, keyboard: false }).addTo(laag.groep);
+    });
+    return laag;
   }
   // Een salvo afspelen. doelPos(boot) → huidige positie van een geraakte boot.
   function animeer(kaart, schot, raak, doelPos) {

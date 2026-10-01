@@ -866,7 +866,7 @@ const Kompas = (() => {
 // =========================================================
 let spelData = null, spelStand = null, spelVeldLaag = null, spelVeldSleutel = '', bekendeSchoten = null;
 let herladenTot = 0, buitenSinds = null, vorigeMij = null, vorigBezig = null, scoreCache = '';
-let kistLaag = null, kistSleutel = '', bekendeKisten = null, kistBezig = false;
+let kistLaag = null, kistSleutel = '', kistBezig = false;
 const kistMislukt = new Set();   // kisten waarvan het pakken door de database geweigerd werd: niet elke seconde opnieuw
 const scheepsKoers = {}, richtLagen = {}, labelCache = {};
 
@@ -973,11 +973,6 @@ function tekenKisten(st) {
   const lijst = st.bezig ? Piraat.kisten(spelData, Date.now()) : [];
   const sleutel = lijst.map(k => k.nr).join(',');
   if (sleutel !== kistSleutel) { kistLaag = Piraat.kistLagen(kaart, lijst, kistLaag); kistSleutel = sleutel; }
-  // Melden als er een nieuwe kist het speelveld in drijft (niet bij het openen van de pagina)
-  const mij = st.boten[mijnBoot()];
-  if (bekendeKisten && watchId !== null && mij && mij.levens > 0 && lijst.some(k => !bekendeKisten.has(k.nr)))
-    tip('📦 Er drijft een buitkist in het speelveld!');
-  bekendeKisten = new Set(lijst.map(k => k.nr));
 }
 
 function renderSpel() {

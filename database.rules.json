@@ -147,7 +147,7 @@
           "buit": {
             "$nr": {
               ".write": "auth != null && !data.exists() && newData.child('boot').isString() && root.child('races').child($race).child('claims').child(newData.child('boot').val()).val() === auth.uid && root.child('races').child($race).child('spel').child('start').exists() && root.child('races').child($race).child('spel').child('veld').exists() && !root.child('races').child($race).child('spel').child('eind').exists()",
-              ".validate": "$nr.matches(/^[0-9]{1,4}$/) && newData.hasChildren(['boot', 'ts'])",
+              ".validate": "$nr.matches(/^[0-9]{1,6}$/) && newData.hasChildren(['boot', 'ts'])",
               "boot": { ".validate": "newData.isString() && newData.val().length <= 30" },
               "ts": { ".validate": "newData.isNumber() && newData.val() >= root.child('races').child($race).child('spel').child('start').val() && newData.val() <= now + 60000" },
               "$other": { ".validate": false }
