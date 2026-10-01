@@ -124,10 +124,10 @@ function markeerEigen() {
     eigen: n === mijnBoot(), spel,
     wrak: !!(spel && spelStand.boten[n].levens <= 0 && spelStand.deelnemers.includes(n)) }));
 }
-// Label boven het schip: naam, en tijdens de zeeslag de levens
+// Label boven het schip: naam, en tijdens de zeeslag de levens (en een buitkist)
 function schipLabel(n) {
   const inSpel = spelStand && spelStand.start && spelStand.deelnemers.includes(n);
-  return esc(kNaam(n)) + (inSpel ? ' ' + Piraat.harten(spelStand.boten[n].levens) : '');
+  return esc(kNaam(n)) + (inSpel ? ' ' + Piraat.levensTekst(spelStand.boten[n]) : '');
 }
 const vorigePos = {};
 function zetMarker(naam, lat, lng, koers) {
@@ -866,6 +866,8 @@ const Kompas = (() => {
 // =========================================================
 let spelData = null, spelStand = null, spelVeldLaag = null, spelVeldSleutel = '', bekendeSchoten = null;
 let herladenTot = 0, buitenSinds = null, vorigeMij = null, vorigBezig = null, scoreCache = '';
+let kistLaag = null, kistSleutel = '', bekendeKisten = null, kistBezig = false;
+const kistMislukt = new Set();   // kisten waarvan het pakken door de database geweigerd werd: niet elke seconde opnieuw
 const scheepsKoers = {}, richtLagen = {}, labelCache = {};
 
 function posTijden() {
@@ -882,7 +884,7 @@ function schipPos(b) {
 function tekenRichtlijnen(b) {
   const st = spelStand;
   const actief = st && st.bezig && st.deelnemers.includes(b) && st.boten[b].levens > 0;
-  if (actief) richtLagen[b] = Piraat.richtlijnen(kaart, schipPos(b), scheepsKoers[b], richtLagen[b], b === mijnBoot());
+  if (actief) richtLagen[b] = Piraat.richtlijnen(kaart, schipPos(b), scheepsKoers[b], richtLagen[b], b === mijnBoot(), st.boten[b].kist);
   else if (richtLagen[b]) { kaart.removeLayer(richtLagen[b]); richtLagen[b] = null; }
 }
 function vrijNummer(lijst, max) {
@@ -908,6 +910,7 @@ async function vuur() {
   if (nr == null || mij.gebruikt >= SPEL.schoten) { tip('Je kruit is op!'); return; }
   if (!mijnPositie || mijnKoers == null) { tip('Vaar eerst een stukje: het kanon moet weten waar je boeg wijst.'); return; }
   const schot = { ts: Date.now(), lat: +mijnPositie.lat.toFixed(6), lng: +mijnPositie.lng.toFixed(6), koers: Math.round(mijnKoers) % 360 };
+  if (mij.kist) schot.groot = true;                     // met een buitkist: dubbel bereik
   // Raak? Met de laatst bekende posities van de andere (levende) schepen
   const raak = {};
   st.deelnemers.forEach(b => {
@@ -921,6 +924,7 @@ async function vuur() {
   try { await db.ref(`${P}/spel/schoten/${ik}/${nr}`).set(schot); }
   catch (e) { herladenTot = 0; meld(dbFoutTekst(e), 'fout'); }
   if (schot.raak) meld(`🎯 Raak! ${Object.keys(schot.raak).map(kNaam).join(' en ')} ${Object.keys(schot.raak).length > 1 ? 'zijn' : 'is'} geraakt!`, 'goed');
+  else if (schot.groot) meld(`📦 Je zware salvo vloog ${Piraat.bereik(schot)} m ver, maar raakte niets.`);
   renderSpel();
 }
 $('btnVuur').addEventListener('click', vuur);
@@ -945,6 +949,37 @@ function controleerVeld() {
   if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
 }
 
+// Buitkisten: vaar er binnen 25 m langs en je volgende salvo reikt twee keer zo ver.
+// Wie de kist het eerst in de database zet, heeft hem (transactie).
+function controleerKist() {
+  const st = spelStand, ik = mijnBoot();
+  if (kistBezig || !st || !st.bezig || watchId === null || !mijnPositie || !st.deelnemers.includes(ik)) return;
+  const mij = st.boten[ik];
+  if (mij.levens <= 0 || mij.kist) return;                       // één kist tegelijk
+  const k = Piraat.kisten(spelData, Date.now()).find(k => !kistMislukt.has(st.start + '/' + k.nr) && afstandMeter(k, mijnPositie) <= SPEL.kistPakM);
+  if (!k) return;
+  kistBezig = true;
+  db.ref(`${P}/spel/buit/${k.nr}`).transaction(nu => nu ? undefined : { boot: ik, ts: Date.now() })
+    .then(r => {
+      if (!r.committed) return;
+      meld(`📦 Buit binnen! Je volgende salvo reikt twee keer zo ver (${Piraat.bereik({ groot: true })} m).`, 'goed');
+      scheepsbel(1);
+      if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
+    })
+    .catch(e => { kistMislukt.add(st.start + '/' + k.nr); meld(dbFoutTekst(e), 'fout'); })
+    .finally(() => { kistBezig = false; });
+}
+function tekenKisten(st) {
+  const lijst = st.bezig ? Piraat.kisten(spelData, Date.now()) : [];
+  const sleutel = lijst.map(k => k.nr).join(',');
+  if (sleutel !== kistSleutel) { kistLaag = Piraat.kistLagen(kaart, lijst, kistLaag); kistSleutel = sleutel; }
+  // Melden als er een nieuwe kist het speelveld in drijft (niet bij het openen van de pagina)
+  const mij = st.boten[mijnBoot()];
+  if (bekendeKisten && watchId !== null && mij && mij.levens > 0 && lijst.some(k => !bekendeKisten.has(k.nr)))
+    tip('📦 Er drijft een buitkist in het speelveld!');
+  bekendeKisten = new Set(lijst.map(k => k.nr));
+}
+
 function renderSpel() {
   const st = spelStand = Piraat.stand(spelData, posTijden());
   const paneel = $('spelPaneel'), ik = mijnBoot();
@@ -955,6 +990,7 @@ function renderSpel() {
   Object.keys(kMarkers).forEach(n => { const l = schipLabel(n); if (labelCache[n] !== l) { kMarkers[n].setTooltipContent(l); labelCache[n] = l; } });
   markeerEigen();
   FLEET.forEach(tekenRichtlijnen);
+  tekenKisten(st);
   if (!st.start) { paneel.hidden = true; return; }
   paneel.hidden = false;
   $('spelStatus').textContent = Piraat.statusTekst(st, kNaam);
@@ -962,12 +998,13 @@ function renderSpel() {
   const stil = Math.max(0, geraaktKlaar(mij) - Date.now());
   const wacht = ms => formatDuur(Math.ceil(ms / 1000) * 1000);
   $('spelMijn').textContent = watchId === null ? 'Start de tracking om mee te vechten.'
-    : `${kNaam(ik)}: ${Piraat.harten(mij.levens)} · ${SPEL.schoten - mij.gebruikt} salvo's · ${mij.hits} raak`;
+    : `${kNaam(ik)}: ${Piraat.levensTekst(mij)} · ${SPEL.schoten - mij.gebruikt} salvo's · ${mij.hits} raak`;
   knop.disabled = !st.bezig || watchId === null || mij.levens <= 0 || mij.gebruikt >= SPEL.schoten || herlaad > 0 || stil > 0;
   knop.textContent = !st.bezig ? '⚓ De zeeslag is voorbij' : mij.levens <= 0 ? '☠️ Gezonken'
     : mij.gebruikt >= SPEL.schoten ? '🪣 Het kruit is op'
     : stil > 0 ? `💫 Geraakt! Kanon ligt stil… ${wacht(Math.max(stil, herlaad))}`
-    : herlaad > 0 ? `⏳ Herladen… ${wacht(herlaad)}` : '💥 Vuur het kanon!';
+    : herlaad > 0 ? `⏳ Herladen… ${wacht(herlaad)}`
+    : mij.kist ? `💥 Vuur het kanon! (📦 ${Piraat.bereik({ groot: true })} m)` : '💥 Vuur het kanon!';
   const html = Piraat.scoreHtml(st, kNaam, ik);
   if (html !== scoreCache) { $('spelStand').innerHTML = html; scoreCache = html; }
 
@@ -1005,4 +1042,4 @@ function koppelSpel() {
     renderSpel();
   });
 }
-setInterval(() => { if (spelData) { controleerVeld(); renderSpel(); } }, 1000);
+setInterval(() => { if (spelData) { controleerVeld(); renderSpel(); controleerKist(); } }, 1000);

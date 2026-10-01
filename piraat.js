@@ -6,10 +6,14 @@
 //  Elke boot heeft 3 levens en 10 salvo's. Wie geraakt is, kan 1 minuut
 //  niet schieten. Buiten het speelveld (een cirkel
 //  van de wedstrijdleiding) kost elke 20 seconden een leven.
+//  In het speelveld drijven buitkisten: elke 2 minuten een nieuwe, op een
+//  vaste plek die iedereen zelf uitrekent. Vaar erlangs (binnen 25 m) en je
+//  volgende salvo reikt twee keer zo ver. Je kunt één kist tegelijk hebben.
 //
 //  Database: races/{race}/spel = { start, eind?, veld: {lat,lng,r},
-//    schoten: {boot: {0..9: {ts, lat, lng, koers, raak: {doelboot: true}}}},
-//    straf:   {boot: {0..2: ts}} }
+//    schoten: {boot: {0..9: {ts, lat, lng, koers, groot?, raak: {doelboot: true}}}},
+//    straf:   {boot: {0..2: ts}},
+//    buit:    {kistnr: {boot, ts}} }   (wie de kist het eerst pakt)
 //  De stand wordt door iedereen op dezelfde manier uit die gegevens berekend,
 //  en de kogelwolk van een salvo is voor iedereen gelijk (vast zaad = ts).
 // ============================================================
@@ -18,7 +22,11 @@ const SPEL = {
   herlaadMs: 60000,           // kanon herladen tussen twee salvo's (1 minuut)
   geraaktMs: 60000,           // na een treffer ligt je kanon zo lang stil (1 minuut)
   kogelsPerKant: 10,          // de 'wolk' van kogels per breedzijde
-  spreidingGr: 8              // kogels waaieren ± zoveel graden uit
+  spreidingGr: 8,             // kogels waaieren ± zoveel graden uit
+  kistElkeMs: 120000,         // elke 2 minuten drijft er een nieuwe buitkist het speelveld in
+  kistDuurMs: 240000,         // een kist die niemand pakt, zinkt na 4 minuten
+  kistPakM: 25,               // zo dichtbij moet je langs een kist varen
+  kistBereik: 2               // met een kist reikt je volgende salvo zoveel keer zo ver
 };
 
 const Piraat = (() => {
@@ -26,6 +34,30 @@ const Piraat = (() => {
   const naarXY = (o, p) => ({ x: (p.lng - o.lng) * M_PER_GRAAD * Math.cos(o.lat * Math.PI / 180), y: (p.lat - o.lat) * M_PER_GRAAD });
   const vanXY = (o, x, y) => ({ lat: o.lat + y / M_PER_GRAAD, lng: o.lng + x / (M_PER_GRAAD * Math.cos(o.lat * Math.PI / 180)) });
   const richting = (o, peil, lengte) => { const t = peil * Math.PI / 180; return vanXY(o, Math.sin(t) * lengte, Math.cos(t) * lengte); };
+
+  const bereik = schot => SPEL.bereikM * (schot && schot.groot ? SPEL.kistBereik : 1);
+
+  // ---- Buitkisten: kist nr verschijnt op start + (nr+1) × kistElkeMs ----
+  // De plek volgt uit start en nr (vast zaad), dus iedereen ziet dezelfde kisten.
+  function kist(spel, nr) {
+    const v = spel.veld, van = spel.start + (nr + 1) * SPEL.kistElkeMs;
+    let s = (Math.floor(spel.start / 1000) + nr * 7919) % 2147483647 || 1;
+    const rnd = () => (s = s * 16807 % 2147483647) / 2147483647;
+    rnd(); rnd();
+    const r = v.r * 0.85 * Math.sqrt(rnd()), hoek = rnd() * 360;   // gelijkmatig verdeeld over de cirkel
+    return Object.assign({ nr, van, tot: van + SPEL.kistDuurMs }, richting(v, hoek, r));
+  }
+  // De kisten die op tijdstip 'nu' in het water liggen en nog niet gepakt zijn
+  function kisten(spel, nu) {
+    if (!spel || !spel.start || !spel.veld || !spel.veld.r) return [];
+    const eind = Math.min(nu, spel.eind || Infinity), uit = [];
+    const laatste = Math.floor((eind - spel.start) / SPEL.kistElkeMs) - 1;
+    for (let nr = Math.max(0, laatste - Math.ceil(SPEL.kistDuurMs / SPEL.kistElkeMs)); nr <= laatste; nr++) {
+      const k = kist(spel, nr);
+      if (k.van <= eind && eind < k.tot && !(spel.buit && spel.buit[nr])) uit.push(k);
+    }
+    return uit;
+  }
 
   // ---- De kogelwolk van een salvo (voor iedereen hetzelfde: zaad = tijdstip) ----
   function kogels(schot) {
@@ -36,7 +68,7 @@ const Piraat = (() => {
       for (let i = 0; i < n; i++) {
         const waaier = n > 1 ? -SPEL.spreidingGr + 2 * SPEL.spreidingGr * i / (n - 1) : 0;
         const peil = schot.koers + (kant === 'sb' ? 90 : -90) + waaier + (rnd() - 0.5) * 3;
-        const lengte = SPEL.bereikM * (0.85 + rnd() * 0.2);
+        const lengte = bereik(schot) * (0.85 + rnd() * 0.2);
         uit.push({ kant, eind: richting(schot, peil, lengte), vertraging: rnd() * 220 });
       }
     });
@@ -58,13 +90,15 @@ const Piraat = (() => {
   // posTs = { boot: tijd van de laatste positie } → wie doet er mee.
   function stand(spel, posTs) {
     const boten = {};
-    FLEET.forEach(b => { boten[b] = { boot: b, levens: SPEL.levens, hits: 0, gebruikt: 0, straf: 0, dood: null, laatsteSchot: null, geraakt: null }; });
+    FLEET.forEach(b => { boten[b] = { boot: b, levens: SPEL.levens, hits: 0, gebruikt: 0, straf: 0, dood: null, laatsteSchot: null, geraakt: null, kist: false, kisten: 0 }; });
     if (!spel || !spel.start) return { bezig: false, over: null, boten, deelnemers: [], volgorde: [], geldig: [], veld: spel && spel.veld };
     const ev = [];
     Object.entries(spel.schoten || {}).forEach(([b, l]) => Object.entries(l || {}).forEach(([nr, s]) =>
       s && s.ts != null && ev.push({ soort: 'schot', b, t: s.ts, s, id: b + '/' + nr })));
     Object.entries(spel.straf || {}).forEach(([b, l]) => Object.values(l || {}).forEach(t =>
       t != null && ev.push({ soort: 'straf', b, t })));
+    Object.entries(spel.buit || {}).forEach(([nr, k]) =>
+      k && k.boot && k.ts != null && ev.push({ soort: 'kist', b: k.boot, t: k.ts, nr: +nr }));
     ev.sort((a, c) => a.t - c.t);
     const deelnemers = FLEET.filter(b => (posTs[b] || 0) >= spel.start || ev.some(e => e.b === b));
     const levend = () => deelnemers.filter(b => boten[b].levens > 0);
@@ -84,10 +118,15 @@ const Piraat = (() => {
       if (e.soort === 'straf') {
         ik.levens--; ik.straf++;
         if (!ik.levens) ik.dood = e.t;
+      } else if (e.soort === 'kist') {
+        // telt als de kist toen in het water lag (10 s speling voor een trage verbinding)
+        const k = spel.veld ? kist(spel, e.nr) : null;
+        if (k && !ik.kist && e.t >= k.van && e.t <= k.tot + 10000) { ik.kist = true; ik.kisten++; }
       } else {
         if (ik.gebruikt >= SPEL.schoten) continue;
         if (ik.geraakt != null && e.t < ik.geraakt + SPEL.geraaktMs) continue;   // net geraakt: het kanon ligt stil
         ik.gebruikt++; ik.laatsteSchot = e.t;
+        if (e.s.groot) ik.kist = false;                                // de kist is verschoten
         const raak = Object.keys(e.s.raak || {}).filter(d => boten[d] && d !== e.b && boten[d].levens > 0);
         raak.forEach(d => { boten[d].levens--; boten[d].geraakt = e.t; ik.hits++; if (!boten[d].levens) boten[d].dood = e.t; });
         geldig.push({ id: e.id, boot: e.b, schot: e.s, raak });
@@ -104,6 +143,8 @@ const Piraat = (() => {
              winnaar: over && w ? w : null, gelijk };
   }
   const harten = n => '❤️'.repeat(Math.max(0, n)) + '🖤'.repeat(Math.max(0, SPEL.levens - n));
+  // Levens, en een kist als het volgende salvo extra ver reikt
+  const levensTekst = b => harten(b.levens) + (b.kist && b.levens > 0 ? ' 📦' : '');
 
   // ---- Scorebord ----
   function scoreHtml(st, naam, eigen) {
@@ -111,7 +152,7 @@ const Piraat = (() => {
     return '<table class="spel-tabel"><thead><tr><th>Schip</th><th>Levens</th><th class="tijd">Raak</th><th class="tijd">Salvo\'s</th></tr></thead><tbody>' +
       st.volgorde.map((b, i) => `<tr class="${b.levens ? '' : 'wrak'}${b.boot === eigen ? ' eigen' : ''}">` +
         `<td class="boot-cel">${st.over && i === 0 && !st.gelijk ? '👑 ' : ''}<span class="dot" style="background:${BOTEN[b.boot].kleur}"></span>${esc(naam(b.boot))}</td>` +
-        `<td>${b.levens ? harten(b.levens) : '☠️ gezonken'}</td><td class="tijd">${b.hits}</td>` +
+        `<td>${b.levens ? levensTekst(b) : '☠️ gezonken'}</td><td class="tijd">${b.hits}</td>` +
         `<td class="tijd">${SPEL.schoten - b.gebruikt}</td></tr>`).join('') + '</tbody></table>';
   }
   function statusTekst(st, naam) {
@@ -130,12 +171,12 @@ const Piraat = (() => {
       fillColor: '#8b1e12', fillOpacity: 0.04, interactive: false }).addTo(kaart);
   }
   // Stippellijnen: de randen van de waaier waarbinnen de breedzijde valt (geen middenlijn)
-  function richtlijnen(kaart, pos, koers, oud, eigen) {
+  function richtlijnen(kaart, pos, koers, oud, eigen, groot) {
     if (oud) kaart.removeLayer(oud);
     if (!pos || koers == null) return null;
     const g = L.layerGroup(), kleur = eigen ? '#8b1e12' : '#2b1b0d';
     [90, -90].forEach(zij => [-SPEL.spreidingGr, SPEL.spreidingGr].forEach(w => {
-      const r = richting(pos, koers + zij + w, SPEL.bereikM);
+      const r = richting(pos, koers + zij + w, bereik({ groot }));
       L.polyline([[pos.lat, pos.lng], [r.lat, r.lng]], { color: kleur, weight: eigen ? 2 : 1.5, dashArray: '2 6',
         opacity: eigen ? .85 : .45, interactive: false }).addTo(g);
     }));
@@ -151,8 +192,18 @@ const Piraat = (() => {
     })(t0);
   }
   function ontploffing(kaart, p) {
-    const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: 'kanon-raak', html: '💥', iconSize: [44, 44] }), interactive: false }).addTo(kaart);
+    const m = L.marker([p.lat, p.lng], { icon: L.divIcon({ className: '', html: '<div class="kanon-raak">💥</div>', iconSize: [44, 44] }), interactive: false }).addTo(kaart);
     setTimeout(() => kaart.removeLayer(m), 2600);
+  }
+  // Buitkisten op de kaart (alleen opnieuw tekenen als er iets verandert).
+  // De animatie zit op een binnenste div: Leaflet zet de marker zelf op zijn plek met transform.
+  function kistLagen(kaart, lijst, oud) {
+    if (oud) kaart.removeLayer(oud);
+    if (!lijst.length) return null;
+    const g = L.layerGroup();
+    lijst.forEach(k => L.marker([k.lat, k.lng], { icon: L.divIcon({ className: '', html: '<div class="buitkist">📦</div>', iconSize: [34, 34] }),
+      interactive: false, keyboard: false }).addTo(g));
+    return g.addTo(kaart);
   }
   // Een salvo afspelen. doelPos(boot) → huidige positie van een geraakte boot.
   function animeer(kaart, schot, raak, doelPos) {
@@ -175,5 +226,6 @@ const Piraat = (() => {
     setTimeout(() => raak.forEach(b => { const p = doelPos(b); if (p) ontploffing(kaart, p); }), duur * 0.7);
   }
 
-  return { kogels, raakt, binnenVeld, stand, harten, scoreHtml, statusTekst, veldLaag, richtlijnen, animeer };
+  return { kogels, raakt, binnenVeld, stand, harten, levensTekst, scoreHtml, statusTekst, veldLaag, richtlijnen, animeer,
+           kisten, kistLagen, bereik };
 })();
