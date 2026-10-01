@@ -34,7 +34,8 @@ const baanVan = b => baanVanBoot(boeien, lussenVan(startPlan), b);
 const kaart = maakKaart('kaart');
 const baanLagen = [];   // start/finish, boeien, route, rondingslijnen
 maakWindWidget(kaart);
-kaartKnoppen(kaart, [{ id: 'knopOverzicht', tekst: '⛶', titel: 'Hele baan tonen', klik: overzicht }]);
+kaartKnoppen(kaart, [{ id: 'knopOverzicht', tekst: '⛶', titel: 'Hele baan tonen', klik: overzicht }, meetKnop('knopMeet', () => meetlat)]);
+const meetlat = maakMeetlat(kaart, 'knopMeet');
 kaart.on('dragstart', () => { if (geselecteerd) { geselecteerd = null; verversLijst(); } });
 
 function overzicht() {
@@ -503,6 +504,8 @@ function openReplay(nr) {
   if (!rp) {
     rp = { kaart: maakKaart('replayKaart'), lagen: [], snelheid: 60 };
     rp.kaart.on('dragstart', () => {});
+    kaartKnoppen(rp.kaart, [meetKnop('knopMeetReplay', () => rp.meetlat)]);
+    rp.meetlat = maakMeetlat(rp.kaart, 'knopMeetReplay');
   }
   pauzeReplay();
   rp.lagen.forEach(l => rp.kaart.removeLayer(l));
@@ -1081,7 +1084,7 @@ el('btnBevestig').onclick = bevestigBaan;
 el('btnAnnuleer').onclick = annuleerConcept;
 
 kaart.on('click', e => {
-  if (!admin || !concept || !instelModus) return;
+  if (!admin || !concept || !instelModus || meetlat.actief()) return;
   let p = { lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6) };
   if (instelModus === 'boei') {
     concept.marks.push(Object.assign({ id: nieuwId() }, p));
@@ -1233,7 +1236,7 @@ el('btnVeld').onclick = () => {
   toonWlStatus(veldModus ? 'Tik op de kaart het MIDDEN van het speelveld…' : 'Speelveld tekenen gestopt.');
 };
 kaart.on('click', e => {
-  if (!admin || !veldModus) return;
+  if (!admin || !veldModus || meetlat.actief()) return;
   const p = { lat: +e.latlng.lat.toFixed(6), lng: +e.latlng.lng.toFixed(6) };
   if (!veldMidden) {
     veldMidden = p;

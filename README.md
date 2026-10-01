@@ -227,6 +227,8 @@ moet zijn. Lukt winnen niet meer, dan staat er hoeveel tijd je nog hebt voor de 
 Bij een achtervolgings- of lusstart wint wie het eerst binnen is, dus daar is het na de eerste finish meteen *te laat*.
 
 **Afstanden** staan in zeemijl (zm). De replay loopt van hooguit 15 minuten vóór het startschot tot de finish van de laatste boot.
+Met 📏 rechtsboven op de kaart (tracker, dashboard en replay) meet je afstanden: tik punten op de kaart en je ziet per stuk
+de afstand en de koers, en vanaf het derde punt ook het totaal. Nog een keer op 📏 stopt het meten en wist de lijn.
 
 **Meldingen als de GPS uitvalt:**
 - Zolang de trackerpagina open is: de misthoorn, trillen en een rode balk als er

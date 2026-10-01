@@ -540,6 +540,47 @@ function kaartKnoppen(kaart, knoppen) {
   };
   c.addTo(kaart);
 }
+// --- Afstand meten: tik punten op de kaart ---------------------
+// Per stuk de afstand (zm, kort ook in meters) en de koers, vanaf het derde punt
+// ook het totaal. Nog een keer op de knop: stoppen en wissen.
+// Geeft { wissel(), actief() } terug; knopId = de kaartknop die oplicht.
+function maakMeetlat(kaart, knopId) {
+  let aan = false, punten = [], lagen = [];
+  const lijn = L.polyline([], { color: '#8b1e12', weight: 3, dashArray: '8 6', interactive: false });
+  const afstand = m => formatAfstand(m) + (m < 185 ? ` (${Math.round(m)} m)` : '');
+  const koers = (a, b) => String(Math.round(peiling(a, b)) % 360).padStart(3, '0') + '°';
+  function teken() {
+    lagen.forEach(l => kaart.removeLayer(l)); lagen = [];
+    lijn.setLatLngs(punten.map(p => [p.lat, p.lng]));
+    let totaal = 0;
+    punten.forEach((p, i) => {
+      const stip = L.circleMarker([p.lat, p.lng], { radius: 5, color: '#fff', weight: 2, fillColor: '#8b1e12', fillOpacity: 1,
+        interactive: false }).addTo(kaart);
+      lagen.push(stip);
+      let tekst = i === 0 ? (punten.length === 1 ? 'Tik het volgende punt' : '') : '';
+      if (i > 0) {
+        const d = afstandMeter(punten[i - 1], p); totaal += d;
+        tekst = `${afstand(d)} · koers ${koers(punten[i - 1], p)}` + (i > 1 ? `<br><b>totaal ${afstand(totaal)}</b>` : '');
+      }
+      if (tekst) lagen.push(L.tooltip({ permanent: true, direction: 'auto', offset: [8, 0], className: 'meet-label', interactive: false })
+        .setLatLng([p.lat, p.lng]).setContent(tekst).addTo(kaart));
+    });
+  }
+  kaart.on('click', e => {
+    if (!aan) return;
+    punten.push({ lat: e.latlng.lat, lng: e.latlng.lng });
+    teken();
+  });
+  function wissel() {
+    aan = !aan; punten = []; teken();
+    if (aan) lijn.addTo(kaart); else kaart.removeLayer(lijn);
+    kaart.getContainer().classList.toggle('meten', aan);
+    const k = document.getElementById(knopId); if (k) k.classList.toggle('actief', aan);
+  }
+  return { wissel, actief: () => aan };
+}
+const meetKnop = (id, meetlat) => ({ id, tekst: '📏', titel: 'Afstand meten: tik punten op de kaart', klik: () => meetlat().wissel() });
+
 function boeiIcoon(i, concept) {
   return L.divIcon({ className: '', html: `<div class="boei${concept ? ' concept' : ''}">${i + 1}</div>`,
     iconSize: [26, 26], iconAnchor: [13, 13] });

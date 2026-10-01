@@ -55,8 +55,10 @@ let kBaan = [], kGefit = false, doelLijn = null;
 maakWindWidget(kaart);
 kaartKnoppen(kaart, [
   { id: 'knopVolg', tekst: '🎯', titel: 'Zoom naar mijn boot en volg hem', klik: volgEigenBoot },
-  { id: 'knopOverzicht', tekst: '⛶', titel: 'Hele baan tonen', klik: overzicht }
+  { id: 'knopOverzicht', tekst: '⛶', titel: 'Hele baan tonen', klik: overzicht },
+  meetKnop('knopMeet', () => meetlat)
 ]);
+const meetlat = maakMeetlat(kaart, 'knopMeet');
 kaart.on('dragstart', () => zetVolg(null));
 
 function zetVolg(doel) {

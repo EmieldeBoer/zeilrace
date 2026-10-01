@@ -80,6 +80,9 @@ body { font-variant-numeric: lining-nums tabular-nums; }
 .kaartknoppen a { width: 46px !important; height: 46px !important; line-height: 46px !important;
   font-size: 22px; text-align: center; background: linear-gradient(#e0bb62, #b08734) !important; color: var(--inkt) !important; text-decoration: none; }
 .kaartknoppen a:hover { background: linear-gradient(#f1d488, #c9a24a) !important; }
+.leaflet-container.meten { cursor: crosshair; }
+.meet-label { background: rgba(234,216,174,.95); color: var(--inkt); border: 1px solid var(--bloed); border-radius: 3px;
+  font-family: var(--font-tekst); font-size: 14px; line-height: 1.35; box-shadow: 0 2px 6px #0006; }
 .kaartknoppen a.actief { background: linear-gradient(#4f9a74, var(--verdigris)) !important; color: #fff !important;
   box-shadow: inset 0 0 0 2px var(--verdigris-licht); }
 
