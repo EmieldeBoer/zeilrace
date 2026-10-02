@@ -344,7 +344,10 @@
             <button class="btn" id="btnBoei">🟠 Boei erbij</button>
             <button class="btn" id="btnBoeiWeg">✖ Boei weg</button>
           </div>
-          <button class="btn reset" id="btnBoeienWis">🗑 Alle boeien wissen</button>
+          <div class="btnrow">
+            <button class="btn reset" id="btnBoeienWis">🗑 Alle boeien wissen</button>
+            <button class="btn reset" id="btnLijnenWis">🗑 Start- en finishlijn weg</button>
+          </div>
         </div>
 
         <div class="wl-paneel" data-wl="race" hidden>
@@ -370,9 +373,13 @@
         </div>
 
         <div class="wl-paneel" data-wl="spel" hidden>
-          <div class="uitleg">Teken eerst het speelveld: tik het midden en dan de rand van de cirkel. Buiten de cirkel
-            kost elke 20 seconden een leven. Elke boot heeft 3 levens en 10 salvo's.</div>
-          <button class="btn" id="btnVeld">⭕ Speelveld tekenen</button>
+          <div class="uitleg">Teken eerst het speelveld: tik het midden (standaard 919 m straal, of tik zelf de rand). Iedereen
+            ziet de rode cirkel en de schootslijnen zolang het speelveld er staat. Buiten de cirkel kost tijdens de
+            zeeslag elke 20 seconden een leven. Elke boot heeft 3 levens en 10 salvo's.</div>
+          <div class="btnrow">
+            <button class="btn" id="btnVeld">⭕ Speelveld tekenen</button>
+            <button class="btn reset" id="btnVeldWeg">🗑 Speelveld weg</button>
+          </div>
           <div class="btnrow">
             <button class="btn gun" id="btnSpelStart">🏴‍☠️ Start zeeslag</button>
             <button class="btn reset" id="btnSpelStop">⏹ Stop</button>

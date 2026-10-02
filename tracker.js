@@ -919,9 +919,11 @@ function schipPos(b) {
   const s = botStatus[b];
   return s && s.lat != null ? { lat: s.lat, lng: s.lng } : null;
 }
+// Schootslijnen: zichtbaar zolang het speelveld er staat. Tijdens de zeeslag alleen voor
+// schepen die meedoen, nog drijven en niet onzichtbaar zijn (spookschip).
 function tekenRichtlijnen(b) {
   const st = spelStand;
-  const actief = st && st.bezig && st.deelnemers.includes(b) && st.boten[b].levens > 0 && !(b !== mijnBoot() && isSpook(b));
+  const actief = st && st.veld && st.veld.r && (!st.bezig || (st.deelnemers.includes(b) && st.boten[b].levens > 0 && !(b !== mijnBoot() && isSpook(b))));
   if (actief) richtLagen[b] = Piraat.richtlijnen(kaart, schipPos(b), scheepsKoers[b], richtLagen[b], b === mijnBoot(), st.boten[b].lading);
   else if (richtLagen[b]) { kaart.removeLayer(richtLagen[b]); richtLagen[b] = null; }
 }
@@ -1057,7 +1059,7 @@ function renderSpel() {
   const st = spelStand = Piraat.stand(spelData, posTijden());
   const paneel = $('spelPaneel'), ik = mijnBoot();
   // speelveld op de kaart (alleen opnieuw tekenen als het verandert)
-  const sleutel = st.start && st.veld ? JSON.stringify(st.veld) : '';
+  const sleutel = st.veld && st.veld.r ? JSON.stringify(st.veld) : '';      // zichtbaar zolang het speelveld er staat
   if (sleutel !== spelVeldSleutel) { spelVeldLaag = Piraat.veldLaag(kaart, sleutel ? st.veld : null, spelVeldLaag); spelVeldSleutel = sleutel; }
   if (spelVeldLaag && st.veld) spelVeldLaag.setRadius(Piraat.straal(st.veld, st.start, Math.min(Date.now(), st.over || Infinity)));
   // het krimpen begint: één keer de scheepsbel (drie glazen) en een melding

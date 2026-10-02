@@ -1193,6 +1193,11 @@ el('btnBoeienWis').onclick = () => {
   beginConcept(); concept.marks = []; zetModus(null);
   conceptGewijzigd('Alle boeien weggehaald (concept).');
 };
+// Start- en finishlijn weghalen (bijv. voor een zeeslag): ook via het concept, dus pas weg na bevestigen
+el('btnLijnenWis').onclick = () => {
+  beginConcept(); concept.lines = {}; zetModus(null);
+  conceptGewijzigd('Start- en finishlijn weggehaald (concept). Vergeet niet te bevestigen.');
+};
 el('btnBevestig').onclick = bevestigBaan;
 el('btnAnnuleer').onclick = annuleerConcept;
 
@@ -1291,17 +1296,18 @@ function schipLabel(b) {
 }
 function spelPosTijden() { const t = {}; FLEET.forEach(b => { if (laatsteTs[b]) t[b] = laatsteTs[b]; }); return t; }
 const schipPos = b => posData[b] ? { lat: posData[b].lat, lng: posData[b].lng } : null;
+// Schootslijnen: zichtbaar zolang het speelveld er staat. Tijdens de zeeslag alleen voor
+// schepen die meedoen, nog drijven en niet onzichtbaar zijn (spookschip).
 function tekenRichtlijnen(b) {
   const st = spelStand;
-  const actief = st && st.bezig && st.deelnemers.includes(b) && st.boten[b].levens > 0 && spookStaat(b) !== 'weg';
+  const actief = st && st.veld && st.veld.r && (!st.bezig || (st.deelnemers.includes(b) && st.boten[b].levens > 0 && spookStaat(b) !== 'weg'));
   if (actief) richtLagen[b] = Piraat.richtlijnen(kaart, schipPos(b), scheepsKoers[b], richtLagen[b], false, st.boten[b].lading);
   else if (richtLagen[b]) { kaart.removeLayer(richtLagen[b]); richtLagen[b] = null; }
 }
 function renderSpel() {
   const st = spelStand = Piraat.stand(spelData, spelPosTijden());
-  // Zolang er geen zeeslag is gestart, zie je niets van het spel — alleen de
-  // wedstrijdleiding ziet het getekende speelveld al (om het te controleren)
-  const toonVeld = st.veld && (st.start || (WL_MODUS && admin));
+  // Het speelveld is voor iedereen te zien zolang het er staat (de wedstrijdleiding kan het weghalen)
+  const toonVeld = !!(st.veld && st.veld.r);
   const sleutel = toonVeld ? JSON.stringify(st.veld) : '';
   if (sleutel !== spelVeldSleutel) { spelVeldLaag = Piraat.veldLaag(kaart, toonVeld ? st.veld : null, spelVeldLaag); spelVeldSleutel = sleutel; }
   // het speelveld krimpt na een tijdje (vóór het begin: de volle maat)
@@ -1420,6 +1426,13 @@ async function archiveerZeeslag(spel = spelData) {
     toonWlStatus('Zeeslag opslaan mislukt: ' + dbFoutTekst(e));
   } finally { zeeslagOpslaan = null; }
 }
+el('btnVeldWeg').onclick = () => {
+  if (!admin || !(spelData && spelData.veld)) { toonWlStatus('Er staat geen speelveld.'); return; }
+  if (spelStand && (spelStand.wacht || spelStand.bezig)) { toonWlStatus('Stop eerst de zeeslag.'); return; }
+  if (!confirm('Het speelveld (de rode cirkel) weghalen? Dan verdwijnen ook de schootslijnen.')) return;
+  db.ref(`${P}/spel/veld`).remove().then(() => toonWlStatus('Speelveld weggehaald.'))
+    .catch(err => toonWlStatus('Mislukt: ' + dbFoutTekst(err)));
+};
 el('btnSpelStart').onclick = async () => {
   if (!admin) return;
   const geenVeld = !(spelData && spelData.veld) ? '\n\nLet op: er is nog geen speelveld getekend (dan zijn er ook geen schatkisten).' : '';
