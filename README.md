@@ -210,8 +210,8 @@ ervoor en erna. Zonder winddata is een gijp daar niet van te onderscheiden.
 6. Het spel is voorbij als er nog maar één schip drijft of als het kruit op is. Winnaar: de meeste levens, dan de meeste treffers,
    dan de meeste salvo's over.
 7. **⏹ Stop** beëindigt de zeeslag. Nog een keer drukken haalt de uitslag van het scherm.
-   Zolang er geen zeeslag gestart is, zie je niets van het spel: geen scorebord, geen regelkaartje en geen speelveld
-   (behalve voor de wedstrijdleiding). De boten zijn dan eenvoudige scheepjes in kaartstijl; tijdens de zeeslag worden
+   Zolang er geen zeeslag gestart is, zie je op de kaart niets van het spel: geen scorebord en geen speelveld
+   (behalve voor de wedstrijdleiding). De regels staan altijd in de tab Regels, onder *De Piratencode*. De boten zijn dan eenvoudige scheepjes in kaartstijl; tijdens de zeeslag worden
    het piratenschepen (sloep, brigantijn, fregat, op schaal van de echte romplengte).
 8. **Bewaard bij Uitslagen:** zodra de zeeslag voorbij is, slaat het dashboard van een ingelogde wedstrijdleider hem op
    (ook vóór een nieuwe zeeslag of het wissen van de uitslag). Onder *🏴‍☠️ Zeeslagen* staan dan de eindstand, een

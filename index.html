@@ -191,6 +191,7 @@
     .kaartje h3 { margin: 0 0 6px; font-family: var(--font-kap); font-size: 1.05rem; letter-spacing: .03em; }
     .kaartje p { margin: 0; color: var(--inkt); font-size: 1.05rem; line-height: 1.55; }
     .kaartje .em { color: var(--bloed); font-weight: 700; }
+    .inhoud .code-kop { font-size: 2rem; margin-top: 36px; }
     .disclaimer { color: var(--ivoor-zacht); font-size: .92rem; margin-top: 18px; line-height: 1.5; font-style: italic; }
     .u-tabel { background: var(--perkament-bg); color: var(--inkt); border: 1px solid var(--perkament-rand); border-radius: 4px;
       box-shadow: var(--perkament-schaduw); padding: 6px 16px 12px; margin-bottom: 20px; }
@@ -418,21 +419,6 @@
           het je kost.</p>
       </div>
 
-      <div class="kaartje" id="regelSpel" hidden>
-        <h3>🏴‍☠️ Het piratenspel</h3>
-        <p>Een zeeslag tussen de races door. Met <span class="em">💥 Vuur het kanon!</span> op je tracker vuur je een
-          breedzijde af: een wolk van kogels haaks op je koers, naar bakboord én stuurboord (de stippellijnen op de kaart).
-          Komt een kogel binnen 20 meter van een ander schip, dan is het raak. Elk schip heeft <span class="em">3 levens</span>
-          en <span class="em">10 salvo's</span>, en na elk salvo moet het kanon een minuut herladen. Ben je geraakt,
-          dan ligt je kanon een minuut stil. Richting het midden van het speelveld drijven 3 schatkisten: vaar binnen de gele cirkel (50 meter)
-          en je krijgt wat erin zit. Dubbel bereik, een breder schot, een voorkanon of een zeemijn houd je vast tot je ze
-          gebruikt. Een schild, een spookschip (3 minuten onzichtbaar), snel herladen of een boobytrap (5 minuten niet
-          schieten) werkt meteen. Blijf binnen het speelveld (de rode cirkel): elke 20 seconden
-          daarbuiten kost een leven. Na 10 minuten krimpt de cirkel: in 20 minuten gaat hij geleidelijk naar een kwart
-          van zijn straal (minstens 150 meter). De zeeslag is voorbij als er nog maar één schip drijft of als het kruit op is.
-          Winnaar: de meeste levens, dan de meeste treffers, dan de meeste salvo's over.</p>
-      </div>
-
       <div class="kaartje">
         <h3>⚖️ Rating en twee soorten start</h3>
         <p>De boten zijn niet even snel: een Sun Odyssey 519 is sneller dan een 389. Daarom heeft elke boot een
@@ -489,6 +475,57 @@
         <h3>🏁 De finish</h3>
         <p>Je bent gefinisht zodra je de finishlijn kruist — maar pas nádat je álle boeien hebt gerond. Je
           verzeilde tijd is de tijd <span class="em">van jouw startsein tot je finish</span>.</p>
+      </div>
+
+      <h1 class="code-kop">🏴‍☠️ De Piratencode — het piratenspel</h1>
+      <div class="lead">Een zeeslag tussen de races door. Geen echte kanonnen: alles gebeurt op de tracker en de kaart.
+        De zeilregels hierboven blijven gewoon gelden — een treffer is nooit een reden om dicht bij een ander te komen.</div>
+
+      <div class="kaartje">
+        <h3>⚓ Het begin</h3>
+        <p>De wedstrijdleiding tekent het <span class="em">speelveld</span>: een rode cirkel op de kaart, standaard met een
+          straal van 919 meter. Na <span class="em">Start zeeslag</span> telt een grote klok 5 minuten af, met een kanonschot
+          op 5 minuten, 1 minuut en bij de start — net als bij de race. Daarna heeft elk schip <span class="em">3 levens</span>
+          en <span class="em">10 salvo's</span>. Je doet mee als je tracker aanstaat.</p>
+      </div>
+
+      <div class="kaartje">
+        <h3>💥 Schieten</h3>
+        <p>Met <span class="em">💥 Vuur het kanon!</span> vuur je een breedzijde af: 10 kogels per kant, haaks op je koers,
+          naar bakboord én stuurboord, tot 150 meter ver. De stippellijnen op de kaart laten zien waar je salvo valt.
+          Komt een kogel binnen <span class="em">20 meter</span> van een ander schip, dan is het raak en verliest dat schip een leven.
+          Na elk salvo moet je kanon <span class="em">een minuut herladen</span>. Ben je geraakt, dan ligt je kanon een minuut stil.
+          Draai dus je zijkant naar de tegenstander.</p>
+      </div>
+
+      <div class="kaartje">
+        <h3>⭕ Het speelveld</h3>
+        <p>Blijf binnen de rode cirkel: <span class="em">elke 20 seconden daarbuiten kost een leven</span> (je tracker waarschuwt
+          en telt af). Na <span class="em">10 minuten krimpt de cirkel</span>: in 20 minuten wordt hij geleidelijk een kwart zo
+          groot (minstens 150 meter straal). Bij het begin van het krimpen klinkt drie keer de scheepsbel.</p>
+      </div>
+
+      <div class="kaartje">
+        <h3>📦 Schatkisten</h3>
+        <p>Richting het midden van het speelveld drijven <span class="em">3 schatkisten</span>, minstens 155 meter (ongeveer
+          een minuut varen) uit elkaar. Vaar binnen de gele cirkel om een kist (50 meter) en je krijgt wat erin zit; wat dat is,
+          zie je pas als je hem hebt. Elke kist verhuist na 4 minuten naar een nieuwe plek. Lading bewaar je tot je hem
+          gebruikt (je ziet dan 💰 achter je levens), en zolang je lading hebt, pak je geen nieuwe kist. Er kan in zitten:</p>
+        <div id="regelBuit"></div>
+      </div>
+
+      <div class="kaartje">
+        <h3>💣 Zeemijnen</h3>
+        <p>Heb je een zeemijn uit een kist, dan leg je hem met <span class="em">Leg een zeemijn</span> op je plek. Alleen jij en de
+          wedstrijdleiding zien hem liggen. Vaart een ander schip er later binnen 25 meter langs, dan ontploft hij en verliest dat
+          schip een leven (een schild vangt de klap op). Over je eigen mijn vaar je veilig.</p>
+      </div>
+
+      <div class="kaartje">
+        <h3>🏆 Einde en winnaar</h3>
+        <p>De zeeslag is voorbij als er nog maar <span class="em">één schip drijft</span>, als iedereen zijn kruit heeft verschoten,
+          of als de wedstrijdleiding hem stopt. Winnaar: de meeste levens, dan de meeste treffers, dan de meeste salvo's over.
+          Elke zeeslag wordt bewaard bij <span class="em">Uitslagen</span>, met een replay en een scheepsjournaal.</p>
       </div>
 
       <div class="disclaimer">Veiligheid gaat altijd vóór de regels: voorkom aanvaringen, ook als je voorrang hebt.

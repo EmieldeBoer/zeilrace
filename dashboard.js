@@ -1306,7 +1306,6 @@ function renderSpel() {
   if (sleutel !== spelVeldSleutel) { spelVeldLaag = Piraat.veldLaag(kaart, toonVeld ? st.veld : null, spelVeldLaag); spelVeldSleutel = sleutel; }
   // het speelveld krimpt na een tijdje (vóór het begin: de volle maat)
   if (spelVeldLaag && st.veld) spelVeldLaag.setRadius(Piraat.straal(st.veld, st.start, Math.min(Date.now(), st.over || Infinity)));
-  el('regelSpel').hidden = !st.start;
   const kisten = st.bezig ? Piraat.kisten(spelData, Date.now()) : [], kSleutel = kisten.map(k => k.nr).join(',');
   if (kSleutel !== kistSleutel) { kistLaag = Piraat.kistLagen(kaart, kisten, kistLaag); kistSleutel = kSleutel; }
   // zeemijnen: alleen de wedstrijdleiding ziet ze liggen
@@ -1324,7 +1323,7 @@ function renderSpel() {
   const html = Piraat.scoreHtml(st, naamVan);
   if (html !== spelScoreCache) { el('spelStandDash').innerHTML = html; spelScoreCache = html; }
 }
-el('spelBuit').innerHTML = Piraat.buitHtml();          // wat er in de schatkisten kan zitten (vast)
+el('spelBuit').innerHTML = el('regelBuit').innerHTML = Piraat.buitHtml();   // wat er in de schatkisten kan zitten (vast)
 function koppelSpel() {
   luister(`${P}/spel`, 'value', s => {
     spelData = s.val();
