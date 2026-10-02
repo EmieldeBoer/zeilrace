@@ -5,9 +5,10 @@
 //  kogel binnen 20 m van een andere boot, dan is het raak.
 //  Elke boot heeft 3 levens en 10 salvo's. Wie geraakt is, kan 1 minuut
 //  niet schieten. Buiten het speelveld (een cirkel
-//  van de wedstrijdleiding) kost elke 20 seconden een leven.
-//  In het speelveld drijven 20 schatkisten, op plekken die iedereen zelf
-//  uitrekent. Elke kist verhuist na 4 minuten naar een nieuwe plek; een
+//  van de wedstrijdleiding) kost elke 20 seconden een leven. Na 10 minuten
+//  krimpt het speelveld geleidelijk (zie krimpNaMs e.v.).
+//  In het speelveld drijven 3 schatkisten, richting het midden, op plekken die
+//  iedereen zelf uitrekent. Elke kist verhuist na 4 minuten naar een nieuwe plek; een
 //  gepakte kist komt dan ook terug. Vaar erlangs (binnen 50 m) en je krijgt
 //  wat erin zit (zie BUIT hieronder; ook de inhoud rekent iedereen zelf uit).
 //  Lading (dubbel bereik, breder schot, voorkanon, zeemijn) gebruik je bij je
@@ -25,11 +26,19 @@
 // ============================================================
 const SPEL = {
   levens: 3, schoten: 10, bereikM: 150, raakM: 20, strafMs: 20000,
+  aftelMs: 5 * 60000,         // aftellen van de startknop tot het begin van de zeeslag (5 minuten)
+  veldStandaardM: 919,        // standaardstraal van het speelveld (m)
+  krimpNaMs: 10 * 60000,      // na 10 minuten begint het speelveld te krimpen…
+  krimpDuurMs: 20 * 60000,    // …en in 20 minuten gaat het geleidelijk naar de kleinste maat:
+  krimpMinDeel: 0.25,         // een kwart van de straal,
+  krimpMinM: 150,             // maar nooit kleiner dan 150 m
   herlaadMs: 60000,           // kanon herladen tussen twee salvo's (1 minuut)
   geraaktMs: 60000,           // na een treffer ligt je kanon zo lang stil (1 minuut)
   kogelsPerKant: 10,          // de 'wolk' van kogels per breedzijde
   spreidingGr: 8,             // kogels waaieren ± zoveel graden uit
-  kistAantal: 20,             // zoveel schatkisten drijven er tegelijk in het speelveld
+  kistAantal: 3,              // zoveel schatkisten drijven er tegelijk in het speelveld
+  kistMidden: 0.5,            // ze liggen in het binnenste deel van het veld (deel van de straal), dichter naar het midden
+  kistAfstandM: 155,          // kisten liggen minstens zo ver uit elkaar: ≈ 1 minuut varen bij 5 knopen
   kistDuurMs: 240000,         // na 4 minuten verhuist een kist naar een nieuwe plek
   kistPakM: 50,               // zo dichtbij moet je langs een kist varen (de cirkel om de kist)
   kistBereik: 2,              // met 'dubbel bereik' reikt je volgende salvo zoveel keer zo ver
@@ -68,15 +77,39 @@ const Piraat = (() => {
   // per plek een beetje verschoven zodat niet alle kisten tegelijk verhuizen.
   // De plaats volgt uit start en nr (vast zaad), dus iedereen ziet dezelfde kisten.
   const kistVerschuiving = plek => plek * SPEL.kistDuurMs / SPEL.kistAantal;
+  // Een kist ligt minstens kistAfstandM van de kisten die er al lagen toen hij verscheen (die
+  // eerder begonnen en tegelijk in het water liggen). Lukt dat niet binnen het midden, dan zoekt
+  // hij iets verder naar buiten, en anders de plek die het verst van de rest ligt.
+  const kistCache = new Map();
+  const kistBegin = (spel, nr) => spel.start + kistVerschuiving(nr % SPEL.kistAantal) + Math.floor(nr / SPEL.kistAantal) * SPEL.kistDuurMs;
   function kist(spel, nr) {
+    const v = spel.veld, sleutel = `${spel.start}|${v.lat},${v.lng},${v.r}|${nr}`;
+    if (kistCache.has(sleutel)) return kistCache.get(sleutel);
+    if (kistCache.size > 5000) kistCache.clear();
     const plek = nr % SPEL.kistAantal, ronde = Math.floor(nr / SPEL.kistAantal);
-    const begin = spel.start + kistVerschuiving(plek) + ronde * SPEL.kistDuurMs;
-    const v = spel.veld, van = ronde ? begin : spel.start;
+    const begin = kistBegin(spel, nr), van = ronde ? begin : spel.start, tot = begin + SPEL.kistDuurMs;
+    const buren = [];
+    for (let q = 0; q < SPEL.kistAantal; q++) for (let rq = Math.max(0, ronde - 1); rq <= ronde; rq++) {
+      const nq = rq * SPEL.kistAantal + q, bq = kistBegin(spel, nq), vq = rq ? bq : spel.start;
+      if (nq === nr || !(bq < begin || (bq === begin && nq < nr))) continue;     // alleen de kisten van vóór deze
+      if (vq < tot && bq + SPEL.kistDuurMs > van) buren.push(kist(spel, nq));
+    }
     let s = (Math.floor(spel.start / 1000) + nr * 7919) % 2147483647 || 1;
     const rnd = () => (s = s * 16807 % 2147483647) / 2147483647;
     rnd(); rnd();
-    const r = v.r * 0.85 * Math.sqrt(rnd()), hoek = rnd() * 360;   // gelijkmatig verdeeld over de cirkel
-    return Object.assign({ nr, van, tot: begin + SPEL.kistDuurMs }, richting(v, hoek, r));
+    // richting het midden (zonder wortel: dichter bij het midden), binnen de cirkel zoals die
+    // is als de kist verschijnt (het veld krimpt)
+    const rVeld = straal(v, spel.start, van);
+    let beste = null, besteD = -1;
+    for (let i = 0; i < 40; i++) {
+      const r = rVeld * Math.min(0.85, SPEL.kistMidden + i * 0.01) * rnd(), hoek = rnd() * 360;
+      const p = richting(v, hoek, r), d = Math.min(Infinity, ...buren.map(k => afstandMeter(k, p)));
+      if (d > besteD) { beste = p; besteD = d; }
+      if (d >= SPEL.kistAfstandM) break;
+    }
+    const k = Object.assign({ nr, van, tot }, beste);
+    kistCache.set(sleutel, k);
+    return k;
   }
   // Wat er in kist nr zit (vast zaad, los van de plaats)
   function inhoud(spel, nr) {
@@ -126,15 +159,29 @@ const Piraat = (() => {
       return Math.hypot(d.x - f * e.x, d.y - f * e.y) <= SPEL.raakM;
     });
   }
+  // De straal van het speelveld op tijdstip t: eerst de volle maat, na krimpNaMs
+  // gelijkmatig kleiner tot de kleinste maat. Iedereen rekent hetzelfde uit (uit start en t).
+  function straal(veld, start, t) {
+    if (!veld || !veld.r) return null;
+    if (!start || t == null) return veld.r;
+    const min = Math.min(veld.r, Math.max(SPEL.krimpMinM, veld.r * SPEL.krimpMinDeel));
+    const f = Math.max(0, Math.min(1, (t - start - SPEL.krimpNaMs) / SPEL.krimpDuurMs));
+    return veld.r - (veld.r - min) * f;
+  }
+  // Het speelveld op tijdstip t (met de gekrompen straal)
+  const veldOp = (veld, start, t) => veld && veld.r ? Object.assign({}, veld, { r: straal(veld, start, t) }) : veld;
   const binnenVeld = (veld, pos) => !veld || afstandMeter(veld, pos) <= veld.r;
 
   // ---- De stand: alle salvo's en strafpunten op tijdvolgorde afspelen ----
   // posTs = { boot: tijd van de laatste positie } → wie doet er mee.
-  function stand(spel, posTs) {
+  // Ligt het begin nog in de toekomst, dan wordt er afgeteld: wacht = true, nog niet bezig.
+  function stand(spel, posTs, nu = Date.now()) {
     const boten = {};
     FLEET.forEach(b => { boten[b] = { boot: b, levens: SPEL.levens, hits: 0, gebruikt: 0, straf: 0, dood: null, laatsteSchot: null,
       geraakt: null, lading: null, kisten: 0, vondst: null, schild: false, geblokt: 0, spookTot: 0, snelTot: 0, valTot: 0, mijnRaak: 0 }; });
     if (!spel || !spel.start) return { bezig: false, over: null, boten, deelnemers: [], volgorde: [], geldig: [], mijnen: [], veld: spel && spel.veld };
+    if (nu < spel.start) return { bezig: false, wacht: true, over: null, start: spel.start, veld: spel.veld, boten,
+      deelnemers: [], volgorde: [], geldig: [], mijnen: [] };
     const ev = [];
     Object.entries(spel.schoten || {}).forEach(([b, l]) => Object.entries(l || {}).forEach(([nr, s]) =>
       s && s.ts != null && ev.push({ soort: 'schot', b, t: s.ts, s, id: b + '/' + nr })));
@@ -158,6 +205,7 @@ const Piraat = (() => {
     };
     let over = null;
     const geldig = [], mijnen = [];
+    const log = [];        // wat er gebeurde, op tijdvolgorde (voor het scheepsjournaal)
     // Een treffer (kogel of mijn) op boot d: het schild vangt hem op, anders een leven minder
     const treffer = (d, t) => {
       const doel = boten[d];
@@ -172,11 +220,13 @@ const Piraat = (() => {
       if (e.soort === 'straf') {
         ik.levens--; ik.straf++;
         if (!ik.levens) ik.dood = e.t;
+        log.push({ t: e.t, soort: 'straf', b: e.b, levens: ik.levens });
       } else if (e.soort === 'kist') {
         // telt als de kist toen in het water lag (10 s speling voor een trage verbinding)
         const k = spel.veld ? kist(spel, e.nr) : null;
         if (!k || ik.lading || e.t < k.van || e.t > k.tot + 10000) continue;
         const soort = inhoud(spel, e.nr);
+        log.push({ t: e.t, soort: 'kist', b: e.b, buit: soort });
         ik.kisten++; ik.vondst = { soort, t: e.t, nr: e.nr };
         if (BUIT[soort].lading) ik.lading = soort;
         else if (soort === 'schild') ik.schild = true;
@@ -187,6 +237,7 @@ const Piraat = (() => {
         if (ik.lading !== 'mijn') continue;                            // alleen met een mijn uit een kist
         ik.lading = null;
         mijnen.push({ id: e.id, boot: e.b, ts: e.t, lat: e.m.lat, lng: e.m.lng, actief: true });
+        log.push({ t: e.t, soort: 'mijn', b: e.b });
       } else if (e.soort === 'mijnraak') {
         const m = mijnen.find(m => m.id === e.id);
         if (!m || !m.actief || m.boot === e.b || e.t < m.ts) continue;
@@ -194,6 +245,7 @@ const Piraat = (() => {
         const gat = treffer(e.b, e.t);
         m.geblokt = !gat;
         if (gat) { ik.mijnRaak++; boten[m.boot].hits++; }
+        log.push({ t: e.t, soort: 'mijnraak', b: e.b, eigenaar: m.boot, geblokt: !gat, levens: ik.levens });
       } else {
         if (ik.gebruikt >= SPEL.schoten) continue;
         if (ik.geraakt != null && e.t < ik.geraakt + SPEL.geraaktMs) continue;   // net geraakt: het kanon ligt stil
@@ -204,6 +256,8 @@ const Piraat = (() => {
         Object.keys(e.s.raak || {}).filter(d => boten[d] && d !== e.b && boten[d].levens > 0)
           .forEach(d => { if (treffer(d, e.t)) { raak.push(d); ik.hits++; } else geblokt.push(d); });
         geldig.push({ id: e.id, boot: e.b, schot: e.s, raak, geblokt });
+        log.push({ t: e.t, soort: 'schot', b: e.b, raak, geblokt, levens: Object.fromEntries(raak.map(d => [d, boten[d].levens])),
+          lading: e.s.groot ? 'bereik' : e.s.breed ? 'breed' : e.s.voor ? 'voor' : null });
       }
       if (klaar()) over = e.t;
     }
@@ -214,7 +268,83 @@ const Piraat = (() => {
     const [w, t] = volgorde;
     const gelijk = !!(w && t && w.levens === t.levens && w.hits === t.hits && rest(w) === rest(t));
     return { bezig: !over, over, start: spel.start, veld: spel.veld, boten, deelnemers, volgorde, geldig, mijnen,
-             winnaar: over && w ? w : null, gelijk };
+             winnaar: over && w ? w : null, gelijk, log };
+  }
+
+  // ---- Scheepsjournaal van een zeeslag (uit de opgeslagen gegevens) ----
+  // posTs: wie deed er mee (zie stand). Notities bij de start, elke treffer, mijn of straf,
+  // en het einde. Missers, kisten en gelegde mijnen tussendoor komen samen in de volgende notitie.
+  // → [{ t, kop, tekst }] (oud → nieuw)
+  function journaal(spel, naam, posTs) {
+    const st = stand(spel, posTs, Infinity);
+    if (!st.start) return [];
+    let zaad = Math.floor(st.start / 1000) % 2147483647 || 1;
+    const kies = l => l[(zaad = zaad * 16807 % 2147483647) % l.length];
+    const lijst = a => a.length <= 1 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' en ' + a[a.length - 1];
+    const nog = n => n > 0 ? `nog ${harten(n)}` : null;
+    const zinkt = d => kies([`${naam(d)} zinkt naar de kelder van Davy Jones! ☠️`, `${naam(d)} gaat kopje onder — een wrak op de bodem van de zee. ☠️`]);
+    const uit = [], tussendoor = {};          // per boot: { mis, kisten: [buit], mijnen }
+    const opsparen = (b, wat, x) => { const t = tussendoor[b] = tussendoor[b] || { mis: 0, kisten: [], mijnen: 0 };
+      if (wat === 'kist') t.kisten.push(x); else t[wat]++; };
+    const intussen = () => {
+      const zinnen = Object.entries(tussendoor).map(([b, t]) => {
+        const d = [];
+        if (t.mis) d.push(t.mis === 1 ? 'vuurde een salvo in het water' : `vuurde ${t.mis} salvo's in het water`);
+        if (t.kisten.length) d.push(`viste ${lijst(t.kisten.map(k => `${BUIT[k].icoon} ${BUIT[k].naam}`))} uit ${t.kisten.length === 1 ? 'een schatkist' : t.kisten.length + ' schatkisten'}`);
+        if (t.mijnen) d.push(t.mijnen === 1 ? 'legde een zeemijn' : `legde ${t.mijnen} zeemijnen`);
+        return d.length ? `${naam(b)} ${lijst(d)}` : '';
+      }).filter(Boolean);
+      Object.keys(tussendoor).forEach(b => delete tussendoor[b]);
+      return zinnen.length ? ` Intussen: ${zinnen.join('; ')}.` : '';
+    };
+    const noteer = (t, kop, tekst) => uit.push({ t, kop: `${klokHM(t)} · ${kop}`, tekst: tekst + intussen() });
+
+    const namen = st.deelnemers.map(naam);
+    uit.push({ t: st.start, kop: `${klokHM(st.start)} · de zeeslag begint`, tekst:
+      kies(['Boem! Het kanon bulderde: de zeeslag is begonnen.', 'Arr, de vlag met de doodskop gaat in top: de zeeslag is begonnen!']) +
+      (namen.length ? ` Op het water: ${lijst(namen)}, elk met ${SPEL.levens} levens en ${SPEL.schoten} salvo's.` : '') +
+      (st.veld && st.veld.r ? ` Het speelveld is een cirkel met een straal van ${formatAfstand(st.veld.r)}; wie erbuiten vaart, verliest elke ${SPEL.strafMs / 1000} seconden een leven.` : '') });
+
+    // het moment dat het speelveld begint te krimpen (als de zeeslag dan nog woedt)
+    const krimpT = st.start + SPEL.krimpNaMs, gebeurtenissen = [...st.log];
+    if (st.veld && st.veld.r && (st.over || Infinity) > krimpT) gebeurtenissen.push({ t: krimpT, soort: 'krimp' });
+    gebeurtenissen.sort((a, c) => a.t - c.t).forEach(e => {
+      if (e.soort === 'krimp') {
+        const min = straal(st.veld, st.start, Infinity);
+        return noteer(e.t, 'het speelveld krimpt', kies(['Arr, de zee trekt zich samen!', 'De kaart wordt kleiner, mateys!']) +
+          ` Het speelveld krimpt in ${SPEL.krimpDuurMs / 60000} minuten van ${formatAfstand(st.veld.r)} naar ${formatAfstand(min)} straal. Wie niet meekrimpt, ligt er zo buiten.`);
+      }
+      const ik = naam(e.b);
+      if (e.soort === 'kist') return opsparen(e.b, 'kist', e.buit);
+      if (e.soort === 'mijn') return opsparen(e.b, 'mijnen');
+      if (e.soort === 'schot' && !e.raak.length && !e.geblokt.length) return opsparen(e.b, 'mis');
+      if (e.soort === 'schot') {
+        const lading = e.lading ? ` (met ${BUIT[e.lading].icoon} ${BUIT[e.lading].naam})` : '';
+        const zinnen = [];
+        if (e.raak.length) zinnen.push(kies([`💥 ${ik} vuurt een volle breedzijde af${lading} en raakt ${lijst(e.raak.map(naam))}!`,
+          `💥 Kanonnen bulderen: ${ik} treft ${lijst(e.raak.map(naam))}${lading}.`, `💥 Raak! De kogels van ${ik}${lading} slaan in bij ${lijst(e.raak.map(naam))}.`]));
+        e.raak.forEach(d => zinnen.push(e.levens[d] > 0 ? `${naam(d)} heeft ${nog(e.levens[d])}.` : zinkt(d)));
+        e.geblokt.forEach(d => zinnen.push(`🛡️ Het schild van ${naam(d)} vangt de kogels van ${ik} op.`));
+        noteer(e.t, e.raak.length ? `${ik} raakt ${lijst(e.raak.map(naam))}` : `${ik} schiet op een schild`, zinnen.join(' '));
+      } else if (e.soort === 'mijnraak') {
+        noteer(e.t, `${ik} op een zeemijn`, `💣 ${ik} vaart op de zeemijn van ${naam(e.eigenaar)}!` +
+          (e.geblokt ? ` Het schild vangt de klap op. 🛡️` : ' ' + (e.levens > 0 ? `${ik} heeft ${nog(e.levens)}.` : zinkt(e.b))));
+      } else if (e.soort === 'straf') {
+        noteer(e.t, `${ik} buiten het speelveld`, `${ik} dreef buiten het speelveld en verliest een leven. ` +
+          (e.levens > 0 ? `${ik} heeft ${nog(e.levens)}.` : zinkt(e.b)));
+      }
+    });
+
+    if (st.over) {
+      const rest = b => SPEL.schoten - b.gebruikt;
+      noteer(st.over, 'einde van de zeeslag', statusTekst(st, naam) + (st.volgorde.length ? ' Eindstand: ' + st.volgorde.map((b, i) =>
+        `${i + 1}. ${naam(b.boot)} — ${b.levens ? harten(b.levens) : '☠️ gezonken'}, ${b.hits}× raak, ${rest(b)} salvo's over`).join('; ') + '.' : ''));
+    } else {
+      const t = Math.max(st.start, ...st.log.map(e => e.t));
+      const extra = intussen();
+      if (extra) uit.push({ t, kop: `${klokHM(t)} · de zeeslag woedt nog`, tekst: extra.trim() });
+    }
+    return uit;
   }
   const harten = n => '❤️'.repeat(Math.max(0, n)) + '🖤'.repeat(Math.max(0, SPEL.levens - n));
   // Levens, met een schild en 💰 als het schip lading uit een kist heeft (welke, ziet alleen de eigenaar)
@@ -242,9 +372,22 @@ const Piraat = (() => {
         `<td>${b.levens ? levensTekst(b) : '☠️ gezonken'}</td><td class="tijd">${b.hits}</td>` +
         `<td class="tijd">${SPEL.schoten - b.gebruikt}</td></tr>`).join('') + '</tbody></table>';
   }
+  // Overzicht van wat er in een schatkist kan zitten, met de kans (uit BUIT)
+  function buitHtml() {
+    const totaal = Object.values(BUIT).reduce((t, b) => t + b.kans, 0);
+    return '<ul class="buit-lijst">' + Object.values(BUIT).map(b =>
+      `<li><div class="buit-kop"><span>${b.icoon} ${esc(b.naam)}</span><span class="buit-kans">${Math.round(b.kans / totaal * 100)}%</span></div>` +
+      `<div class="buit-tekst">${esc(b.tekst)}${b.lading ? ' <i>Bewaar je tot je hem gebruikt.</i>' : ''}</div></li>`).join('') + '</ul>';
+  }
   function statusTekst(st, naam) {
     if (!st.start) return '';
-    if (st.bezig) return `De zeeslag woedt sinds ${klokHM(st.start)}.`;
+    if (st.wacht) return `De kanonnen worden geladen: de zeeslag begint om ${formatKlok(st.start)}.`;
+    if (st.bezig) {
+      const r = straal(st.veld, st.start, Date.now());
+      return `De zeeslag woedt sinds ${klokHM(st.start)}.` + (st.veld && r < st.veld.r
+        ? ` Het speelveld krimpt: straal nu ${formatAfstand(r)}.`
+        : st.veld && st.veld.r ? ` Om ${klokHM(st.start + SPEL.krimpNaMs)} begint het speelveld te krimpen.` : '');
+    }
     if (!st.winnaar) return 'De zeeslag is voorbij.';
     return st.gelijk ? 'De zeeslag is voorbij — onbeslist! Gelijke stand aan kop.'
       : `De zeeslag is voorbij. ${naam(st.winnaar.boot)} is de schrik van de zeven zeeën! 🏴‍☠️`;
@@ -350,6 +493,6 @@ const Piraat = (() => {
     }, duur * 0.7);
   }
 
-  return { kogels, raakt, binnenVeld, stand, harten, levensTekst, effectenTekst, herlaadDuur, spook, scoreHtml, statusTekst,
+  return { kogels, raakt, binnenVeld, straal, veldOp, stand, journaal, buitHtml, harten, levensTekst, effectenTekst, herlaadDuur, spook, scoreHtml, statusTekst,
            veldLaag, richtlijnen, animeer, ontploffing, kisten, kistLagen, inhoud, bereik, mijnLagen, SCHOT_VLAG };
 })();

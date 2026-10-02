@@ -188,12 +188,15 @@ ervoor en erna. Zonder winddata is een gijp daar niet van te onderscheiden.
    tik op een andere boot om die te volgen.
 
 **🏴‍☠️ Het piratenspel** (zeeslag tussen de races door):
-1. De wedstrijdleiding opent *🏴‍☠️ Piratenspel* en kiest **⭕ Speelveld tekenen**: tik het midden en dan de rand van de cirkel.
-2. **🏴‍☠️ Start zeeslag** geeft alle schepen 3 levens en 10 salvo's.
+1. De wedstrijdleiding opent *🏴‍☠️ Piratenspel* en kiest **⭕ Speelveld tekenen**: tik het midden. Standaard wordt het een
+   cirkel van 919 m straal (`veldStandaardM`); kies *Annuleren* om zelf de rand te tikken.
+2. **🏴‍☠️ Start zeeslag** telt 5 minuten af, met dezelfde grote aftelklok en kanonschoten (5 min, 1 min, start) als de race.
+   Daarna heeft elk schip 3 levens en 10 salvo's. Tijdens het aftellen en de zeeslag slaan de trackers hun spoor op.
 3. Op de tracker vuurt **💥 Vuur het kanon!** een breedzijde af, haaks op de koers en naar beide kanten: 10 kogels per kant,
    150 m ver. Een kogel binnen 20 m van een ander schip is raak. Na elk salvo moet het kanon 1 minuut herladen.
    Wie geraakt wordt, kan daarna 1 minuut niet schieten.
-4. In het speelveld drijven 20 schatkisten. Elke kist verhuist na 4 minuten naar een nieuwe plek, en een gepakte kist
+4. Richting het midden van het speelveld drijven 3 schatkisten, minstens 155 m (≈ 1 minuut varen) uit elkaar.
+   Op het dashboard staat tijdens de zeeslag een overzicht van wat erin kan zitten. Elke kist verhuist na 4 minuten naar een nieuwe plek, en een gepakte kist
    komt dan ook terug. Vaar binnen de gele cirkel om de kist (50 m) en je krijgt wat erin zit. Dat zie je pas als je hem hebt:
    - **Lading** (je houdt het vast tot je het gebruikt; zolang pak je geen nieuwe kist, en je krijgt 💰 achter de levens):
      🔭 *dubbel bereik* (volgende salvo 300 m), ↔️ *breder schot* (volgende salvo waaiert ± 30° uit),
@@ -202,15 +205,23 @@ ervoor en erna. Zonder winddata is een gijp daar niet van te onderscheiden.
    - **Meteen:** 🛡️ *schild* (de volgende treffer kaatst af), 👻 *spookschip* (3 minuten zien de anderen je schip niet
      op de kaart, ook niet op het dashboard), ⚡ *snel herladen* (5 minuten lang 30 seconden herladen) en
      🪤 *boobytrap* (je kanon is 5 minuten onklaar).
-5. Buiten de cirkel kost elke 20 seconden een leven.
+5. Buiten de cirkel kost elke 20 seconden een leven. Na 10 minuten krimpt de cirkel: in 20 minuten gaat hij geleidelijk naar
+   een kwart van de straal (minstens 150 m). Op de tracker klinkt dan drie keer de scheepsbel.
 6. Het spel is voorbij als er nog maar één schip drijft of als het kruit op is. Winnaar: de meeste levens, dan de meeste treffers,
    dan de meeste salvo's over.
 7. **⏹ Stop** beëindigt de zeeslag. Nog een keer drukken haalt de uitslag van het scherm.
    Zolang er geen zeeslag gestart is, zie je niets van het spel: geen scorebord, geen regelkaartje en geen speelveld
    (behalve voor de wedstrijdleiding). De boten zijn dan eenvoudige scheepjes in kaartstijl; tijdens de zeeslag worden
    het piratenschepen (sloep, brigantijn, fregat, op schaal van de echte romplengte).
-Instellingen (bereik, levens, herladen, schatkisten en wat erin zit) staan bovenaan `piraat.js`. **Let op:** publiceer na deze update de nieuwe
-`database.rules.json`, anders weigert de database de schoten.
+8. **Bewaard bij Uitslagen:** zodra de zeeslag voorbij is, slaat het dashboard van een ingelogde wedstrijdleider hem op
+   (ook vóór een nieuwe zeeslag of het wissen van de uitslag). Onder *🏴‍☠️ Zeeslagen* staan dan de eindstand, een
+   **▶ Replay** (sporen, krimpend speelveld, schatkisten, mijnen, een rookwolkje bij elk salvo en vliegende kogels tijdens
+   het afspelen, met de levens per schip) en een **📜 Scheepsjournaal**. Zonder race worden de sporen daarna gewist.
+Instellingen (bereik, levens, herladen, aftellen, krimpen, schatkisten en wat erin zit) staan bovenaan `piraat.js`. **Let op:** publiceer na deze update de nieuwe
+`database.rules.json`, anders weigert de database de schoten en het opslaan van zeeslagen.
+
+**Afstand tot een andere boot** (tracker): tik op een andere boot, op de kaart of in de lijst. Er komt een stippellijn vanaf
+je eigen boot met de afstand en de richting. Nog een keer tikken haalt hem weg.
 
 **Signalen** (tik één keer op de pagina, anders mag de telefoon geen geluid maken):
 - **Aftellen:** een kanonschot op 5 minuten, op 1 minuut en bij de start (het zwaarste schot).

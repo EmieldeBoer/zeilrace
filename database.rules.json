@@ -178,6 +178,12 @@
           "$other": { ".validate": false }
         },
 
+        "zeeslagen": {
+          "$start": {
+            ".validate": "$start.matches(/^[0-9]{13}$/) && newData.hasChildren(['start', 'ts'])"
+          }
+        },
+
         "results": {
           "$nr": {
             ".validate": "newData.hasChildren(['nr', 'ts'])",

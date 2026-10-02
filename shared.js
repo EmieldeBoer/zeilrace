@@ -980,6 +980,27 @@ const GELUID = {
   alarm:     () => misthoorn(2),               // GPS weg / boot offline: de misthoorn
   hersteld:  () => scheepsbel(1, 0.2)          // GPS weer terug: één zachte bel
 };
+// Kanonschoten bij het aftellen naar een begin (5 min, 1 min en het begin zelf).
+// vorige/rem = resterende ms bij de vorige en bij deze tik. Net op de knop gedrukt
+// (eerste tik binnen 5 s na het 5-minutenmoment)? Dan klinkt het 5-minutenschot ook.
+function aftelSchoten(vorige, rem) {
+  if (rem == null) return;
+  if (vorige == null) { if (rem <= 300000 && rem > 295000) speel(GELUID.vijfmin); return; }
+  if (vorige > 300000 && rem <= 300000) speel(GELUID.vijfmin);
+  if (vorige > 60000 && rem <= 60000) speel(GELUID.eenmin);
+  if (vorige > 0 && rem <= 0) speel(GELUID.start);
+}
+// De aftelklok naar de zeeslag (dashboard en tracker, zelfde opmaak als die van de race).
+// Geeft de html, of null als er niet wordt afgeteld (en de zeeslag niet net begonnen is).
+const SPEL_BEGONNEN_MS = 15000;
+function spelAftelHtml(start, nu, groot) {
+  if (!start || nu - start > SPEL_BEGONNEN_MS) return null;
+  const rem = start - nu, cijfers = groot ? 'groot' : 'cijfers';
+  return rem > 0
+    ? { klasse: (rem <= 60000 ? ' urgent' : '') + (rem <= 10000 ? ' laatste10' : ''),
+        html: `<div class="lbl">🏴‍☠️ ZEESLAG OVER</div><div class="${cijfers}">${formatDuur(rem)}</div><div class="lbl">om ${formatKlok(start)}</div>` }
+    : { klasse: ' gestart', html: `<div class="lbl">🏴‍☠️ DE ZEESLAG IS BEGONNEN</div><div class="${cijfers}">VUUR!</div>` };
+}
 
 // --- Tijd & afstand netjes weergeven ---------------------------
 // milliseconden -> "1:23:45" of "23:45"

@@ -77,9 +77,29 @@ function volgEigenBoot() {
   zetVolg('eigen');
   kaart.flyTo([p.lat, p.lng], Math.max(kaart.getZoom(), 17), { duration: .8 });
 }
+// Tik op een andere boot (kaart of lijst): een lijn vanaf je eigen boot met de afstand en
+// de richting. Nog een keer tikken op dezelfde boot haalt hem weg.
+let afstandTot = null, afstandLaag = null;
+function toonAfstand() {
+  const ik = eigenPos(), b = afstandTot, s = b && botStatus[b];
+  if (!b || b === mijnBoot() || !ik || !s || s.lat == null) {
+    if (afstandLaag) { kaart.removeLayer(afstandLaag); afstandLaag = null; }
+    return;
+  }
+  const daar = schipPos(b) || s, d = afstandMeter(ik, daar), ll = [[ik.lat, ik.lng], [daar.lat, daar.lng]];
+  const tekst = `↔ ${kNaam(b)}: ${formatAfstand(d)}${d < 1852 ? ` (${Math.round(d)} m)` : ''} ${kompas(peiling(ik, daar))}`;
+  if (!afstandLaag) afstandLaag = L.polyline(ll, { weight: 2, dashArray: '2 6', interactive: false })
+    .bindTooltip('', { permanent: true, direction: 'center', className: 'lijn-label' }).addTo(kaart);
+  afstandLaag.setLatLngs(ll).setStyle({ color: BOTEN[b].kleur }).setTooltipContent(esc(tekst));
+}
+setInterval(toonAfstand, 1000);
 function volgBoot(naam) {
   const s = botStatus[naam];
   if (!s || s.lat == null) { tip(`${kNaam(naam)} heeft nog geen positie.`); return; }
+  if (naam !== mijnBoot()) {
+    if (afstandTot === naam) { afstandTot = null; zetVolg(null); toonAfstand(); return; }   // nog een keer: weg
+    afstandTot = naam; toonAfstand();
+  }
   zetVolg(naam);
   kaart.flyTo([s.lat, s.lng], Math.max(kaart.getZoom(), 16), { duration: .8 });
   $('kaart').scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -143,7 +163,8 @@ function zetMarker(naam, lat, lng, koers) {
   if (koers != null || !vorigePos[naam]) vorigePos[naam] = p;
   if (!kMarkers[naam]) {
     kMarkers[naam] = maakSchip([lat, lng], naam)
-      .addTo(kaart).bindTooltip(schipLabel(naam), { permanent: true, direction: 'top', className: 'boot-label', offset: schipLabelOffset(naam) });
+      .addTo(kaart).bindTooltip(schipLabel(naam), { permanent: true, direction: 'top', className: 'boot-label', offset: schipLabelOffset(naam) })
+      .on('click', () => { if (naam !== mijnBoot()) volgBoot(naam); });          // tik: afstand tot die boot
     markeerEigen();
   } else kMarkers[naam].setLatLng([lat, lng]);
   zetKoers(kMarkers[naam], koers);
@@ -223,9 +244,15 @@ function updateStartInfo() {
 // =========================================================
 //  Grote aftelklok naar JOUW start, met kanonschoten
 // =========================================================
-let vorigeRem = null;
+let vorigeRem = null, vorigeSpelRem = null;
 function updateAftel() {
   const a = $('aftel'), t0 = mijnStart();
+  // Aftellen naar de zeeslag (met dezelfde kanonschoten) gaat voor op de race-klok
+  const spelStart = spelData && spelData.start, spelRem = spelStart ? spelStart - Date.now() : null;
+  aftelSchoten(vorigeSpelRem, spelRem);
+  vorigeSpelRem = spelRem;
+  const spel = spelAftelHtml(spelStart, Date.now(), true);
+  if (spel) { a.hidden = false; a.className = 'aftel' + spel.klasse; a.innerHTML = spel.html; return; }
   if (t0 == null) { a.hidden = true; vorigeRem = null; return; }
   a.hidden = false;
   const rem = t0 - Date.now();
@@ -612,8 +639,10 @@ function onPositie(p) {
   if (spd != null) data.speed = spd;
   if (hdg != null) data.heading = hdg;
   // Positie altijd (live stip); spoor alleen tijdens een race (er staat een startsein)
+  // of een zeeslag (aftellen of bezig), voor de replay achteraf
   schrijf(db.ref(`${P}/positions/${mijnBoot()}`).set(data));
-  if (raceStart != null) schrijf(db.ref(`${P}/tracks/${mijnBoot()}`).push({ lat: latitude, lng: longitude, ts: nu }));
+  const zeeslag = spelStand && (spelStand.wacht || spelStand.bezig);
+  if (raceStart != null || zeeslag) schrijf(db.ref(`${P}/tracks/${mijnBoot()}`).push({ lat: latitude, lng: longitude, ts: nu }));
 }
 
 // Losse GPS-fouten (Android meldt die soms tussen goede posities door) geven
@@ -871,8 +900,9 @@ const Kompas = (() => {
 // =========================================================
 //  Het piratenspel: vuur het kanon! (regels en stand: piraat.js)
 // =========================================================
-let spelData = null, spelStand = null, spelVeldLaag = null, spelVeldSleutel = '', bekendeSchoten = null;
-let herladenTot = 0, buitenSinds = null, vorigeMij = null, vorigBezig = null, scoreCache = '';
+var spelData = null;      // var: de aftelklok (hierboven) leest hem al bij het laden
+let spelStand = null, spelVeldLaag = null, spelVeldSleutel = '', bekendeSchoten = null;
+let herladenTot = 0, buitenSinds = null, vorigeMij = null, vorigBezig = null, scoreCache = '', vorigeKrimpCheck = null;
 let kistLaag = null, kistSleutel = '', kistBezig = false, mijnLaag = null, mijnSleutel = '', bekendeKnallen = null;
 const mijnGemeld = new Set();    // mijnen waar we al overheen voeren (één melding per mijn)
 const kistMislukt = new Set();   // kisten waarvan het pakken door de database geweigerd werd: niet elke seconde opnieuw
@@ -980,7 +1010,8 @@ function controleerVeld() {
   const st = spelStand, box = $('spelVeld'), ik = mijnBoot();
   const meedoen = st && st.bezig && st.veld && watchId !== null && mijnPositie &&
     st.deelnemers.includes(ik) && st.boten[ik].levens > 0;
-  if (!meedoen || Piraat.binnenVeld(st.veld, mijnPositie)) { buitenSinds = null; box.hidden = true; return; }
+  // het speelveld krimpt na een tijdje: altijd de straal van nu
+  if (!meedoen || Piraat.binnenVeld(Piraat.veldOp(st.veld, st.start, Date.now()), mijnPositie)) { buitenSinds = null; box.hidden = true; return; }
   const nu = Date.now();
   if (!buitenSinds) buitenSinds = nu;
   const rest = SPEL.strafMs - (nu - buitenSinds);
@@ -1028,6 +1059,13 @@ function renderSpel() {
   // speelveld op de kaart (alleen opnieuw tekenen als het verandert)
   const sleutel = st.start && st.veld ? JSON.stringify(st.veld) : '';
   if (sleutel !== spelVeldSleutel) { spelVeldLaag = Piraat.veldLaag(kaart, sleutel ? st.veld : null, spelVeldLaag); spelVeldSleutel = sleutel; }
+  if (spelVeldLaag && st.veld) spelVeldLaag.setRadius(Piraat.straal(st.veld, st.start, Math.min(Date.now(), st.over || Infinity)));
+  // het krimpen begint: één keer de scheepsbel (drie glazen) en een melding
+  const krimpT = st.start && st.veld ? st.start + SPEL.krimpNaMs : null, nuK = Date.now();
+  if (krimpT && st.bezig && vorigeKrimpCheck != null && vorigeKrimpCheck < krimpT && nuK >= krimpT) {
+    speel(() => scheepsbel(3)); meld('🌀 Het speelveld begint te krimpen! Blijf binnen de rode cirkel.', 'fout');
+  }
+  vorigeKrimpCheck = nuK;
   // labels (levens) en wrakken
   Object.keys(kMarkers).forEach(n => { const l = schipLabel(n); if (labelCache[n] !== l) { kMarkers[n].setTooltipContent(l); labelCache[n] = l; } });
   markeerEigen();
@@ -1045,7 +1083,7 @@ function renderSpel() {
       (effecten && mij.levens > 0 ? `<div class="spel-effecten">${esc(effecten)}</div>` : '');
   $('btnMijn').hidden = !(st.bezig && watchId !== null && mij.levens > 0 && mij.lading === 'mijn');
   knop.disabled = !st.bezig || watchId === null || mij.levens <= 0 || mij.gebruikt >= SPEL.schoten || herlaad > 0 || stil > 0;
-  knop.textContent = !st.bezig ? '⚓ De zeeslag is voorbij' : mij.levens <= 0 ? '☠️ Gezonken'
+  knop.textContent = st.wacht ? `⏳ De zeeslag begint om ${formatKlok(st.start)}` : !st.bezig ? '⚓ De zeeslag is voorbij' : mij.levens <= 0 ? '☠️ Gezonken'
     : mij.gebruikt >= SPEL.schoten ? '🪣 Het kruit is op'
     : stil > 0 ? (val ? `🪤 Boobytrap! Kanon onklaar… ${wacht(Math.max(stil, herlaad))}` : `💫 Geraakt! Kanon ligt stil… ${wacht(Math.max(stil, herlaad))}`)
     : herlaad > 0 ? `⏳ Herladen… ${wacht(herlaad)}`
