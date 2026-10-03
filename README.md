@@ -1,67 +1,104 @@
 # ⛵ Zeilrace
 
-Live GPS-tracking voor een zeilrace. De telefoons op de boten sturen hun positie door,
-en iedereen kijkt live mee op het dashboard. Het is een statische site met Firebase
-Realtime Database, gehost op Netlify.
+Live GPS-tracking voor een zeilrace. De telefoons op de boten sturen hun positie door, en iedereen kijkt live mee op het
+dashboard. De site is gebouwd met React, TypeScript en shadcn/ui, de database en de serverlogica draaien op Convex, en de
+site staat op Vercel.
 
-- **Dashboard:** https://marzeille.netlify.app/ (wedstrijdleiding: `/?wl`)
-- **Tracker op de boot:** https://marzeille.netlify.app/tracker.html (optioneel `?boot=SO469`)
-
-## Bestanden
-
-| Bestand | Wat het is |
+| Pagina | Wat het is |
 |---|---|
-| `index.html` + `dashboard.js` | Het dashboard met de tabs Live, Regels en Uitslagen, plus de wedstrijdleiding (`?wl`) |
-| `tracker.html` + `tracker.js` | De telefoonpagina op elke boot: GPS, navigatie, aftelklok en GPS-alarm |
-| `shared.js` | Gedeelde logica: inloggen, geometrie, rondingslijnen, wind, planning en geluid |
-| `config.js` | Firebase-config, de boten + ORC-ratings en `RACE_ID` |
-| `kaartexport.js` | Replay-scène, foto (PNG) en video (MP4/WebM) van een afgeronde race |
-| `piraat.js` | Het piratenspel: regels, stand, kogelwolken en de animatie op de kaart |
-| `feest.js` | Confetti (goudstukken), vuurwerk en knallend geluid bij de finish |
-| `polar.js` | De polars: snelheid per windhoek en windsterkte uit de gezeilde races |
-| `verteller.js` | Het scheepsjournaal: elk uur een notitie over de race (alleen op het dashboard, zonder AI) |
-| `gedeeld.css` | Gedeelde stijlen |
-| `sw.js` | Service worker, alleen voor meldingen (geen caching) |
-| `database.rules.json` | Beveiligingsregels van de database. Publiceren met `./publiceer-regels.sh` (of plakken in de Firebase-console) |
-| `firebase.json`, `.firebaserc`, `publiceer-regels.sh` | Instellingen en script om de regels vanaf de laptop te publiceren |
-| `_headers` | Extra beveiligingsheaders voor Netlify |
+| `/` | Het dashboard met de tabs Live, Regels en Uitslagen |
+| `/?wl` | Het dashboard met de wedstrijdleiding (inloggen met het wachtwoord) |
+| `/tracker` | De telefoonpagina op elke boot (optioneel `?boot=SO469`). Het oude adres `/tracker.html` werkt ook. |
 
----
+## Hoe het in elkaar zit
 
-## Eenmalige Firebase-setup (verplicht na deze update)
+| Map of bestand | Wat erin staat |
+|---|---|
+| `convex/lib/config.ts` | De boten met hun ORC-rating, het race-id, de rondingslijnen, de lusstart en de bootquotes |
+| `convex/lib/spel.ts` | Instellingen van het piratenspel en wat er in de schatkisten zit |
+| `convex/schema.ts` | De tabellen in Convex |
+| `convex/boot.ts`, `convex/spel.ts` | Wat een tracker mag schrijven: positie, spoor, start, rondingen, finish, akkoord, salvo's, kisten en mijnen |
+| `convex/wl.ts` | Inloggen en alles wat alleen de wedstrijdleiding mag |
+| `convex/race.ts`, `convex/uitslagen.ts` | Wat de site leest |
+| `src/pages/Dashboard.tsx`, `src/pages/dashboard/` | Het dashboard: Live, wedstrijdleiding, journaal, planning, regels, uitslagen en replay |
+| `src/pages/Tracker.tsx`, `src/pages/tracker/` | De tracker: GPS, detectie van start, boeien en finish, het kanon en het kompas |
+| `src/lib/` | De rekenregels: baan en rating (`baan.ts`), meetkunde (`geo.ts`), piratenspel (`piraat.ts`), verteller, polars, export, geluid en feest |
+| `src/kaart/` | Leaflet: de kaart, de schepen, de baan en de lagen van het piratenspel |
+| `src/components/ui/` | De shadcn-componenten. Het piratenthema zit in `src/index.css`. |
+| `scripts/` | De simulatie voor lokaal testen en het overzetten vanuit Firebase |
 
-Zonder deze stappen toont de app *"Firebase Authentication is nog niet ingesteld"*.
+**Beveiliging.** Elke telefoon maakt een geheim toesteltoken aan en bewaart dat in de browser. Met *Start tracking* claimt
+de telefoon een boot. Daarna accepteert de server alleen van dat toestel schrijfacties voor die boot. *Boten vrijgeven*
+bij de wedstrijdleiding haalt alle claims weg. De wedstrijdleiding logt in met het wachtwoord in de omgevingsvariabele
+`WL_WACHTWOORD` op de Convex-deployment. De server geeft dan een sessie van 30 dagen terug, en na 10 foute pogingen in
+10 minuten wacht hij. De regels die vroeger in `database.rules.json` stonden, controleren de mutaties in `convex/` nu zelf:
 
-1. **Authentication aanzetten**
-   Firebase-console → project `marzeille-474a9` → **Build → Authentication → Get started**.
-2. **Inlogmethodes** (tab *Sign-in method*):
-   - **Anonymous** → inschakelen. Dit gebruiken alle telefoons en kijkers, zonder wachtwoord.
-   - **Email/Password** → inschakelen. Dit gebruikt de wedstrijdleiding.
-3. **Account voor de wedstrijdleiding** (tab *Users* → *Add user*): maak een account met
-   e-mail en wachtwoord aan. Kopieer daarna de **User UID**.
-4. **Dat account admin maken:** Realtime Database → tab *Data* → voeg bij de root toe:
-   ```
-   admins
-     └─ <User UID> : true
-   ```
-   (Waarde `true` als boolean, niet als tekst.)
-5. **Regels publiceren:** zie [Regels publiceren](#regels-publiceren) hieronder.
-6. **Domein toestaan:** Authentication → *Settings* → *Authorized domains* → voeg
-   `marzeille.netlify.app` toe (`localhost` staat er standaard al).
-
-Na deze stappen geldt:
-
-- Kijkers kunnen alleen **lezen**.
-- Een telefoon kan alleen schrijven naar de boot die hij heeft **geclaimd**.
 - Start- en finishtijden en boeironden kunnen maar één keer worden gezet.
-- De starttijd ligt pas vast als alle boten akkoord zijn met het voorstel. Daarna kan niemand hem nog wijzigen,
+- Een starttijd ligt pas vast als alle boten akkoord zijn met het voorstel. Daarna kan niemand hem nog wijzigen,
   ook de wedstrijdleiding niet (alleen wissen met *Race afronden* of *Live tijden resetten*).
-- Alleen de wedstrijdleiding mag de baan, het startsein en de uitslagen wijzigen.
+- Alleen de wedstrijdleiding mag de baan, het startvoorstel, het speelveld en de uitslagen wijzigen.
 
-> De `apiKey` in `config.js` is niet geheim; die hoort in een web-app. De beveiliging
-> zit in de regels en de login. Zet **nooit** een AI- of andere betaalde API-key in deze site.
+## Lokaal draaien
 
----
+Je hebt [Bun](https://bun.sh) nodig.
+
+```
+bun install
+bun run dev
+```
+
+`bun run dev` start Vite (http://localhost:5173) en `convex dev` samen. Die laatste gebruikt de deployment uit
+`.env.local`. Wil je testen zonder Convex-account, start dan een lokale backend:
+
+```
+CONVEX_AGENT_MODE=anonymous bunx convex dev
+```
+
+Zet daarna het wachtwoord van de wedstrijdleiding op die deployment:
+
+```
+bunx convex env set WL_WACHTWOORD jouw-wachtwoord
+```
+
+GPS werkt in de browser alleen op `localhost` of via https.
+
+**Simulatie.** Tegen een lokale backend kun je een race naspelen zonder boot (het script weigert elke andere deployment):
+
+```
+bun scripts/simulatie.ts baan                    # baan bij Toulon uitzetten
+bun scripts/simulatie.ts race SO389,SO469        # start voorstellen, akkoord geven en de baan varen
+bun scripts/simulatie.ts akkoord SO389,SO469     # akkoord op het huidige startvoorstel
+bun scripts/simulatie.ts zeeslag SO389,SO469     # speelveld, zeeslag en salvo's
+bun scripts/simulatie.ts reset                   # live race wissen en boten vrijgeven
+```
+
+Het script logt in met `WL_WACHTWOORD` (standaard `test1234`).
+
+## Online zetten
+
+**Convex.**
+1. Koppel de map aan je Convex-project met `bunx convex dev` (log in en kies het project).
+2. Zet `WL_WACHTWOORD` op de productie-deployment: `bunx convex env set WL_WACHTWOORD … --prod`.
+3. Maak in het Convex-dashboard (Settings → Deploy keys) een production deploy key aan.
+
+**Vercel.**
+1. Importeer de repository op https://vercel.com. Vercel leest `vercel.json`: installeren met Bun en bouwen met
+   `bunx convex deploy --cmd 'bun run build'`. Dat zet eerst de Convex-functies op productie en bouwt daarna de site.
+2. Zet in Vercel de omgevingsvariabele `CONVEX_DEPLOY_KEY` op de deploy key. `VITE_CONVEX_URL` vult Convex zelf in tijdens de build.
+3. Deploy. `vercel.json` zet ook de beveiligingsheaders (die stonden eerst in `_headers` voor Netlify), met een
+   Content-Security-Policy die alleen Convex, Open-Meteo en de kaarttegels van OpenStreetMap toelaat.
+
+**Uitslagen overzetten vanuit Firebase.** Het script haalt de race op uit de oude Firebase-database (alleen lezen,
+anoniem, net als een kijker) of leest een JSON-export uit de Firebase-console. Het schrijft JSONL-bestanden naar
+`import/` en toont de opdrachten om ze in te lezen:
+
+```
+bun scripts/importeer-firebase.ts --ophalen          # of: bun scripts/importeer-firebase.ts export.json
+bunx convex import --table uitslagen --append import/uitslagen.jsonl --prod
+bunx convex import --table zeeslagen --append import/zeeslagen.jsonl --prod
+```
+
+Lees elke tabel maar één keer in, anders staan de races dubbel. Met `--baan` zet het script ook de huidige baan klaar.
 
 ## De boten en hun rating
 
@@ -73,7 +110,7 @@ Na deze stappen geldt:
 
 GPH is het aantal seconden per zeemijl. Hoe lager, hoe sneller de boot. Het zijn
 charterboten met onbekende zeilen en lading, dus de ratings zijn een redelijke schatting,
-geen officieel certificaat. Aanpassen kan in `config.js` (`gph`).
+geen officieel certificaat. Aanpassen kan in `convex/lib/config.ts` (`gph`).
 
 **Uitslagen** tellen bij een gelijke start met rating: gecorrigeerde tijd = verzeilde tijd × rating (Time-on-Time).
 Bij een achtervolgings- of lusstart zit de rating al in de start of de baan: daar wint wie het eerst binnen is.
@@ -83,7 +120,7 @@ Per race staat de verzeilde tijd er ter informatie bij, en een uitklapbaar **�
 **⚖️ Ratingcheck** (tab Uitslagen): per race de rating waarmee elke boot precies gelijk was geëindigd,
 geschaald op dezelfde gemiddelde rating, plus het gemiddelde over alle races. Bij een lusstart rekent hij met de
 baanlengte van elke boot. Vanaf 3 races per boot
-geeft hij een advies voor `config.js`. Bemanning, starts en het soort baan tellen mee: beoordeel dus
+geeft hij een advies voor `convex/lib/config.ts`. Bemanning, starts en het soort baan tellen mee: beoordeel dus
 meerdere races met verschillende omstandigheden.
 
 **Startopties** (tab 🏁 Race van de wedstrijdleiding):
@@ -94,14 +131,12 @@ meerdere races met verschillende omstandigheden.
   boeien (A en B) naast een rak. De boot vaart langs de lus naar A, keert terug naar B en vaart
   dan verder, een kleine α. De lus maakt de baan per boot zo veel langer dat GPH × baanlengte voor
   iedereen gelijk is. Wie het eerst finisht, wint.
-  - Ook de langzaamste boot vaart een lus (`LUS_MIN_M` in `config.js`, standaard 300 m), zodat iedereen even vaak rondt.
+  - Ook de langzaamste boot vaart een lus (`LUS_MIN_M` in `convex/lib/config.ts`, standaard 300 m), zodat iedereen even vaak rondt.
   - Alle lussen liggen in het midden van het langste rak en delen boei A: die ligt voor iedereen op dezelfde plek.
     Alleen boei B verschilt: hoe sneller de boot, hoe verder B terug ligt.
   - Omdat de lus heen en terug langs het rak loopt, kost hij bij elke windrichting ongeveer even veel.
   - Passen de lussen niet goed op de baan, dan waarschuwt de baanplanning. Maak dan de raken langer.
   - De lussen worden bij het startsein vastgelegd. De tracker toont alleen je eigen lus; het dashboard toont ze allemaal in de bootkleur.
-
-  **Let op:** publiceer na deze update de nieuwe `database.rules.json`, anders weigert de database de lusstart.
 
 De verwachte tijd is GPH × baanlengte × windfactor. De windfactor komt uit de actuele
 wind van Open-Meteo, weergegeven in Beaufort.
@@ -110,7 +145,7 @@ wind van Open-Meteo, weergegeven in Beaufort.
 
 ## Gebruik op de racedag
 
-**Wedstrijdleiding** (`/?wl`, inloggen met e-mail en wachtwoord):
+**Wedstrijdleiding** (`/?wl`, inloggen met het wachtwoord van de wedstrijdleiding):
 1. Zet de start- en finishlijn en de boeien uit. Bij een lijn is het eerste punt vrij; het tweede snapt naar
    een van de acht windstreken (N, NO, O, …) en een lengte van 0,5, 1, 1,5 … zm. Wijzigingen zijn eerst een **concept**
    (geel op de kaart). Pas na **✓ Bevestigen** zien de boten ze. Zo voeg je tijdens de
@@ -120,8 +155,8 @@ wind van Open-Meteo, weergegeven in Beaufort.
    en stel een start voor: **Start A: gelijk**, **Start B: achtervolging** of **Start C: lussen**.
    De verwachte tijden en vertragingen staan in de baanplanning.
 3. Elke boot krijgt het voorstel op de tracker (met één glas van de scheepsbel) en tikt **✔ Akkoord**. Dat kan alleen
-   de telefoon die de boot heeft geclaimd, dus eerst *Start tracking*. Zodra alle boten akkoord zijn, legt het dashboard
-   van de wedstrijdleiding de start vast 🔒. Houd dat dashboard dus open tot het zover is.
+   de telefoon die de boot heeft geclaimd, dus eerst *Start tracking*. Zodra de laatste boot akkoord geeft, legt de server
+   de start meteen vast 🔒. Het dashboard van de wedstrijdleiding hoeft daarvoor niet open te staan.
    - Een voorstel dat niet op tijd door iedereen is goedgekeurd, verloopt. Stel dan een nieuwe tijd voor.
    - Een nieuw voorstel vervangt het oude; iedereen moet dan opnieuw akkoord geven. *✖ Startvoorstel intrekken* haalt het weg.
    - Zolang er een voorstel open staat, telt het passeren van de startlijn nog niet.
@@ -144,7 +179,7 @@ wind van Open-Meteo, weergegeven in Beaufort.
 - De slotnotitie geeft de uitslag op het water én met de rating, ook als de race wordt afgerond terwijl er nog
   boten varen. Boten die niet uitvaren, blijven buiten het verhaal.
 - De verteller praat als een piraat (arr, matey, schatkisten en -kaarten). Om de paar notities volgt een
-  piratenversierzin of een quote van aan boord uit `BOOT_QUOTES` in `config.js` (een tekst, of `{ tekst, boot, wie }`).
+  piratenversierzin of een quote van aan boord uit `BOOT_QUOTES` in `convex/lib/config.ts` (een tekst, of `{ tekst, boot, wie }`).
 
 **🔮 Voorspelde eindstand** (tijdens de race, op het dashboard en de tracker): per boot de tijd tot de finish (met de
 verwachte kloktijd), de totale verzeilde tijd en de gecorrigeerde totale tijd, gesorteerd op die laatste. De tijd tot de
@@ -219,8 +254,7 @@ ervoor en erna. Zonder winddata is een gijp daar niet van te onderscheiden.
    (ook vóór een nieuwe zeeslag of het wissen van de uitslag). Onder *🏴‍☠️ Zeeslagen* staan dan de eindstand, een
    **▶ Replay** (sporen, krimpend speelveld, schatkisten, mijnen, een rookwolkje bij elk salvo en vliegende kogels tijdens
    het afspelen, met de levens per schip) en een **📜 Scheepsjournaal**. Zonder race worden de sporen daarna gewist.
-Instellingen (bereik, levens, herladen, aftellen, krimpen, schatkisten en wat erin zit) staan bovenaan `piraat.js`. **Let op:** publiceer na deze update de nieuwe
-`database.rules.json`, anders weigert de database de schoten en het opslaan van zeeslagen.
+Instellingen (bereik, levens, herladen, aftellen, krimpen, schatkisten en wat erin zit) staan in `convex/lib/spel.ts`.
 
 **Afstand tot een andere boot** (tracker): tik op een andere boot, op de kaart of in de lijst. Er komt een stippellijn vanaf
 je eigen boot met de afstand en de richting. Nog een keer tikken haalt hem weg.
@@ -252,37 +286,9 @@ de afstand en de koers, en vanaf het derde punt ook het totaal. Nog een keer op 
 - Op de **iPhone** werken meldingen alleen als de site via *Deel → Zet op beginscherm*
   als app is toegevoegd.
 - Een melding sturen naar een telefoon waarop de pagina helemaal **gesloten** is, kan
-  niet zonder een push-server (Firebase Cloud Functions, betaald Blaze-plan).
+  niet zonder een push-server; die is er (nog) niet.
 
 ---
-
-## Lokaal testen
-
-```
-python -m http.server 8000 --bind 127.0.0.1
-```
-Open daarna http://127.0.0.1:8000/index.html en http://127.0.0.1:8000/tracker.html.
-GPS werkt alleen via `localhost`/`127.0.0.1` of via https.
-
-## Regels publiceren
-
-Na elke wijziging in `database.rules.json` moeten de regels opnieuw naar Firebase.
-
-**Met het script** (Node.js nodig):
-1. Eenmalig inloggen: `npx firebase-tools login`. Er opent een browser; log in met een Google-account
-   dat toegang heeft tot het project `marzeille-474a9`.
-2. Publiceren: `./publiceer-regels.sh`
-
-**Met de hand:** Firebase-console → Realtime Database → tab *Rules* → plak de inhoud van
-`database.rules.json` → **Publish**.
-
-Beide manieren vervangen alle regels door die in het bestand. Wijzig de regels dus alleen in het bestand,
-niet in de console.
-
-## Online zetten (Netlify)
-
-Netlify → site *marzeille* → **Deploys** → sleep de hele projectmap in het vak.
-Het bestand `_headers` wordt automatisch meegenomen.
 
 ## Backlog
 - AI-radiocommentaar: een lokaal Python-script, waarbij de API-key op de eigen laptop

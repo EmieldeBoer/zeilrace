@@ -1,6 +1,22 @@
+# Afhankelijkheden en build
+node_modules
+dist
+dist-ssr
+
+# Lokale instellingen (Convex schrijft .env.local)
+*.local
+.env.local
+
+# Lokale Convex-backend
+.convex/
+
+# Uitvoer van scripts/importeer-firebase.ts (bevat sporen en namen)
+import/
+
+# Logs en editors
+*.log
 .DS_Store
 Thumbs.db
-.env.local
-dist/
-node_modules/
-firebase-debug.log
+.vscode/*
+!.vscode/extensions.json
+.idea
