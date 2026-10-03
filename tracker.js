@@ -902,7 +902,7 @@ const Kompas = (() => {
 // =========================================================
 var spelData = null;      // var: de aftelklok (hierboven) leest hem al bij het laden
 let spelStand = null, spelVeldLaag = null, spelVeldSleutel = '', bekendeSchoten = null;
-let herladenTot = 0, buitenSinds = null, vorigeMij = null, vorigBezig = null, scoreCache = '', vorigeKrimpCheck = null;
+let herladenTot = 0, buitenSinds = null, vorigeMij = null, vorigBezig = null, scoreCache = '', vorigeKrimpCheck = null, vorigeEindCheck = null;
 let kistLaag = null, kistSleutel = '', kistBezig = false, mijnLaag = null, mijnSleutel = '', bekendeKnallen = null;
 const mijnGemeld = new Set();    // mijnen waar we al overheen voeren (één melding per mijn)
 const kistMislukt = new Set();   // kisten waarvan het pakken door de database geweigerd werd: niet elke seconde opnieuw
@@ -940,6 +940,9 @@ const herlaadKlaar = mij => Math.max(herladenTot, mij && mij.laatsteSchot ? mij.
 const geraaktKlaar = mij => (mij && mij.geraakt || 0) + SPEL.geraaktMs;
 const stilKlaar = mij => Math.max(geraaktKlaar(mij), mij ? mij.valTot : 0);
 const groteLetter = t => t.charAt(0).toUpperCase() + t.slice(1);
+// Hoeveel salvo's (en strafpunten) er per boot in de database passen: premiejacht = onbeperkt kruit
+const maxSchoten = st => st && st.jacht ? SPEL.jachtMax : SPEL.schoten;
+const kruitOp = (st, mij) => !st.jacht && mij.gebruikt >= SPEL.schoten;
 
 async function vuur() {
   initAudio();
@@ -949,8 +952,8 @@ async function vuur() {
   const mij = st.boten[ik];
   if (mij.levens <= 0) { tip('Je schip is gezonken… ☠️'); return; }
   if (Date.now() < herlaadKlaar(mij) || Date.now() < stilKlaar(mij)) return;
-  const nr = vrijNummer(spelData && spelData.schoten && spelData.schoten[ik], SPEL.schoten);
-  if (nr == null || mij.gebruikt >= SPEL.schoten) { tip('Je kruit is op!'); return; }
+  const nr = vrijNummer(spelData && spelData.schoten && spelData.schoten[ik], maxSchoten(st));
+  if (nr == null || kruitOp(st, mij)) { tip('Je kruit is op!'); return; }
   if (!mijnPositie || mijnKoers == null) { tip('Vaar eerst een stukje: het kanon moet weten waar je boeg wijst.'); return; }
   const schot = { ts: Date.now(), lat: +mijnPositie.lat.toFixed(6), lng: +mijnPositie.lng.toFixed(6), koers: Math.round(mijnKoers) % 360 };
   const vlag = Piraat.SCHOT_VLAG[mij.lading], lading = vlag ? BUIT[mij.lading] : null;
@@ -1007,7 +1010,7 @@ function tekenMijnen(st) {
   if (sleutel !== mijnSleutel) { mijnLaag = Piraat.mijnLagen(kaart, lijst, mijnLaag); mijnSleutel = sleutel; }
 }
 
-// Buiten het speelveld: elke 20 seconden een leven kwijt
+// Buiten het speelveld: elke 20 seconden een leven kwijt (premiejacht: een punt)
 function controleerVeld() {
   const st = spelStand, box = $('spelVeld'), ik = mijnBoot();
   const meedoen = st && st.bezig && st.veld && watchId !== null && mijnPositie &&
@@ -1018,10 +1021,10 @@ function controleerVeld() {
   if (!buitenSinds) buitenSinds = nu;
   const rest = SPEL.strafMs - (nu - buitenSinds);
   box.hidden = false;
-  box.textContent = `⚠️ Buiten het speelveld! Keer om — over ${Math.max(0, Math.ceil(rest / 1000))} s kost het een leven.`;
+  box.textContent = `⚠️ Buiten het speelveld! Keer om — over ${Math.max(0, Math.ceil(rest / 1000))} s kost het ${st.jacht ? 'een punt' : 'een leven'}.`;
   if (rest > 0) return;
   buitenSinds = nu;
-  const nr = vrijNummer(spelData && spelData.straf && spelData.straf[ik], SPEL.levens);
+  const nr = vrijNummer(spelData && spelData.straf && spelData.straf[ik], st.jacht ? SPEL.jachtMax : SPEL.levens);
   if (nr == null) return;
   schrijf(db.ref(`${P}/spel/straf/${ik}/${nr}`).set(nu));
   speel(GELUID.alarm);
@@ -1068,6 +1071,12 @@ function renderSpel() {
     speel(() => scheepsbel(3)); meld('🌀 Het speelveld begint te krimpen! Blijf binnen de rode cirkel.', 'fout');
   }
   vorigeKrimpCheck = nuK;
+  // premiejacht: nog één minuut te gaan
+  const laatsteMin = st.jacht && st.einde ? st.einde - 60000 : null;
+  if (laatsteMin && st.bezig && vorigeEindCheck != null && vorigeEindCheck < laatsteMin && nuK >= laatsteMin) {
+    speel(() => scheepsbel(2)); meld('⏳ Nog één minuut! Wie nu nog raakt, kan de premiejacht winnen.', 'goed');
+  }
+  vorigeEindCheck = nuK;
   // labels (levens) en wrakken
   Object.keys(kMarkers).forEach(n => { const l = schipLabel(n); if (labelCache[n] !== l) { kMarkers[n].setTooltipContent(l); labelCache[n] = l; } });
   markeerEigen();
@@ -1081,12 +1090,14 @@ function renderSpel() {
   const nu = Date.now(), stil = Math.max(0, stilKlaar(mij) - nu), val = mij.valTot > nu && mij.valTot >= geraaktKlaar(mij);
   const wacht = ms => formatDuur(Math.ceil(ms / 1000) * 1000), effecten = Piraat.effectenTekst(mij, nu);
   $('spelMijn').innerHTML = watchId === null ? 'Start de tracking om mee te vechten.'
-    : esc(`${kNaam(ik)}: ${Piraat.levensTekst(mij)} · ${SPEL.schoten - mij.gebruikt} salvo's · ${mij.hits} raak`) +
+    : esc(st.jacht ? `${kNaam(ik)}: ${mij.punten} ${mij.punten === 1 ? 'punt' : 'punten'} · ${mij.hits} raak · ${mij.klappen}× geraakt`
+      : `${kNaam(ik)}: ${Piraat.levensTekst(mij)} · ${SPEL.schoten - mij.gebruikt} salvo's · ${mij.hits} raak`) +
       (effecten && mij.levens > 0 ? `<div class="spel-effecten">${esc(effecten)}</div>` : '');
   $('btnMijn').hidden = !(st.bezig && watchId !== null && mij.levens > 0 && mij.lading === 'mijn');
-  knop.disabled = !st.bezig || watchId === null || mij.levens <= 0 || mij.gebruikt >= SPEL.schoten || herlaad > 0 || stil > 0;
-  knop.textContent = st.wacht ? `⏳ De zeeslag begint om ${formatKlok(st.start)}` : !st.bezig ? '⚓ De zeeslag is voorbij' : mij.levens <= 0 ? '☠️ Gezonken'
-    : mij.gebruikt >= SPEL.schoten ? '🪣 Het kruit is op'
+  const wat = st.jacht ? 'premiejacht' : 'zeeslag';
+  knop.disabled = !st.bezig || watchId === null || mij.levens <= 0 || kruitOp(st, mij) || herlaad > 0 || stil > 0;
+  knop.textContent = st.wacht ? `⏳ De ${wat} begint om ${formatKlok(st.start)}` : !st.bezig ? `⚓ De ${wat} is voorbij` : mij.levens <= 0 ? '☠️ Gezonken'
+    : kruitOp(st, mij) ? '🪣 Het kruit is op'
     : stil > 0 ? (val ? `🪤 Boobytrap! Kanon onklaar… ${wacht(Math.max(stil, herlaad))}` : `💫 Geraakt! Kanon ligt stil… ${wacht(Math.max(stil, herlaad))}`)
     : herlaad > 0 ? `⏳ Herladen… ${wacht(herlaad)}`
     : mij.lading === 'bereik' ? `💥 Vuur het kanon! (🔭 ${Piraat.bereik({ groot: true })} m)`
@@ -1097,7 +1108,12 @@ function renderSpel() {
 
   // Geraakt? (alleen melden als het tijdens deze sessie gebeurt)
   if (vorigeMij && vorigeMij.start === st.start && st.deelnemers.includes(ik)) {
-    if (mij.levens < vorigeMij.levens) {
+    if (st.jacht && (mij.klappen > vorigeMij.klappen || mij.straf > vorigeMij.straf)) {
+      const doorVeld = mij.straf > vorigeMij.straf, doorMijn = mij.mijnRaak > vorigeMij.mijnRaak;
+      meld(doorVeld ? `⚠️ Buiten het speelveld: een punt kwijt. Je staat op ${mij.punten}.`
+        : doorMijn ? '💣 Op een zeemijn gevaren! Je kanon ligt 1 minuut stil.' : '💥 Geraakt! Je kanon ligt 1 minuut stil.', 'fout');
+      if (!doorVeld && navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 400]);
+    } else if (mij.levens < vorigeMij.levens) {
       const doorVeld = mij.straf > vorigeMij.straf, doorMijn = mij.mijnRaak > vorigeMij.mijnRaak;
       const nog = `Nog ${mij.levens} ${mij.levens === 1 ? 'leven' : 'levens'}. Je kanon ligt 1 minuut stil.`;
       meld(mij.levens <= 0 ? '☠️ Je schip is gezonken! Het spel is voor jou voorbij.'
@@ -1106,11 +1122,11 @@ function renderSpel() {
       if (!doorVeld && navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 400]);
     } else if (mij.geblokt > vorigeMij.geblokt) meld('🛡️ Je schild ving een treffer op! Het is nu op.', 'goed');
   }
-  vorigeMij = { start: st.start, levens: mij.levens, straf: mij.straf, mijnRaak: mij.mijnRaak, geblokt: mij.geblokt };
+  vorigeMij = { start: st.start, levens: mij.levens, straf: mij.straf, mijnRaak: mij.mijnRaak, geblokt: mij.geblokt, klappen: mij.klappen };
   // Einde van de zeeslag (alleen als je hem zag eindigen)
   if (vorigBezig && vorigBezig.start === st.start && vorigBezig.bezig && !st.bezig && st.winnaar) {
     const ikWin = st.winnaar.boot === ik && !st.gelijk;
-    Feest.start({ titel: ikWin ? '🏴‍☠️ Jij wint de zeeslag!' : '🏴‍☠️ De zeeslag is voorbij',
+    Feest.start({ titel: ikWin ? `🏴‍☠️ Jij wint de ${wat}!` : `🏴‍☠️ De ${wat} is voorbij`,
       sub: st.gelijk ? 'Onbeslist — gelijke stand aan kop.' : `${kNaam(st.winnaar.boot)} is de schrik van de zeven zeeën!` });
   }
   vorigBezig = { start: st.start, bezig: st.bezig };

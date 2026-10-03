@@ -384,6 +384,10 @@
             <button class="btn gun" id="btnSpelStart">🏴‍☠️ Start zeeslag</button>
             <button class="btn reset" id="btnSpelStop">⏹ Stop</button>
           </div>
+          <div class="uitleg"><b>Premiejacht</b>: geen levens en onbeperkt kruit, maar een vaste speeltijd. Wie de meeste
+            treffers maakt, wint. Buiten de cirkel kost elke 20 seconden een punt.</div>
+          <label class="starttijd">Speeltijd (min) <input type="number" id="jachtMinuten" min="1" max="240" step="1" inputmode="numeric"></label>
+          <button class="btn gun" id="btnJachtStart">🎯 Start premiejacht</button>
         </div>
 
         <div class="wl-paneel" data-wl="overig" hidden>
@@ -533,6 +537,17 @@
         <p>De zeeslag is voorbij als er nog maar <span class="em">één schip drijft</span>, als iedereen zijn kruit heeft verschoten,
           of als de wedstrijdleiding hem stopt. Winnaar: de meeste levens, dan de meeste treffers, dan de meeste salvo's over.
           Elke zeeslag wordt bewaard bij <span class="em">Uitslagen</span>, met een replay en een scheepsjournaal.</p>
+      </div>
+
+      <div class="kaartje">
+        <h3>🎯 De premiejacht</h3>
+        <p>De wedstrijdleiding kan ook een <span class="em">premiejacht</span> starten. Die gaat net zo van start, maar
+          er zijn <span class="em">geen levens</span> en het <span class="em">kruit raakt nooit op</span>: na elk salvo herlaad je
+          een minuut, en ben je geraakt, dan ligt je kanon een minuut stil. Elke treffer (ook met een zeemijn) is een punt;
+          elke 20 seconden buiten het speelveld kost een punt. De klok bepaalt het einde: na de <span class="em">speeltijd</span>
+          die de wedstrijdleiding kiest, wint wie de <span class="em">meeste punten</span> heeft. Staan er twee gelijk, dan wint
+          wie het minst geraakt is. De schatkisten, het krimpende speelveld en de laatste minuut (twee glazen op de scheepsbel)
+          horen er ook bij.</p>
       </div>
 
       <div class="disclaimer">Veiligheid gaat altijd vóór de regels: voorkom aanvaringen, ook als je voorrang hebt.

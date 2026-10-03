@@ -15,9 +15,14 @@
 //  volgende salvo of met de mijnknop; zolang je lading hebt, pak je geen kist.
 //  De rest werkt meteen: schild, spookschip, snel herladen, of een boobytrap.
 //
-//  Database: races/{race}/spel = { start, eind?, veld: {lat,lng,r},
-//    schoten: {boot: {0..9: {ts, lat, lng, koers, groot?, breed?, voor?, raak: {doelboot: true}}}},
-//    straf:   {boot: {0..2: ts}},
+//  Premiejacht (modus 'jacht'): geen levens en onbeperkt kruit, maar een vaste speeltijd
+//  (duur). Elke treffer (kogel of mijn) is een punt, elke 20 seconden buiten het speelveld
+//  kost een punt. Na de speeltijd wint wie de meeste punten heeft (bij gelijke stand: wie
+//  het minst geraakt is). Herladen en stilliggen na een treffer blijven gewoon gelden.
+//
+//  Database: races/{race}/spel = { start, eind?, modus?: 'jacht', duur?: ms, veld: {lat,lng,r},
+//    schoten: {boot: {0..9 (jacht: 0..999): {ts, lat, lng, koers, groot?, breed?, voor?, raak: {doelboot: true}}}},
+//    straf:   {boot: {0..2 (jacht: 0..999): ts}},
 //    buit:    {kistnr: {boot, ts}},      (wie de kist het eerst pakt)
 //    mijnen:  {boot: {0..9: {ts, lat, lng}}},
 //    mijnraak: {slachtoffer: {eigenaar-nr: ts}} }   (gemeld door wie erover vaart)
@@ -46,7 +51,9 @@ const SPEL = {
   mijnM: 25,                  // wie zo dichtbij een zeemijn van een ander komt, verliest een leven
   spookMs: 180000,            // spookschip: zo lang zien de anderen je niet op de kaart (3 minuten)
   snelMs: 300000,             // snel herladen: zo lang herlaad je in de halve tijd (5 minuten)
-  valMs: 300000               // boobytrap: zo lang kun je niet schieten (5 minuten)
+  valMs: 300000,              // boobytrap: zo lang kun je niet schieten (5 minuten)
+  jachtMinuten: 20,           // premiejacht: standaard speeltijd (minuten)
+  jachtMax: 1000              // premiejacht: zoveel salvo's en strafpunten passen er in de database per boot
 };
 // Wat er in een schatkist kan zitten. kans = relatief gewicht.
 // lading: je houdt het vast tot je volgende salvo (of tot je de mijn legt).
@@ -175,13 +182,18 @@ const Piraat = (() => {
   // ---- De stand: alle salvo's en strafpunten op tijdvolgorde afspelen ----
   // posTs = { boot: tijd van de laatste positie } → wie doet er mee.
   // Ligt het begin nog in de toekomst, dan wordt er afgeteld: wacht = true, nog niet bezig.
+  // Premiejacht: geen levens, onbeperkt kruit en een vaste speeltijd (zie bovenaan)
+  const isJacht = spel => !!(spel && spel.modus === 'jacht' && spel.duur > 0);
   function stand(spel, posTs, nu = Date.now()) {
-    const boten = {};
+    const boten = {}, jacht = isJacht(spel);
     FLEET.forEach(b => { boten[b] = { boot: b, levens: SPEL.levens, hits: 0, gebruikt: 0, straf: 0, dood: null, laatsteSchot: null,
-      geraakt: null, lading: null, kisten: 0, vondst: null, schild: false, geblokt: 0, spookTot: 0, snelTot: 0, valTot: 0, mijnRaak: 0 }; });
+      geraakt: null, lading: null, kisten: 0, vondst: null, schild: false, geblokt: 0, spookTot: 0, snelTot: 0, valTot: 0, mijnRaak: 0,
+      jacht, klappen: 0, punten: 0 }; });
     if (!spel || !spel.start) return { bezig: false, over: null, boten, deelnemers: [], volgorde: [], geldig: [], mijnen: [], veld: spel && spel.veld };
-    if (nu < spel.start) return { bezig: false, wacht: true, over: null, start: spel.start, veld: spel.veld, boten,
-      deelnemers: [], volgorde: [], geldig: [], mijnen: [] };
+    // het einde: gestopt door de wedstrijdleiding, of (premiejacht) de speeltijd is om
+    const einde = Math.min(spel.eind || Infinity, jacht ? spel.start + spel.duur : Infinity);
+    if (nu < spel.start) return { bezig: false, wacht: true, over: null, start: spel.start, veld: spel.veld, boten, jacht,
+      einde: jacht ? einde : null, deelnemers: [], volgorde: [], geldig: [], mijnen: [] };
     const ev = [];
     Object.entries(spel.schoten || {}).forEach(([b, l]) => Object.entries(l || {}).forEach(([nr, s]) =>
       s && s.ts != null && ev.push({ soort: 'schot', b, t: s.ts, s, id: b + '/' + nr })));
@@ -197,6 +209,7 @@ const Piraat = (() => {
     const deelnemers = FLEET.filter(b => (posTs[b] || 0) >= spel.start || ev.some(e => e.b === b));
     const levend = () => deelnemers.filter(b => boten[b].levens > 0);
     const klaar = () => {
+      if (jacht) return false;                                         // premiejacht: alleen de klok beslist
       const l = levend();
       if (!deelnemers.length) return false;
       if (!l.length) return true;                                      // niemand meer over
@@ -207,20 +220,22 @@ const Piraat = (() => {
     const geldig = [], mijnen = [];
     const log = [];        // wat er gebeurde, op tijdvolgorde (voor het scheepsjournaal)
     // Een treffer (kogel of mijn) op boot d: het schild vangt hem op, anders een leven minder
+    // (premiejacht: geen leven minder, wel een klap erbij)
     const treffer = (d, t) => {
       const doel = boten[d];
       if (doel.schild) { doel.schild = false; doel.geblokt++; return false; }
-      doel.levens--; doel.geraakt = t; if (!doel.levens) doel.dood = t;
+      doel.geraakt = t; doel.klappen++;
+      if (!jacht) { doel.levens--; if (!doel.levens) doel.dood = t; }
       return true;
     };
     for (const e of ev) {
-      if (over || (spel.eind && e.t > spel.eind)) break;
+      if (over || e.t > einde) break;
       const ik = boten[e.b];
       if (!ik || ik.levens <= 0) continue;                             // een wrak schiet niet meer
       if (e.soort === 'straf') {
-        ik.levens--; ik.straf++;
-        if (!ik.levens) ik.dood = e.t;
-        log.push({ t: e.t, soort: 'straf', b: e.b, levens: ik.levens });
+        ik.straf++;
+        if (!jacht) { ik.levens--; if (!ik.levens) ik.dood = e.t; }
+        log.push({ t: e.t, soort: 'straf', b: e.b, levens: ik.levens, punten: ik.hits - ik.straf });
       } else if (e.soort === 'kist') {
         // telt als de kist toen in het water lag (10 s speling voor een trage verbinding)
         const k = spel.veld ? kist(spel, e.nr) : null;
@@ -245,9 +260,11 @@ const Piraat = (() => {
         const gat = treffer(e.b, e.t);
         m.geblokt = !gat;
         if (gat) { ik.mijnRaak++; boten[m.boot].hits++; }
-        log.push({ t: e.t, soort: 'mijnraak', b: e.b, eigenaar: m.boot, geblokt: !gat, levens: ik.levens });
+        log.push({ t: e.t, soort: 'mijnraak', b: e.b, eigenaar: m.boot, geblokt: !gat, levens: ik.levens, punten: boten[m.boot].hits - boten[m.boot].straf });
       } else {
-        if (ik.gebruikt >= SPEL.schoten) continue;
+        if (!jacht && ik.gebruikt >= SPEL.schoten) continue;
+        // premiejacht: onbeperkt kruit, dus de database telt niet af; het herladen bewaken we hier (2 s speling)
+        if (jacht && ik.laatsteSchot != null && e.t < ik.laatsteSchot + herlaadDuur(ik, ik.laatsteSchot) - 2000) continue;
         if (ik.geraakt != null && e.t < ik.geraakt + SPEL.geraaktMs) continue;   // net geraakt: het kanon ligt stil
         if (e.t < ik.valTot) continue;                                 // boobytrap: het kanon is onklaar
         ik.gebruikt++; ik.laatsteSchot = e.t;
@@ -256,19 +273,23 @@ const Piraat = (() => {
         Object.keys(e.s.raak || {}).filter(d => boten[d] && d !== e.b && boten[d].levens > 0)
           .forEach(d => { if (treffer(d, e.t)) { raak.push(d); ik.hits++; } else geblokt.push(d); });
         geldig.push({ id: e.id, boot: e.b, schot: e.s, raak, geblokt });
-        log.push({ t: e.t, soort: 'schot', b: e.b, raak, geblokt, levens: Object.fromEntries(raak.map(d => [d, boten[d].levens])),
+        log.push({ t: e.t, soort: 'schot', b: e.b, raak, geblokt, levens: Object.fromEntries(raak.map(d => [d, boten[d].levens])), punten: ik.hits - ik.straf,
           lading: e.s.groot ? 'bereik' : e.s.breed ? 'breed' : e.s.voor ? 'voor' : null });
       }
       if (klaar()) over = e.t;
     }
-    if (!over && spel.eind) over = spel.eind;
+    if (!over && einde <= nu) over = einde;
     const rest = b => SPEL.schoten - b.gebruikt;
-    const volgorde = deelnemers.map(b => boten[b])
-      .sort((a, c) => c.levens - a.levens || c.hits - a.hits || rest(c) - rest(a));
+    deelnemers.forEach(b => { boten[b].punten = boten[b].hits - boten[b].straf; });
+    // klassiek: de meeste levens, treffers, salvo's over; premiejacht: de meeste punten, dan het minst geraakt
+    const volgorde = deelnemers.map(b => boten[b]).sort(jacht
+      ? (a, c) => c.punten - a.punten || a.klappen - c.klappen
+      : (a, c) => c.levens - a.levens || c.hits - a.hits || rest(c) - rest(a));
     const [w, t] = volgorde;
-    const gelijk = !!(w && t && w.levens === t.levens && w.hits === t.hits && rest(w) === rest(t));
-    return { bezig: !over, over, start: spel.start, veld: spel.veld, boten, deelnemers, volgorde, geldig, mijnen,
-             winnaar: over && w ? w : null, gelijk, log };
+    const gelijk = !!(w && t && (jacht ? w.punten === t.punten && w.klappen === t.klappen
+      : w.levens === t.levens && w.hits === t.hits && rest(w) === rest(t)));
+    return { bezig: !over, over, start: spel.start, veld: spel.veld, boten, deelnemers, volgorde, geldig, mijnen, jacht,
+             einde: jacht ? einde : null, winnaar: over && w ? w : null, gelijk, log };
   }
 
   // ---- Scheepsjournaal van een zeeslag (uit de opgeslagen gegevens) ----
@@ -282,6 +303,7 @@ const Piraat = (() => {
     const kies = l => l[(zaad = zaad * 16807 % 2147483647) % l.length];
     const lijst = a => a.length <= 1 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' en ' + a[a.length - 1];
     const nog = n => n > 0 ? `nog ${harten(n)}` : null;
+    const pnt = n => `${n} ${Math.abs(n) === 1 ? 'punt' : 'punten'}`;
     const zinkt = d => kies([`${naam(d)} zinkt naar de kelder van Davy Jones! ☠️`, `${naam(d)} gaat kopje onder — een wrak op de bodem van de zee. ☠️`]);
     const uit = [], tussendoor = {};          // per boot: { mis, kisten: [buit], mijnen }
     const opsparen = (b, wat, x) => { const t = tussendoor[b] = tussendoor[b] || { mis: 0, kisten: [], mijnen: 0 };
@@ -300,10 +322,12 @@ const Piraat = (() => {
     const noteer = (t, kop, tekst) => uit.push({ t, kop: `${klokHM(t)} · ${kop}`, tekst: tekst + intussen() });
 
     const namen = st.deelnemers.map(naam);
-    uit.push({ t: st.start, kop: `${klokHM(st.start)} · de zeeslag begint`, tekst:
+    uit.push({ t: st.start, kop: `${klokHM(st.start)} · de ${st.jacht ? 'premiejacht' : 'zeeslag'} begint`, tekst:
       kies(['Boem! Het kanon bulderde: de zeeslag is begonnen.', 'Arr, de vlag met de doodskop gaat in top: de zeeslag is begonnen!']) +
-      (namen.length ? ` Op het water: ${lijst(namen)}, elk met ${SPEL.levens} levens en ${SPEL.schoten} salvo's.` : '') +
-      (st.veld && st.veld.r ? ` Het speelveld is een cirkel met een straal van ${formatAfstand(st.veld.r)}; wie erbuiten vaart, verliest elke ${SPEL.strafMs / 1000} seconden een leven.` : '') });
+      (st.jacht ? ` Het is een premiejacht van ${Math.round((st.einde - st.start) / 60000)} minuten: geen levens, onbeperkt kruit, en wie de meeste treffers maakt, wint.` +
+        (namen.length ? ` Op jacht: ${lijst(namen)}.` : '')
+        : namen.length ? ` Op het water: ${lijst(namen)}, elk met ${SPEL.levens} levens en ${SPEL.schoten} salvo's.` : '') +
+      (st.veld && st.veld.r ? ` Het speelveld is een cirkel met een straal van ${formatAfstand(st.veld.r)}; wie erbuiten vaart, verliest elke ${SPEL.strafMs / 1000} seconden ${st.jacht ? 'een punt' : 'een leven'}.` : '') });
 
     // het moment dat het speelveld begint te krimpen (als de zeeslag dan nog woedt)
     const krimpT = st.start + SPEL.krimpNaMs, gebeurtenissen = [...st.log];
@@ -323,22 +347,25 @@ const Piraat = (() => {
         const zinnen = [];
         if (e.raak.length) zinnen.push(kies([`💥 ${ik} vuurt een volle breedzijde af${lading} en raakt ${lijst(e.raak.map(naam))}!`,
           `💥 Kanonnen bulderen: ${ik} treft ${lijst(e.raak.map(naam))}${lading}.`, `💥 Raak! De kogels van ${ik}${lading} slaan in bij ${lijst(e.raak.map(naam))}.`]));
-        e.raak.forEach(d => zinnen.push(e.levens[d] > 0 ? `${naam(d)} heeft ${nog(e.levens[d])}.` : zinkt(d)));
+        if (st.jacht) { if (e.raak.length) zinnen.push(`${ik} staat nu op ${pnt(e.punten)}.`); }
+        else e.raak.forEach(d => zinnen.push(e.levens[d] > 0 ? `${naam(d)} heeft ${nog(e.levens[d])}.` : zinkt(d)));
         e.geblokt.forEach(d => zinnen.push(`🛡️ Het schild van ${naam(d)} vangt de kogels van ${ik} op.`));
         noteer(e.t, e.raak.length ? `${ik} raakt ${lijst(e.raak.map(naam))}` : `${ik} schiet op een schild`, zinnen.join(' '));
       } else if (e.soort === 'mijnraak') {
         noteer(e.t, `${ik} op een zeemijn`, `💣 ${ik} vaart op de zeemijn van ${naam(e.eigenaar)}!` +
-          (e.geblokt ? ` Het schild vangt de klap op. 🛡️` : ' ' + (e.levens > 0 ? `${ik} heeft ${nog(e.levens)}.` : zinkt(e.b))));
+          (e.geblokt ? ` Het schild vangt de klap op. 🛡️` : st.jacht ? ` ${naam(e.eigenaar)} staat nu op ${pnt(e.punten)}.`
+            : ' ' + (e.levens > 0 ? `${ik} heeft ${nog(e.levens)}.` : zinkt(e.b))));
       } else if (e.soort === 'straf') {
-        noteer(e.t, `${ik} buiten het speelveld`, `${ik} dreef buiten het speelveld en verliest een leven. ` +
-          (e.levens > 0 ? `${ik} heeft ${nog(e.levens)}.` : zinkt(e.b)));
+        noteer(e.t, `${ik} buiten het speelveld`, st.jacht ? `${ik} dreef buiten het speelveld en verliest een punt. ${ik} staat nu op ${pnt(e.punten)}.`
+          : `${ik} dreef buiten het speelveld en verliest een leven. ` + (e.levens > 0 ? `${ik} heeft ${nog(e.levens)}.` : zinkt(e.b)));
       }
     });
 
     if (st.over) {
       const rest = b => SPEL.schoten - b.gebruikt;
-      noteer(st.over, 'einde van de zeeslag', statusTekst(st, naam) + (st.volgorde.length ? ' Eindstand: ' + st.volgorde.map((b, i) =>
-        `${i + 1}. ${naam(b.boot)} — ${b.levens ? harten(b.levens) : '☠️ gezonken'}, ${b.hits}× raak, ${rest(b)} salvo's over`).join('; ') + '.' : ''));
+      noteer(st.over, st.jacht ? 'de premiejacht is voorbij' : 'einde van de zeeslag', statusTekst(st, naam) + (st.volgorde.length ? ' Eindstand: ' + st.volgorde.map((b, i) =>
+        `${i + 1}. ${naam(b.boot)} — ` + (st.jacht ? `${pnt(b.punten)} (${b.hits}× raak, ${b.klappen}× geraakt)`
+          : `${b.levens ? harten(b.levens) : '☠️ gezonken'}, ${b.hits}× raak, ${rest(b)} salvo's over`)).join('; ') + '.' : ''));
     } else {
       const t = Math.max(st.start, ...st.log.map(e => e.t));
       const extra = intussen();
@@ -348,7 +375,8 @@ const Piraat = (() => {
   }
   const harten = n => '❤️'.repeat(Math.max(0, n)) + '🖤'.repeat(Math.max(0, SPEL.levens - n));
   // Levens, met een schild en 💰 als het schip lading uit een kist heeft (welke, ziet alleen de eigenaar)
-  const levensTekst = b => harten(b.levens) + (b.levens > 0 ? (b.schild ? ' 🛡️' : '') + (b.lading ? ' 💰' : '') : '');
+  // (premiejacht: de punten in plaats van de levens)
+  const levensTekst = b => (b.jacht ? `🎯 ${b.punten}` : harten(b.levens)) + (b.levens > 0 ? (b.schild ? ' 🛡️' : '') + (b.lading ? ' 💰' : '') : '');
   // Wat een schip nu bij zich heeft en wat er loopt (voor de eigen statusregel)
   function effectenTekst(b, nu) {
     const uit = [], klok = ms => formatDuur(Math.ceil(ms / 1000) * 1000);
@@ -366,9 +394,15 @@ const Piraat = (() => {
   // ---- Scorebord ----
   function scoreHtml(st, naam, eigen) {
     if (!st.deelnemers.length) return '<div class="spel-leeg">Nog geen schepen op het water.</div>';
+    const kroon = i => st.over && i === 0 && !st.gelijk ? '👑 ' : '';
+    if (st.jacht) return '<table class="spel-tabel"><thead><tr><th>Schip</th><th class="tijd">Punten</th><th class="tijd">Raak</th><th class="tijd">Geraakt</th></tr></thead><tbody>' +
+      st.volgorde.map((b, i) => `<tr class="${b.boot === eigen ? 'eigen' : ''}">` +
+        `<td class="boot-cel">${kroon(i)}<span class="dot" style="background:${BOTEN[b.boot].kleur}"></span>${esc(naam(b.boot))}` +
+        `${b.schild ? ' 🛡️' : ''}${b.lading ? ' 💰' : ''}</td>` +
+        `<td class="tijd"><b>${b.punten}</b></td><td class="tijd">${b.hits}</td><td class="tijd">${b.klappen}</td></tr>`).join('') + '</tbody></table>';
     return '<table class="spel-tabel"><thead><tr><th>Schip</th><th>Levens</th><th class="tijd">Raak</th><th class="tijd">Salvo\'s</th></tr></thead><tbody>' +
       st.volgorde.map((b, i) => `<tr class="${b.levens ? '' : 'wrak'}${b.boot === eigen ? ' eigen' : ''}">` +
-        `<td class="boot-cel">${st.over && i === 0 && !st.gelijk ? '👑 ' : ''}<span class="dot" style="background:${BOTEN[b.boot].kleur}"></span>${esc(naam(b.boot))}</td>` +
+        `<td class="boot-cel">${kroon(i)}<span class="dot" style="background:${BOTEN[b.boot].kleur}"></span>${esc(naam(b.boot))}</td>` +
         `<td>${b.levens ? levensTekst(b) : '☠️ gezonken'}</td><td class="tijd">${b.hits}</td>` +
         `<td class="tijd">${SPEL.schoten - b.gebruikt}</td></tr>`).join('') + '</tbody></table>';
   }
@@ -381,16 +415,19 @@ const Piraat = (() => {
   }
   function statusTekst(st, naam) {
     if (!st.start) return '';
-    if (st.wacht) return `De kanonnen worden geladen: de zeeslag begint om ${formatKlok(st.start)}.`;
+    if (st.wacht) return `De kanonnen worden geladen: de ${st.jacht ? 'premiejacht' : 'zeeslag'} begint om ${formatKlok(st.start)}` +
+      (st.jacht ? ` en duurt ${Math.round((st.einde - st.start) / 60000)} minuten.` : '.');
     if (st.bezig) {
       const r = straal(st.veld, st.start, Date.now());
-      return `De zeeslag woedt sinds ${klokHM(st.start)}.` + (st.veld && r < st.veld.r
+      return (st.jacht ? `Premiejacht: nog ${formatDuur(Math.max(0, st.einde - Date.now()))} (tot ${klokHM(st.einde)}).`
+        : `De zeeslag woedt sinds ${klokHM(st.start)}.`) + (st.veld && r < st.veld.r
         ? ` Het speelveld krimpt: straal nu ${formatAfstand(r)}.`
         : st.veld && st.veld.r ? ` Om ${klokHM(st.start + SPEL.krimpNaMs)} begint het speelveld te krimpen.` : '');
     }
-    if (!st.winnaar) return 'De zeeslag is voorbij.';
-    return st.gelijk ? 'De zeeslag is voorbij — onbeslist! Gelijke stand aan kop.'
-      : `De zeeslag is voorbij. ${naam(st.winnaar.boot)} is de schrik van de zeven zeeën! 🏴‍☠️`;
+    const wat = st.jacht ? 'De premiejacht' : 'De zeeslag';
+    if (!st.winnaar) return `${wat} is voorbij.`;
+    return st.gelijk ? `${wat} is voorbij — onbeslist! Gelijke stand aan kop.`
+      : `${wat} is voorbij. ${naam(st.winnaar.boot)} is de schrik van de zeven zeeën! 🏴‍☠️`;
   }
 
   // ---- Kaart: speelveld, richtlijnen en vliegende kanonskogels ----
@@ -493,6 +530,6 @@ const Piraat = (() => {
     }, duur * 0.7);
   }
 
-  return { kogels, raakt, binnenVeld, straal, veldOp, stand, journaal, buitHtml, harten, levensTekst, effectenTekst, herlaadDuur, spook, scoreHtml, statusTekst,
+  return { isJacht, kogels, raakt, binnenVeld, straal, veldOp, stand, journaal, buitHtml, harten, levensTekst, effectenTekst, herlaadDuur, spook, scoreHtml, statusTekst,
            veldLaag, richtlijnen, animeer, ontploffing, kisten, kistLagen, inhoud, bereik, mijnLagen, SCHOT_VLAG };
 })();

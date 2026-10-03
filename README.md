@@ -209,13 +209,17 @@ ervoor en erna. Zonder winddata is een gijp daar niet van te onderscheiden.
    een kwart van de straal (minstens 150 m). Op de tracker klinkt dan drie keer de scheepsbel.
 6. Het spel is voorbij als er nog maar één schip drijft of als het kruit op is. Winnaar: de meeste levens, dan de meeste treffers,
    dan de meeste salvo's over.
-7. **⏹ Stop** beëindigt de zeeslag. Nog een keer drukken haalt de uitslag van het scherm.
+7. **🎯 Start premiejacht** is de variant op tijd: kies eerst de speeltijd in minuten (standaard 20, `jachtMinuten`).
+   Er zijn geen levens en het kruit raakt niet op (herladen en een minuut stilliggen na een treffer blijven). Elke treffer,
+   ook met een zeemijn, is een punt; elke 20 seconden buiten de cirkel kost een punt. Na de speeltijd stopt het spel vanzelf en
+   wint wie de meeste punten heeft (bij gelijke stand: wie het minst geraakt is). Een minuut voor het einde klinkt de scheepsbel.
+8. **⏹ Stop** beëindigt de zeeslag. Nog een keer drukken haalt de uitslag van het scherm.
    Het speelveld (de rode cirkel) en de schootslijnen zijn voor iedereen te zien zolang het speelveld er staat;
    **🗑 Speelveld weg** haalt het weg. Voor een zeeslag kan de wedstrijdleiding de start- en finishlijn weghalen met
    **🗑 Start- en finishlijn weg** (tab Baan; via het concept, dus pas na bevestigen). Het scorebord zie je alleen tijdens
    en na een zeeslag. De regels staan altijd in de tab Regels, onder *De Piratencode*. De boten zijn dan eenvoudige scheepjes in kaartstijl; tijdens de zeeslag worden
    het piratenschepen (sloep, brigantijn, fregat, op schaal van de echte romplengte).
-8. **Bewaard bij Uitslagen:** zodra de zeeslag voorbij is, slaat het dashboard van een ingelogde wedstrijdleider hem op
+9. **Bewaard bij Uitslagen:** zodra de zeeslag voorbij is, slaat het dashboard van een ingelogde wedstrijdleider hem op
    (ook vóór een nieuwe zeeslag of het wissen van de uitslag). Onder *🏴‍☠️ Zeeslagen* staan dan de eindstand, een
    **▶ Replay** (sporen, krimpend speelveld, schatkisten, mijnen, een rookwolkje bij elk salvo en vliegende kogels tijdens
    het afspelen, met de levens per schip) en een **📜 Scheepsjournaal**. Zonder race worden de sporen daarna gewist.

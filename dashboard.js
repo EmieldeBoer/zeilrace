@@ -231,17 +231,20 @@ function zeeslagHtml(key) {
   const duur = z.over ? ' · ' + formatDuur(z.over - z.start) : '';
   const knoppen = (z.sporen ? `<button class="race-knop afspelen" data-zeeslag="${key}">▶ Replay</button>` : '') +
     (admin ? `<button class="race-knop wis" data-zeeslag="${key}" title="Verwijder deze zeeslag">🗑</button>` : '');
+  const jacht = Piraat.isJacht(z.spel);
   const rijen = (z.stand || []).map((r, i) => `<tr${i === 0 && z.winnaar ? ' class="winnaar"' : ''}><td class="pos">${i + 1}</td>` +
-    `<td class="boot-cel">${dotHtml(r.boot)}${esc(nm(r.boot))}</td><td>${r.levens ? Piraat.harten(r.levens) : '☠️ gezonken'}</td>` +
-    `<td class="tijd">${r.hits}</td><td class="tijd">${r.salvos}</td></tr>`).join('');
+    `<td class="boot-cel">${dotHtml(r.boot)}${esc(nm(r.boot))}</td>` + (jacht
+      ? `<td class="tijd"><b>${r.punten}</b></td><td class="tijd">${r.hits}</td><td class="tijd">${r.klappen}</td></tr>`
+      : `<td>${r.levens ? Piraat.harten(r.levens) : '☠️ gezonken'}</td><td class="tijd">${r.hits}</td><td class="tijd">${r.salvos}</td></tr>`)).join('');
   const notities = Array.isArray(z.journaal) ? z.journaal : Object.values(z.journaal || {});
   const journaal = notities.length ? '<details class="journaal-uitslag"><summary>📜 Scheepsjournaal</summary><div class="journaal">' +
     [...notities].reverse().map(n => `<div class="journaal-item"><div class="journaal-kop">${esc(n.kop)}</div>` +
       `<div class="journaal-tekst">${esc(n.tekst)}</div></div>`).join('') + '</div></details>' : '';
-  return `<div class="u-tabel"><h3>🏴‍☠️ Zeeslag ${knoppen}</h3><div class="sub">${wanneer}${duur}` +
+  return `<div class="u-tabel"><h3>${jacht ? '🎯 Premiejacht' : '🏴‍☠️ Zeeslag'} ${knoppen}</h3><div class="sub">${wanneer}${duur}` +
     `${z.sporen ? '' : ' · geen sporen opgeslagen (geen replay)'}</div>` +
-    (rijen ? '<div class="tabelscroll"><table><thead><tr><th class="pos">#</th><th>Schip</th><th>Levens</th>' +
-      `<th class="tijd">Raak</th><th class="tijd">Salvo's over</th></tr></thead><tbody>${rijen}</tbody></table></div>` : '') +
+    (rijen ? '<div class="tabelscroll"><table><thead><tr><th class="pos">#</th><th>Schip</th>' + (jacht
+      ? '<th class="tijd">Punten</th><th class="tijd">Raak</th><th class="tijd">Geraakt</th>'
+      : `<th>Levens</th><th class="tijd">Raak</th><th class="tijd">Salvo's over</th>`) + `</tr></thead><tbody>${rijen}</tbody></table></div>` : '') +
     journaal + '</div>';
 }
 function zeeslagenHtml() {
@@ -542,7 +545,7 @@ function zeeslagWeergave(key) {
   const posTs = {};
   (z.deelnemers || Object.keys(z.sporen)).forEach(b => { posTs[b] = z.start; });
   const wanneer = new Date(z.start).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-  return { titel: `🏴‍☠️ Zeeslag ${wanneer}`, klok, sporen, baan: null, lussen: null, gunS, t0, zeeslag: z, posTs, naam: nm };
+  return { titel: `${Piraat.isJacht(z.spel) ? '🎯 Premiejacht' : '🏴‍☠️ Zeeslag'} ${wanneer}`, klok, sporen, baan: null, lussen: null, gunS, t0, zeeslag: z, posTs, naam: nm };
 }
 
 let rp = null;   // replay-toestand
@@ -736,7 +739,8 @@ function zetZeeslagTijd(t) {
   const rest = b => SPEL.schoten - b.gebruikt;
   el('replayLegenda').innerHTML = d.sporen.map(s => {
     const b = st.boten[s.boot];
-    return `<div>${dotHtml(s.boot)}${esc(s.naam)} — ${b.levens ? Piraat.levensTekst(b) : '☠️ gezonken'} · ${b.hits}× raak · ${rest(b)} salvo's</div>`;
+    return `<div>${dotHtml(s.boot)}${esc(s.naam)} — ` + (st.jacht ? `${b.punten} punten · ${b.hits}× raak · ${b.klappen}× geraakt`
+      : `${b.levens ? Piraat.levensTekst(b) : '☠️ gezonken'} · ${b.hits}× raak · ${rest(b)} salvo's`) + '</div>';
   }).join('') + (z.over && nuMs >= z.over ? `<div><b>${esc(Piraat.statusTekst(st, d.naam))}</b></div>` : '');
 }
 el('replayOverstag').addEventListener('change', () => { if (rp) zetReplayTijd(rp.t); });
@@ -1410,10 +1414,11 @@ async function archiveerZeeslag(spel = spelData) {
     FLEET.forEach(b => { namen[b] = naamVan(b); });
     const deelnemers = st.deelnemers.length ? st.deelnemers : Object.keys(sporen);
     const posTs = Object.fromEntries(deelnemers.map(b => [b, spel.start]));
-    const opslag = JSON.parse(JSON.stringify({ start: spel.start, eind: spel.eind || null, veld: spel.veld || null,
+    const opslag = JSON.parse(JSON.stringify({ start: spel.start, eind: spel.eind || null, modus: spel.modus || null, duur: spel.duur || null, veld: spel.veld || null,
       schoten: spel.schoten || null, straf: spel.straf || null, buit: spel.buit || null, mijnen: spel.mijnen || null, mijnraak: spel.mijnraak || null }));
     const z = { start: spel.start, ts: Date.now(), over, t0: van, namen, deelnemers, spel: opslag,
-      stand: st.volgorde.map(b => ({ boot: b.boot, levens: b.levens, hits: b.hits, salvos: SPEL.schoten - b.gebruikt, kisten: b.kisten })),
+      stand: st.volgorde.map(b => ({ boot: b.boot, levens: b.levens, hits: b.hits, salvos: SPEL.schoten - b.gebruikt, kisten: b.kisten,
+        punten: b.punten, klappen: b.klappen })),
       winnaar: st.winnaar && !st.gelijk ? st.winnaar.boot : null,
       journaal: Piraat.journaal(Object.assign({}, opslag, { eind: spel.eind || over }), naamVan, posTs).map(n => ({ t: n.t, kop: n.kop, tekst: n.tekst })) };
     if (Object.keys(sporen).length) z.sporen = sporen;
@@ -1433,32 +1438,41 @@ el('btnVeldWeg').onclick = () => {
   db.ref(`${P}/spel/veld`).remove().then(() => toonWlStatus('Speelveld weggehaald.'))
     .catch(err => toonWlStatus('Mislukt: ' + dbFoutTekst(err)));
 };
-el('btnSpelStart').onclick = async () => {
+// jacht = premiejacht: geen levens, onbeperkt kruit, en na de speeltijd wint wie het vaakst raak schoot
+async function startSpel(jacht) {
   if (!admin) return;
   const geenVeld = !(spelData && spelData.veld) ? '\n\nLet op: er is nog geen speelveld getekend (dan zijn er ook geen schatkisten).' : '';
-  const min = SPEL.aftelMs / 60000;
-  if (!confirm(`Nieuwe zeeslag starten? Er wordt ${min} minuten afgeteld (met kanonschoten), daarna krijgen alle schepen ` +
-    `weer 3 levens en 10 salvo's.` + geenVeld)) return;
+  const min = SPEL.aftelMs / 60000, jachtMin = Math.round(+el('jachtMinuten').value);
+  if (jacht && !(jachtMin >= 1 && jachtMin <= 240)) { toonWlStatus('Kies een speeltijd tussen 1 en 240 minuten.'); return; }
+  if (!confirm(jacht
+    ? `Nieuwe premiejacht starten? Er wordt ${min} minuten afgeteld (met kanonschoten), daarna jagen de schepen ${jachtMin} minuten ` +
+      `op elkaar: geen levens, onbeperkt kruit. Wie het vaakst raak schiet, wint.` + geenVeld
+    : `Nieuwe zeeslag starten? Er wordt ${min} minuten afgeteld (met kanonschoten), daarna krijgen alle schepen ` +
+      `weer 3 levens en 10 salvo's.` + geenVeld)) return;
   // de vorige zeeslag eerst bewaren (loopt hij nog, dan telt hij tot nu)
   if (spelData && spelData.start && !(spelStand && spelStand.wacht))
     await archiveerZeeslag(Object.assign({}, spelData, { eind: spelData.eind || Date.now() }));
   const start = Date.now() + SPEL.aftelMs;
-  db.ref(`${P}/spel`).update({ start, eind: null, schoten: null, straf: null, buit: null, mijnen: null, mijnraak: null })
-    .then(() => toonWlStatus(`🏴‍☠️ Het aftellen is begonnen: de zeeslag begint om ${formatKlok(start)}.`))
+  db.ref(`${P}/spel`).update({ start, eind: null, modus: jacht ? 'jacht' : null, duur: jacht ? jachtMin * 60000 : null,
+    schoten: null, straf: null, buit: null, mijnen: null, mijnraak: null })
+    .then(() => toonWlStatus(`🏴‍☠️ Het aftellen is begonnen: de ${jacht ? 'premiejacht' : 'zeeslag'} begint om ${formatKlok(start)}.`))
     .catch(err => toonWlStatus('Mislukt: ' + dbFoutTekst(err)));
-};
+}
+el('btnSpelStart').onclick = () => startSpel(false);
+el('btnJachtStart').onclick = () => startSpel(true);
+el('jachtMinuten').value = SPEL.jachtMinuten;
 el('btnSpelStop').onclick = async () => {
   if (!admin || !spelData || !spelData.start) return;
   if (spelStand && spelStand.wacht) {
     if (!confirm('Het aftellen naar de zeeslag stoppen?')) return;
     db.ref(`${P}/spel/start`).remove().catch(err => toonWlStatus('Mislukt: ' + dbFoutTekst(err)));
   } else if (spelStand && spelStand.bezig) {
-    if (!confirm('De zeeslag nu beëindigen? De huidige stand is de eindstand.')) return;
+    if (!confirm(`De ${spelStand.jacht ? 'premiejacht' : 'zeeslag'} nu beëindigen? De huidige stand is de eindstand.`)) return;
     db.ref(`${P}/spel/eind`).set(Date.now()).catch(err => toonWlStatus('Mislukt: ' + dbFoutTekst(err)));
   } else {
     if (!confirm('De uitslag van de zeeslag van het scherm halen? (Het speelveld blijft staan; de zeeslag zelf blijft bewaard bij Uitslagen.)')) return;
     await archiveerZeeslag();
-    db.ref(`${P}/spel`).update({ start: null, eind: null, schoten: null, straf: null, buit: null, mijnen: null, mijnraak: null })
+    db.ref(`${P}/spel`).update({ start: null, eind: null, modus: null, duur: null, schoten: null, straf: null, buit: null, mijnen: null, mijnraak: null })
       .catch(err => toonWlStatus('Mislukt: ' + dbFoutTekst(err)));
   }
 };

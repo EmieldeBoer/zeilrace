@@ -114,6 +114,8 @@
         "spel": {
           "start": { ".validate": "newData.isNumber()" },
           "eind": { ".validate": "newData.isNumber()" },
+          "modus": { ".validate": "newData.val() === 'jacht'" },
+          "duur": { ".validate": "newData.isNumber() && newData.val() >= 60000 && newData.val() <= 14400000" },
           "veld": {
             ".validate": "newData.hasChildren(['lat', 'lng', 'r'])",
             "lat": { ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90" },
@@ -125,7 +127,7 @@
             "$boot": {
               "$nr": {
                 ".write": "auth != null && !data.exists() && root.child('races').child($race).child('claims').child($boot).val() === auth.uid && root.child('races').child($race).child('spel').child('start').exists() && !root.child('races').child($race).child('spel').child('eind').exists()",
-                ".validate": "$nr.matches(/^[0-9]$/) && newData.hasChildren(['ts', 'lat', 'lng', 'koers'])",
+                ".validate": "($nr.matches(/^[0-9]$/) || ($nr.matches(/^[1-9][0-9]{1,2}$/) && root.child('races').child($race).child('spel').child('modus').val() === 'jacht')) && newData.hasChildren(['ts', 'lat', 'lng', 'koers'])",
                 "ts": { ".validate": "newData.isNumber() && newData.val() >= root.child('races').child($race).child('spel').child('start').val() && newData.val() <= now + 60000" },
                 "lat": { ".validate": "newData.isNumber() && newData.val() >= -90 && newData.val() <= 90" },
                 "lng": { ".validate": "newData.isNumber() && newData.val() >= -180 && newData.val() <= 180" },
@@ -142,7 +144,7 @@
             "$boot": {
               "$nr": {
                 ".write": "auth != null && !data.exists() && root.child('races').child($race).child('claims').child($boot).val() === auth.uid && root.child('races').child($race).child('spel').child('start').exists() && !root.child('races').child($race).child('spel').child('eind').exists()",
-                ".validate": "$nr.matches(/^[0-2]$/) && newData.isNumber() && newData.val() >= root.child('races').child($race).child('spel').child('start').val()"
+                ".validate": "($nr.matches(/^[0-2]$/) || ($nr.matches(/^([3-9]|[1-9][0-9]{1,2})$/) && root.child('races').child($race).child('spel').child('modus').val() === 'jacht')) && newData.isNumber() && newData.val() >= root.child('races').child($race).child('spel').child('start').val()"
               }
             }
           },
