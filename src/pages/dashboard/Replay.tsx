@@ -6,7 +6,7 @@
 // ============================================================
 import L from "leaflet";
 import { useEffect, useRef, useState } from "react";
-import { BOTEN, RACE_ID } from "../../../convex/lib/config";
+import { BOTEN, metVloot } from "../../../convex/lib/config";
 import { SPEL } from "../../../convex/lib/spel";
 import { BootStip } from "@/components/BootKaart";
 import { useBevestig } from "@/components/Bevestig";
@@ -182,7 +182,8 @@ export function Replay({ data, sleutel, onSluit }: { data: ReplayData; sleutel: 
   // Tijdens het afspelen vliegen de kogels zoals live.
   function zetZeeslagTijd(r: Rp) {
     const z = data.zeeslag!, spel = z.spel || {}, nuMs = data.t0! + t * 1000, zs = r.zs!, k = r.kaart, naam = data.naam!;
-    const st = Piraat.stand({ ...spel, eind: Math.min(spel.eind || Infinity, nuMs, z.over || Infinity) }, data.posTs || {}, Infinity);
+    const vloot = [...new Set([...z.deelnemers, ...Object.keys(z.sporen || {})])];
+    const st = metVloot(vloot, () => Piraat.stand({ ...spel, eind: Math.min(spel.eind || Infinity, nuMs, z.over || Infinity) }, data.posTs || {}, Infinity));
     if (zs.veld && spel.veld) zs.veld.setRadius(Piraat.straal(spel.veld, z.start, Math.min(nuMs, z.over || Infinity)) ?? spel.veld.r);
     const posOp = (b: string, ms: number) => {
       const s = data.sporen.find((x) => x.boot === b), p = s && positieOp(s.pts, (ms - data.t0!) / 1000);
@@ -250,7 +251,7 @@ export function Replay({ data, sleutel, onSluit }: { data: ReplayData; sleutel: 
     setFotoBezig(true);
     try {
       const blob = await maakKaartPNG(data, t);
-      if (blob) downloadBlob(blob, `zeilrace-${RACE_ID}-${sleutel}.png`);
+      if (blob) downloadBlob(blob, `zeilrace-${sleutel}.png`);
     } catch (e) { await melding({ titel: "Foto maken mislukt", tekst: (e as Error).message }); }
     finally { setFotoBezig(false); }
   }
@@ -259,7 +260,7 @@ export function Replay({ data, sleutel, onSluit }: { data: ReplayData; sleutel: 
     setSpeelt(false); setVideoTekst("🎬 0%");
     try {
       const v = await maakRaceVideo(data, (f) => setVideoTekst(`🎬 ${Math.round(f * 100)}%`));
-      if (v) downloadBlob(v.blob, `zeilrace-${RACE_ID}-${sleutel}.${v.ext}`);
+      if (v) downloadBlob(v.blob, `zeilrace-${sleutel}.${v.ext}`);
     } catch (e) { await melding({ titel: "Video maken mislukt", tekst: (e as Error).message }); }
     finally { setVideoTekst(null); }
   }
@@ -267,20 +268,20 @@ export function Replay({ data, sleutel, onSluit }: { data: ReplayData; sleutel: 
   const kleurSchaal = kleurAan && rp.current?.kleur;
   return (
     <div role="dialog" aria-modal="true" aria-labelledby="replayTitel"
-      className="fixed inset-0 z-[2500] flex flex-col bg-hout-1 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] [background:var(--hout-bg)]">
-      <div className="flex items-center gap-2.5 border-b-2 border-messing-donker bg-[linear-gradient(180deg,#120c07,#0a0704)] px-3.5 py-2.5">
-        <div id="replayTitel" className="titel-goud min-w-0 flex-1 truncate text-[1.6rem]">{data.titel}</div>
+      className="fixed inset-0 z-[2500] flex flex-col bg-paneel pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+      <div className="balk flex items-center gap-2.5 px-3.5 py-2.5">
+        <div id="replayTitel" className="titel min-w-0 flex-1 truncate text-[1.5rem] text-kop">{data.titel}</div>
         <Button size="sm" onClick={() => { setSpeelt(false); onSluit(); }} aria-label="Sluiten">✕ Sluiten</Button>
       </div>
       <KaartVlak className="min-h-[200px] flex-1" onKaart={(k: L.Map, _m: Meetlat) => { void _m; setKaart(k); }} />
-      <div className="border-t-2 border-messing-donker bg-[linear-gradient(180deg,#1a120b,#0f0a06)] px-3.5 pt-2.5 pb-3.5">
-        <div className="text-center font-kap text-[1.15rem] font-bold text-goud">{data.klok(t)}</div>
+      <div className="border-t-2 border-kader bg-paneel px-3.5 pt-2.5 pb-3.5">
+        <div className="text-center font-kop text-[1.15rem] font-bold text-kop">{data.klok(t)}</div>
         <Slider className="my-3" min={0} max={Math.max(1, Math.ceil(eind))} step={1} value={[t]} aria-label="Tijd in de race"
           onValueChange={(v) => { setSpeelt(false); setT(Array.isArray(v) ? v[0] : (v as number)); }} />
         <div className="flex flex-wrap gap-2">
           <Button size="xl" className="flex-[1_1_110px]" onClick={speelOfPauze}>{speelt ? "⏸ Pauze" : "▶ Afspelen"}</Button>
           <Select value={String(snelheid)} items={Object.fromEntries([10, 30, 60, 120, 300].map((x) => [String(x), `${x}×`]))} onValueChange={(v) => { if (v) setSnelheid(Number(v)); }}>
-            <SelectTrigger aria-label="Afspeelsnelheid" className="h-[50px] w-[88px] border-messing-donker bg-[image:linear-gradient(#3a2a1a,#221810)] font-kap font-bold text-ivoor">
+            <SelectTrigger aria-label="Afspeelsnelheid" className="h-[54px] w-[96px] border-rand bg-card font-kop font-bold text-card-foreground">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -292,19 +293,19 @@ export function Replay({ data, sleutel, onSluit }: { data: ReplayData; sleutel: 
             <Button size="xl" variant="secondary" className="flex-[1_1_110px]" disabled={fotoBezig} onClick={foto}>{fotoBezig ? "⏳ Foto…" : "🖼 Foto"}</Button>
           </>}
         </div>
-        <label className="mt-2.5 flex min-h-9 cursor-pointer items-center gap-2 font-kap text-[.85rem] font-bold tracking-[.03em] text-ivoor">
+        <label className="mt-2.5 flex min-h-9 cursor-pointer items-center gap-2 font-kop text-[.85rem] font-bold tracking-[.03em] text-foreground">
           <Switch checked={toonOverstag} onCheckedChange={setToonOverstag} /> ⤢ Overstaghoeken tonen</label>
-        <label className="mt-1 flex min-h-9 cursor-pointer items-center gap-2 font-kap text-[.85rem] font-bold tracking-[.03em] text-ivoor">
+        <label className="mt-1 flex min-h-9 cursor-pointer items-center gap-2 font-kop text-[.85rem] font-bold tracking-[.03em] text-foreground">
           <Switch checked={kleurAan} onCheckedChange={setKleurAan} /> 🌈 Snelheid in kleur</label>
         {kleurSchaal && (
-          <div className="mt-0.5 mb-1 ml-7 flex items-center gap-2 font-kap text-[.78rem] font-bold text-ivoor-zacht">
+          <div className="mt-0.5 mb-1 ml-7 flex items-center gap-2 font-kop text-[.78rem] font-bold text-muted-foreground">
             <span>{kleurSchaal.lo.toFixed(1)} kn</span>
-            <span className="h-2.5 flex-[0_1_180px] rounded-[5px] border border-messing-donker bg-[linear-gradient(90deg,#2c6fbb,#3fa7c9,#e8c33a,#e07b2c,#c0392b)]" />
+            <span className="h-2.5 flex-[0_1_180px] rounded-[5px] border border-kader bg-[linear-gradient(90deg,#2c6fbb,#3fa7c9,#e8c33a,#e07b2c,#c0392b)]" />
             <span>{kleurSchaal.hi.toFixed(1)} kn</span>
           </div>
         )}
-        <div className="mt-2.5 text-base leading-relaxed text-ivoor">
-          {legenda.map((l) => <div key={l.boot}><BootStip boot={l.boot} className="mr-1.5 border-ivoor" />{l.tekst}</div>)}
+        <div className="mt-2.5 text-base leading-relaxed text-foreground">
+          {legenda.map((l) => <div key={l.boot}><BootStip boot={l.boot} className="mr-1.5 border-foreground" />{l.tekst}</div>)}
           {slot && <div><b>{slot}</b></div>}
         </div>
       </div>

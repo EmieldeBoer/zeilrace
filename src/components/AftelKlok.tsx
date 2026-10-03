@@ -23,19 +23,19 @@ export function AftelKlok({ a, variant }: { a: Aftel; variant: "kaart" | "balk" 
   return (
     <div role="timer" className={cn(
       "text-center",
-      kaart ? "plaquette pointer-events-none absolute top-3 left-1/2 z-[900] max-w-[94%] -translate-x-1/2 rounded-lg px-6 pt-2.5 pb-3 max-[820px]:top-2"
-        : "sticky top-0 z-[1100] -mx-4 border-b-[3px] border-messing bg-[linear-gradient(180deg,#120c07,#1f150c)] px-4 pt-[calc(8px+env(safe-area-inset-top))] pb-3 shadow-[0_2px_0_#000,0_6px_18px_#000a]",
+      "plaquette",
+      kaart ? "pointer-events-none absolute top-3 left-1/2 z-[900] max-w-[94%] -translate-x-1/2 rounded-lg px-6 pt-2.5 pb-3 max-[820px]:top-2"
+        : "sticky top-0 z-[1100] -mx-4 border-x-0 border-t-0 border-b-4 px-4 pt-2 pb-3",
       kaart && a.soort === "wacht" && "min-w-[58%] max-[820px]:min-w-[70%]",
-      a.urgent && (kaart ? "border-[#d0542f] bg-[linear-gradient(180deg,rgba(90,22,12,.96),rgba(40,10,6,.96))]" : "border-[#d0542f] bg-[linear-gradient(180deg,#3d0e07,#5a160b)]"),
-      a.soort === "gestart" && (kaart ? "border-verdigris px-[18px] pt-1.5 pb-2" : "border-verdigris pb-2"),
+      a.urgent && "urgent",
+      a.soort === "gestart" && (kaart ? "px-[18px] pt-1.5 pb-2" : "pb-2"),
     )}>
-      <div className="font-kap text-[clamp(.8rem,2.4vw,1.05rem)] font-bold tracking-[.16em] text-ivoor-zacht">{a.boven}</div>
-      <div className={cn("font-kap leading-[1.05] font-black text-goud [text-shadow:0_3px_0_#000,0_0_18px_rgba(240,199,94,.35)]",
-        a.soort === "gestart" ? (kaart ? "text-[clamp(1.6rem,5vw,2.4rem)]" : "text-[clamp(1.9rem,9vw,2.6rem)]") + " text-verdigris-licht"
+      <div className="font-kop text-[clamp(.8rem,2.4vw,1.05rem)] font-bold tracking-[.16em] text-muted-foreground">{a.boven}</div>
+      <div className={cn("font-kop leading-[1.05] font-black text-kop",
+        a.soort === "gestart" ? (kaart ? "text-[clamp(1.6rem,5vw,2.4rem)]" : "text-[clamp(1.9rem,9vw,2.6rem)]") + " text-goed-licht"
           : kaart ? "text-[clamp(3.4rem,12vw,7.5rem)]" : "text-[clamp(4.2rem,24vw,8.5rem)] leading-none",
-        a.urgent && "text-[#ffb08a] [text-shadow:0_3px_0_#000,0_0_20px_rgba(255,120,80,.5)]",
         a.laatste10 && "knipper")}>{a.cijfers}</div>
-      {a.onder && <div className="font-kap text-[clamp(.8rem,2.4vw,1.05rem)] font-bold tracking-[.16em] text-ivoor-zacht">{a.onder}</div>}
+      {a.onder && <div className="font-kop text-[clamp(.8rem,2.4vw,1.05rem)] font-bold tracking-[.16em] text-muted-foreground">{a.onder}</div>}
     </div>
   );
 }

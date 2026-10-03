@@ -29,7 +29,10 @@ type Klok = ReturnType<typeof setTimeout>;
 const KLEUREN = ["#ffe08a", "#ff6b6b", "#7ec8ff", "#8ff0b0", "#f0932b", "#e05fd8", "#ffffff", "#4a90e2"];
 // confetti = goudstukken, robijnen, smaragden en perkamentsnippers
 const SCHAT = ["#f0c75e", "#e2b13c", "#fff1b8", "#c9a24a", "#b3261e", "#2f8f63", "#efe3c6", "#f0c75e"];
-const schat = () => SCHAT[Math.floor(Math.random() * SCHAT.length)];
+// zonder piratenmodus: de kleuren van seinvlaggen, en geen goudstukken
+const SEIN = ["#ffc400", "#d62828", "#1d4ed8", "#ffffff", "#12703f", "#f26419", "#0b2545", "#ffc400"];
+let piraat = false;
+const schat = () => (piraat ? SCHAT : SEIN)[Math.floor(Math.random() * SCHAT.length)];
 const MINDER = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 let cv: HTMLCanvasElement | null = null, g!: CanvasRenderingContext2D, loopt = false, ruis: AudioBuffer | null = null,
   master: GainNode | null = null, reeks: Klok | undefined;
@@ -177,7 +180,7 @@ function confetti(n: number) {
     const links = i % 2 === 0;                      // kanonnen linksonder en rechtsonder
     deeltjes.push({ soort: "c", x: links ? -10 : W() + 10, y: H() * rnd(0.7, 1),
       vx: (links ? 1 : -1) * rnd(4, 13), vy: -rnd(9, 19), rot: rnd(0, 6.3), vr: rnd(-0.3, 0.3),
-      b: rnd(6, 11), h: rnd(9, 16), kleur: schat(), fase: rnd(0, 6.3), munt: Math.random() < 0.4 });
+      b: rnd(6, 11), h: rnd(9, 16), kleur: schat(), fase: rnd(0, 6.3), munt: piraat && Math.random() < 0.4 });
   }
   go();
 }
@@ -262,7 +265,11 @@ function start(o?: { titel?: string; sub?: string }) {
   salvo(6, 2600);
   clearTimeout(reeks);
   reeks = setTimeout(() => { if (paneel.open) { confetti(90); salvo(4, 2000); } }, 3200);
+  sluitLater();
 }
+// Het paneel gaat vanzelf dicht: aan boord heeft niet iedereen een hand vrij
+let dicht: Klok | undefined;
+function sluitLater() { clearTimeout(dicht); dicht = setTimeout(stop, 20000); }
 function kanonnen() {                               // de confettikanonnen vuren: links, dan rechts
   knal(1, -0.8);
   wachtrij.push(setTimeout(() => knal(1, 0.8), 220));
@@ -271,11 +278,14 @@ function meer() {
   kanonnen();
   confetti(220);
   salvo(8, 1800);
+  sluitLater();
 }
 function stop() {
   if (paneel.open) zetPaneel({ ...paneel, open: false });
-  clearTimeout(reeks);
+  clearTimeout(reeks); clearTimeout(dicht);
   wachtrij.forEach((t) => clearTimeout(t)); wachtrij = [];
   raketten = [];
 }
-export const Feest = { start, meer, stop, confetti };
+// Thema van de groep die open is: goudstukken in piratenmodus
+function thema(p: boolean) { piraat = p; }
+export const Feest = { start, meer, stop, confetti, thema };

@@ -10,6 +10,8 @@ import { toast } from "sonner";
 import { cn } from "cn";
 import { BOTEN, FLEET } from "../../convex/lib/config";
 import { SPEL } from "../../convex/lib/spel";
+import { useBevestig } from "@/components/Bevestig";
+import { GroepBalk } from "@/components/GroepBalk";
 import { AftelKlok, spelAftel, type Aftel } from "@/components/AftelKlok";
 import { BootKaart } from "@/components/BootKaart";
 import { SpelScore } from "@/components/Spel";
@@ -18,9 +20,8 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useNu } from "@/hooks/useNu";
-import { useRace } from "@/hooks/useRace";
+import { useGroep } from "@/hooks/useGroep";
 import { useSporen } from "@/hooks/useSporen";
 import { useWind } from "@/hooks/useWind";
 import {
@@ -42,19 +43,21 @@ type KaartStaat = { kaart: L.Map; vloot: Vloot; spel: SpelLagen; baan: L.Layer[]
 
 export default function Tracker() {
   const convex = useConvex();
-  const race = useRace();
-  const sporen = useSporen(race.geladen ? race.baan.gen : null);
+  const { groep, token, race } = useGroep();
+  const piraat = groep.piraat;
+  const sporen = useSporen(groep.id, token, race.geladen ? race.baan.gen : null);
   const nu = useNu(500);
   const [, setVersie] = useState(0);
-  const motor = useMemo(() => new TrackerMotor(convex, () => setVersie((v) => v + 1)), [convex]);
+  const motor = useMemo(() => new TrackerMotor(convex, groep.id, token, () => setVersie((v) => v + 1)), [convex, groep.id, token]);
   const { baan, boten, posities, spel, naamVan } = race;
   const { lines, marks, raceStart, startPlan, voorstel } = baan;
+  const { bevestig } = useBevestig();
 
   // ---- Keuze van de boot en de teamnaam ----
-  const [boot, setBoot] = useState(() => {
-    const vooraf = new URLSearchParams(location.search).get("boot");
-    return vooraf && BOTEN[vooraf] ? vooraf : FLEET[0];
-  });
+  // Standaard: de boot die dit toestel al gebruikt, anders een boot die nog vrij is
+  const [gekozen, setBoot] = useState<string | null>(null);
+  const boot = (gekozen && boten[gekozen] ? gekozen : null)
+    ?? race.vloot.find((b) => b.vanMij)?.boot ?? race.vloot.find((b) => !b.geclaimd)?.boot ?? race.vloot[0]?.boot ?? "";
   const [naamInvoer, setNaamInvoer] = useState("");
   const naamGeladen = useRef<string | null>(null);
   useEffect(() => { if (!motor.actief) motor.boot = boot; }, [boot, motor]);
@@ -64,7 +67,8 @@ export default function Tracker() {
     setNaamInvoer(boten[boot]?.naam ?? "");
   }, [race.geladen, boot, boten, motor]);
   const [bezig, setBezig] = useState(false);
-  const [kompasOpen, setKompasOpen] = useState(() => { try { return localStorage.getItem("zeilrace-kompas") !== "1"; } catch { return true; } });
+  // Het kompas (piratenmodus) gaat de eerste keer vanzelf open
+  const [kompasOpen, setKompasOpen] = useState(() => { try { return piraat && localStorage.getItem("zeilrace-kompas") !== "1"; } catch { return false; } });
 
   // ---- De motor de actuele gegevens geven ----
   useEffect(() => { motor.zetData({ baan, boten, posities, spel, naamVan }); }, [motor, baan, boten, posities, spel, naamVan]);
@@ -302,9 +306,13 @@ export default function Tracker() {
   //  Weergave
   // =========================================================
   const start = async () => {
+    if (!boot) return;
     setBezig(true);
     motor.boot = boot;
-    await motor.start(naamInvoer);
+    let r = await motor.start(naamInvoer);
+    if (r?.bezet !== undefined && await bevestig({ titel: `${boten[boot].model} overnemen?`, ok: "Overnemen",
+      tekst: `Deze boot is in gebruik${r.bezet ? " door " + r.bezet : ""} op een ander toestel. Wissel je van telefoon, neem hem dan over: het andere toestel stopt dan.` }))
+      r = await motor.start(naamInvoer, true);
     setBezig(false);
     setTimeout(() => kr.current?.kaart.invalidateSize(), 250);
   };
@@ -322,43 +330,53 @@ export default function Tracker() {
   const lus = lussenVan(startPlan)?.[ik];
 
   return (
-    <div className="mx-auto flex min-h-full max-w-[720px] flex-col px-4 pb-[env(safe-area-inset-bottom)]">
+    <div className="flex min-h-full flex-col">
+    <GroepBalk waar="tracker" />
+    <div className="mx-auto flex w-full max-w-[720px] flex-1 flex-col px-4 pb-[env(safe-area-inset-bottom)]">
       {aftel && <AftelKlok a={aftel} variant="balk" />}
 
-      <header className="pt-[env(safe-area-inset-top)]">
-        <h1 className="titel-goud mt-4 mb-0.5 flex items-center gap-2.5 text-[2.3rem]">☠ Zeilrace
-          <button type="button" title="Het kompas" onClick={() => setKompasOpen(true)}
-            className="ml-auto size-[46px] cursor-pointer rounded-full border-2 border-inkt bg-[radial-gradient(circle_at_35%_30%,#f7e2a6,#c9a24a_55%,#6e4f18)] text-[1.4rem] shadow-[0_2px_6px_#000a]">🧭</button>
-        </h1>
-        {!motor.actief && <p className="mb-3 text-[1.02rem] leading-snug text-ivoor-zacht italic">Houd deze pagina open op de boot. Scherm aan, telefoon aan de lader.</p>}
+      <header className="pt-1">
+        {!motor.actief && <p className="mt-3 mb-1 text-[1.02rem] leading-snug text-muted-foreground">Houd deze pagina open op de boot: scherm aan,
+          telefoon aan de lader. Deze telefoon stuurt dan de positie van je boot door.</p>}
+        {piraat && <button type="button" title="Het kompas" onClick={() => setKompasOpen(true)}
+          className="float-right mt-2 size-[46px] cursor-pointer rounded-full border-2 border-stip bg-[radial-gradient(circle_at_35%_30%,#f7e2a6,#c9a24a_55%,#6e4f18)] text-[1.4rem] shadow-[0_2px_6px_#000a]">🧭</button>}
       </header>
 
       {!motor.actief && (
         <div>
-          <Label htmlFor="boot" className="mt-3.5 mb-1.5 font-kap text-[.82rem] font-bold tracking-[.1em] text-goud">Welke boot ben jij?</Label>
-          <Select value={boot} items={Object.fromEntries(FLEET.map((b) => [b, BOTEN[b].model]))} onValueChange={(v) => { if (v) setBoot(v as string); }}>
-            <SelectTrigger id="boot" className="perkament h-[54px] w-full border-[#8a6a3a] text-[1.15rem] text-inkt"><SelectValue /></SelectTrigger>
-            <SelectContent>{FLEET.map((b) => <SelectItem key={b} value={b}>{BOTEN[b].model}</SelectItem>)}</SelectContent>
-          </Select>
-          <Label htmlFor="naam" className="mt-3.5 mb-1.5 font-kap text-[.82rem] font-bold tracking-[.1em] text-goud">Teamnaam (optioneel)</Label>
+          <div id="bootKeuze" className="mt-3.5 mb-2 font-kop text-[.9rem] font-extrabold tracking-[.06em] text-kop uppercase">Welke boot ben jij?</div>
+          <div role="radiogroup" aria-labelledby="bootKeuze" className="grid grid-cols-1 gap-2 min-[480px]:grid-cols-2">
+            {race.vloot.map((b) => (
+              <button key={b.boot} type="button" role="radio" aria-checked={b.boot === boot} onClick={() => setBoot(b.boot)}
+                className={cn("vlak flex min-h-16 items-center gap-3 rounded-lg border-2 px-3 py-2 text-left",
+                  b.boot === boot ? "border-kader ring-4 ring-kader-licht" : "border-rand")}>
+                <span className="size-7 shrink-0 rounded-full border-2 border-stip" style={{ background: b.kleur }} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-lg font-bold">{b.naam || b.model}</span>
+                  <span className="block text-sm text-muted-foreground">{b.vanMij ? "Op deze telefoon" : b.geclaimd ? `In gebruik${b.claimNaam ? " door " + b.claimNaam : ""}` : b.naam ? b.model : "Vrij"}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+          <Label htmlFor="naam" className="mt-4 mb-1.5 font-kop text-[.9rem] font-extrabold tracking-[.06em] text-kop uppercase">Teamnaam (optioneel)</Label>
           <Input id="naam" maxLength={24} autoComplete="off" placeholder="bijv. De Zeearend" value={naamInvoer} onChange={(e) => setNaamInvoer(e.target.value)}
-            className="perkament h-[54px] border-[#8a6a3a] text-[1.15rem] text-inkt placeholder:text-[#8e7550] placeholder:italic" />
+            className="h-[54px] bg-card text-[1.15rem] text-card-foreground" />
         </div>
       )}
 
       <Button variant={motor.actief ? "destructive" : "groen"} disabled={bezig} onClick={motor.actief ? stop : start}
         className="mt-[18px] min-h-[60px] w-full text-[1.2rem] tracking-[.05em]">
         {motor.actief ? "■ Stop tracking" : "▶︎ Start tracking"}</Button>
-      <div role="status" className={cn("mt-2.5 min-h-[1.2em] text-[1.02rem] leading-snug font-bold text-goud",
-        motor.melding.soort === "goed" && "text-verdigris-licht", motor.melding.soort === "fout" && "text-bloed-licht")}>{motor.melding.tekst}</div>
+      <div role="status" className={cn("mt-2.5 min-h-[1.2em] text-[1.02rem] leading-snug font-bold text-kop",
+        motor.melding.soort === "goed" && "text-goed-licht", motor.melding.soort === "fout" && "text-destructive")}>{motor.melding.tekst}</div>
 
-      {/* Startvoorstel van de wedstrijdleiding: elke boot moet akkoord geven */}
+      {/* Startvoorstel: elke boot moet akkoord geven */}
       {voorstel && raceStart == null && (() => {
         const verlopen = voorstel.t <= nu, ikEens = akkoordLijst.includes(ik);
         const mijnT = voorstel.t + vertragingVan(voorstel.plan, ik), mijnLus = lussenVan(voorstel.plan)?.[ik];
         return (
-          <div className="perkament mt-3.5 rounded-md border-2 border-dashed border-bloed px-4 py-3.5">
-            <div className="font-kap text-[1.15rem] font-bold text-bloed">📨 Startvoorstel</div>
+          <div className="vlak mt-3.5 rounded-md border-2 border-dashed border-signaal px-4 py-3.5">
+            <div className="font-kop text-[1.15rem] font-bold text-signaal">📨 Startvoorstel</div>
             <div className="mt-1 text-[1.1rem] leading-snug">{startNaam(voorstel.plan?.modus)} om {formatKlok(voorstel.t)}
               {verlopen ? " (verlopen)" : ` (over ${formatDuur(voorstel.t - nu)})`}
               {mijnT !== voorstel.t && ` · jouw start ${formatKlok(mijnT)}`}{mijnLus && ` · jouw lus +${formatAfstand(mijnLus.extraM)}`}.</div>
@@ -384,26 +402,26 @@ export default function Tracker() {
           {startPlan?.verwacht?.[ik] ? ` · verwachte tijd ${formatDuur(startPlan.verwacht[ik])}` : ""}</div>}
       </BootKaart>
 
-      {!!spelStand.start && <SpelPaneel st={spelStand} motor={motor} ik={ik} naamVan={naamVan} nu={nu} tip={tip} />}
+      {piraat && !!spelStand.start && <SpelPaneel st={spelStand} motor={motor} ik={ik} naamVan={naamVan} nu={nu} tip={tip} />}
 
       <div ref={kaartVak}>
         <KaartVlak onKaart={opKaart} wind={wind}
-          className="mt-3.5 h-[58vh] min-h-[320px] flex-none rounded-md border-3 border-messing-donker shadow-[0_0_0_1px_var(--color-messing),0_4px_14px_#000a]"
+          className="mt-3.5 h-[58vh] min-h-[320px] flex-none rounded-md border-3 border-kader shadow-[0_0_0_1px_var(--color-kader-licht),0_4px_14px_#000a]"
           knoppen={[{ id: "volg", tekst: "🎯", titel: "Zoom naar mijn boot en volg hem", klik: volgEigenBoot, actief: volgDoel === "eigen" },
             { id: "overzicht", tekst: "⛶", titel: "Hele baan tonen", klik: overzicht }]} />
       </div>
 
       {voorspelRijen.length > 0 && (
         <div className="mt-[18px]">
-          <div className="font-kap text-[.88rem] font-bold tracking-[.14em] text-goud uppercase">🔮 Voorspelde eindstand</div>
-          <div className="mt-0.5 mb-2.5 text-[.95rem] text-ivoor-zacht italic">Totaal = verzeilde tijd · Gecorr. = met de rating · ≈ voorspeld uit het tempo langs de baan · 🏁 binnen</div>
+          <div className="font-kop text-[.88rem] font-bold tracking-[.14em] text-kop uppercase">🔮 Voorspelde eindstand</div>
+          <div className="mt-0.5 mb-2.5 text-[.95rem] text-muted-foreground italic">Totaal = verzeilde tijd · Gecorr. = met de rating · ≈ voorspeld uit het tempo langs de baan · 🏁 binnen</div>
           <Voorspelling rijen={voorspelRijen} naam={naamVan} eigen={ik} />
         </div>
       )}
 
       <div className="mt-[18px]">
-        <div className="font-kap text-[.88rem] font-bold tracking-[.14em] text-goud uppercase">Andere boten</div>
-        <div className="mt-0.5 mb-2.5 text-[.95rem] text-ivoor-zacht italic">Tik op een boot om hem te volgen op de kaart · 🎯 volgt jouw eigen boot</div>
+        <div className="font-kop text-[.88rem] font-bold tracking-[.14em] text-kop uppercase">Andere boten</div>
+        <div className="mt-0.5 mb-2.5 text-[.95rem] text-muted-foreground italic">Tik op een boot om hem te volgen op de kaart · 🎯 volgt jouw eigen boot</div>
         <div className="flex flex-col gap-2.5">
           {FLEET.filter((b) => b !== ik).map((b) => {
             const s = posities[b], online = !!s && nu - s.ts < 30000, tb = tijdenNu[b] || {};
@@ -416,17 +434,17 @@ export default function Tracker() {
         </div>
       </div>
 
-      <Collapsible className={cn("perkament mt-4 rounded-md border border-[#8a6a3a] px-4 py-3", motor.actief && "border-verdigris")}>
+      <Collapsible className={cn("vlak mt-4 rounded-md border border-rand px-4 py-3", motor.actief && "border-goed")}>
         <CollapsibleTrigger className="cursor-pointer text-[1.05rem]">
-          <span className={cn("mr-2 inline-block size-3 rounded-full bg-[#8e7550] align-[-1px]", motor.actief && "knipper bg-verdigris")} />
-          <b>{motor.actief ? "Live — " + naamVan(ik) : "Nog niet gestart"}</b>
+          <span className={cn("mr-2 inline-block size-3 rounded-full bg-muted-foreground align-[-1px]", motor.actief && "knipper bg-goed")} />
+          <b>{motor.actief ? "Live: " + naamVan(ik) : "Nog niet gestart"}</b>
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="mt-2.5 grid grid-cols-2 gap-x-3.5 gap-y-3">
             {[["Positie", motor.mijnPositie ? motor.mijnPositie.lat.toFixed(5) + ", " + motor.mijnPositie.lng.toFixed(5) : "—"],
               ["Nauwkeurigheid", motor.nauwkeurigheid != null ? Math.round(motor.nauwkeurigheid) + " m" : "—"],
               ["Meldingen", motor.meldStatus()]].map(([k, v]) => (
-              <div key={k}><div className="font-kap text-[.7rem] font-bold tracking-[.08em] text-muted-foreground uppercase">{k}</div>
+              <div key={k}><div className="font-kop text-[.7rem] font-bold tracking-[.08em] text-muted-foreground uppercase">{k}</div>
                 <div className="text-[1.05rem] font-bold">{v}</div></div>
             ))}
           </div>
@@ -436,17 +454,18 @@ export default function Tracker() {
 
       {motor.gpsAlarm && (
         <button type="button" role="alert" onClick={() => motor.alarmStilte()}
-          className="alarmpuls fixed right-3 bottom-[calc(12px+env(safe-area-inset-bottom))] left-3 z-[2000] rounded-lg border-3 border-[#ffb4ab] bg-[#9b2a1f] p-4 text-center font-kap text-[1.25rem] font-black text-white shadow-[0_8px_30px_#000c]">
+          className="alarmpuls fixed right-3 bottom-[calc(12px+env(safe-area-inset-bottom))] left-3 z-[2000] rounded-lg border-3 border-white bg-destructive p-4 text-center font-kop text-[1.25rem] font-black text-white shadow-[0_8px_30px_#000c]">
           ⚠️ {motor.gpsAlarm.titel}
           <small className="mt-1 block font-sans text-[.98rem] font-bold">{motor.gpsAlarm.uitleg} · tik om het geluid te stoppen</small>
         </button>
       )}
 
-      <Kompas open={kompasOpen} setOpen={setKompasOpen} bron={{
+      {piraat && <Kompas open={kompasOpen} setOpen={setKompasOpen} bron={{
         hier: () => motor.mijnPositie,
         doel: (p) => motor.volgendDoel(p)?.punt ?? null,
         gpsKoers: () => motor.actief && motor.mijnKoers != null ? motor.mijnKoers : null,
-      }} />
+      }} />}
+    </div>
     </div>
   );
 }
@@ -473,16 +492,16 @@ function SpelPaneel({ st, motor, ik, naamVan, nu, tip }: {
   const buiten = motor.buitenSinds != null ? Math.max(0, Math.ceil((SPEL.strafMs - (nu - motor.buitenSinds)) / 1000)) : null;
   const vuurKlassen = "mt-2.5 mb-1 block min-h-[70px] w-full cursor-pointer rounded-lg border-2 border-[#3d0d07] font-titel text-[2rem] tracking-[.02em] text-[#fff4e2] [text-shadow:0_2px_0_#000] active:enabled:translate-y-[3px] disabled:cursor-default disabled:opacity-60 disabled:grayscale-[.8]";
   return (
-    <section className="perkament mt-3.5 rounded-md border-2 border-bloed px-3.5 py-3">
-      <div className="font-titel text-[1.7rem] leading-[1.1] text-bloed">🏴‍☠️ Het Piratenspel</div>
+    <section className="vlak mt-3.5 rounded-md border-2 border-signaal px-3.5 py-3">
+      <div className="font-titel text-[1.7rem] leading-[1.1] text-signaal">🏴‍☠️ Het Piratenspel</div>
       <div className="mt-0.5 mb-2 text-muted-foreground italic">{Piraat.statusTekst(st, naamVan)}</div>
-      <div className="mt-1.5 mb-1 font-kap text-[1.05rem] font-bold">
+      <div className="mt-1.5 mb-1 font-kop text-[1.05rem] font-bold">
         {!actief ? "Start de tracking om mee te vechten." : `${naamVan(ik)}: ${Piraat.levensTekst(mij)} · ${SPEL.schoten - mij.gebruikt} salvo's · ${mij.hits} raak`}
         {actief && effecten && mij.levens > 0 && <div className="mt-0.5 font-sans text-[.95rem] font-normal">{effecten}</div>}
       </div>
       {buiten != null && (
-        <div className="knipper my-2 rounded-md border-2 border-bloed-licht bg-[linear-gradient(180deg,#7a1d12,#5a130b)] px-3 py-2.5 text-center font-bold text-[#ffe9dc]">
-          ⚠️ Buiten het speelveld! Keer om — over {buiten} s kost het een leven.</div>
+        <div className="knipper my-2 rounded-md border-2 border-destructive bg-[linear-gradient(180deg,#7a1d12,#5a130b)] px-3 py-2.5 text-center font-bold text-[#ffe9dc]">
+          ⚠️ Buiten het speelveld! Keer om: over {buiten} s kost het een leven.</div>
       )}
       <button type="button" disabled={kanNiet} onClick={() => motor.vuur(tip)}
         className={cn(vuurKlassen, "bg-[radial-gradient(ellipse_at_50%_30%,#d0542f,#8b1e12_70%)] shadow-[inset_0_2px_0_#f0a070,0_4px_0_#2a0804,0_6px_16px_rgba(0,0,0,.5)]")}>{tekst}</button>

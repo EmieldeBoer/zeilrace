@@ -149,7 +149,7 @@ export function Kompas({ open, setOpen, bron }: { open: boolean; setOpen: (o: bo
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) sluit(); }}>
       <DialogContent showCloseButton={false} className="max-h-[96vh] w-[min(94vw,420px)] max-w-none overflow-y-auto px-[18px] pt-[18px] pb-4 text-center sm:max-w-none">
-        <DialogTitle className="mb-1.5 font-titel text-[2.3rem] font-normal text-bloed">Het Kompas</DialogTitle>
+        <DialogTitle className="mb-1.5 font-titel text-[2.3rem] font-normal text-signaal">Het Kompas</DialogTitle>
         <svg className="mx-auto block h-auto w-[min(72vw,300px)] drop-shadow-[0_6px_10px_rgba(0,0,0,.5)]" viewBox="-110 -110 220 220" aria-hidden="true">
           <defs>
             <radialGradient id="kpPerk" cx="40%" cy="35%" r="75%">

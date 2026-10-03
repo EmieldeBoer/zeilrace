@@ -10,12 +10,18 @@ import { datumKort, formatDuur } from "./format";
 import { lijnstukkenKruisen, lijnMidden, heeftLijn, orient, type LatLng } from "./geo";
 import { normaliseerSpoor, type SpoorPt } from "./spoor";
 
-export const DNF_PUNTEN = FLEET.length + 1;   // niet gefinisht = aantal boten + 1
+// De boten van een uitslag: de huidige vloot plus wie er toen meevoer
+export function vlootVan(res: Pick<Uitslag, "uitslag" | "tijden" | "sporen">): string[] {
+  const ids = new Set([...FLEET, ...Object.keys(res.uitslag || {}), ...Object.keys(res.tijden || {}), ...Object.keys(res.sporen || {})]);
+  return [...ids].filter((b) => BOTEN[b]);
+}
+// Niet gefinisht = aantal boten + 1
+export const dnfPunten = (aantalBoten: number) => aantalBoten + 1;
 export type UitslagRegel = { naam: string; gefinisht?: boolean; elapsed?: number | null; corrected?: number | null; afstand?: number | null };
 
 export function uitslagLijst(res: Uitslag | null | undefined): UitslagRegel[] {
   const u = (res && res.uitslag) || {};
-  return FLEET.map((naam) => ({ naam, ...(u[naam] || {}) }));
+  return (res ? vlootVan(res) : FLEET).map((naam) => ({ naam, ...(u[naam] || {}) }));
 }
 // lijst: [{naam, gefinisht, veld}] → {naam: plaats}
 export function rangen(lijst: UitslagRegel[], veld: "corrected" | "elapsed"): Record<string, number> {
@@ -51,7 +57,7 @@ export type FinishVoorstel = { boot: string; finish: number; elapsed: number; co
 export function finishVoorstellen(res: Uitslag): FinishVoorstel[] {
   const sp: Partial<StartPlan> = { modus: res.modus || "gelijk", vertraging: res.vertraging };
   const uit: FinishVoorstel[] = [];
-  FLEET.forEach((b) => {
+  vlootVan(res).forEach((b) => {
     const t = res.tijden?.[b];
     if (!t || t.start == null || t.finish != null) return;
     const f = finishUitSpoor(res, b); if (f == null) return;
@@ -62,7 +68,7 @@ export function finishVoorstellen(res: Uitslag): FinishVoorstel[] {
   return uit;
 }
 export const kanFinishUitSpoor = (res: Uitslag) =>
-  !!res.sporen && FLEET.some((b) => res.tijden?.[b]?.start != null && res.tijden?.[b]?.finish == null);
+  !!res.sporen && vlootVan(res).some((b) => res.tijden?.[b]?.start != null && res.tijden?.[b]?.finish == null);
 
 // Afgelegde afstand voor races die zonder afstand zijn opgeslagen: achteraf berekend uit
 // het bewaarde spoor, van de eigen start (de lijnkruising, maar niet vóór het eigen startsein) tot de finish.
@@ -124,7 +130,7 @@ export function raceWeergave(res: Uitslag, naamVan: (b: string) => string): Repl
   const knip = res.gun ? Math.max(0, (res.gun - opname0) / 1000 - 15 * 60) : 0;
   const t0 = opname0 + knip * 1000;
   const gunS = res.gun ? (res.gun - t0) / 1000 : null;
-  const metSpoor = FLEET.filter((b) => res.sporen![b]);
+  const metSpoor = vlootVan(res).filter((b) => res.sporen![b]);
   const finishes = metSpoor.map((b) => res.tijden?.[b]?.finish);
   const eindS = metSpoor.length && finishes.every((f) => f != null)
     ? (Math.max(...(finishes as number[])) - t0) / 1000 : Infinity;     // niet iedereen binnen: tot het eind van de opname
@@ -161,7 +167,7 @@ export function zeeslagWeergave(z: Zeeslag, naamVan: (b: string) => string): Rep
   if (!z.sporen) return null;
   const nm = (b: string) => z.namen?.[b] || naamVan(b);
   const t0 = z.t0, gunS = (z.start - t0) / 1000;
-  const sporen = FLEET.filter((b) => z.sporen![b]).map((b): ReplaySpoor => ({ boot: b, kleur: BOTEN[b].kleur, naam: nm(b),
+  const sporen = Object.keys(z.sporen).filter((b) => BOTEN[b]).map((b): ReplaySpoor => ({ boot: b, kleur: BOTEN[b].kleur, naam: nm(b),
     pts: normaliseerSpoor(z.sporen![b]), finishS: null, legenda: nm(b) }));
   const klok = (t: number) => {
     const s = new Date(t0 + t * 1000).toLocaleTimeString("nl-NL", { hour12: false }), r = t - gunS;

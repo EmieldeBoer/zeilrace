@@ -1,6 +1,7 @@
 // Vragen aan de gebruiker in een dialoog (in plaats van confirm/prompt/alert):
 //   const { bevestig, invoer, melding } = useBevestig();
 //   if (!(await bevestig({ titel: "Race afronden?", tekst: "…" }))) return;
+import { Feest } from "@/lib/feest";
 import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -27,7 +28,8 @@ export function BevestigProvider({ children }: { children: ReactNode }) {
   const huidig = rij[0];
   const klaarRef = useRef(false);
 
-  const zet = useCallback((v: Vraag) => setRij((r) => [...r, v]), []);
+  // een vraag gaat voor: het feestpaneel zou er anders bovenop liggen
+  const zet = useCallback((v: Vraag) => { Feest.stop(); setRij((r) => [...r, v]); }, []);
   const api = useMemo<Api>(() => ({
     bevestig: (o) => new Promise((klaar) => zet({ ...o, soort: "bevestig", klaar })),
     melding: (o) => new Promise((klaar) => zet({ ...o, soort: "melding", klaar })),
@@ -51,9 +53,9 @@ export function BevestigProvider({ children }: { children: ReactNode }) {
         {huidig && (
           <AlertDialogContent className="sm:max-w-md data-[size=default]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-md">
             <AlertDialogHeader>
-              <AlertDialogTitle className="font-kap text-lg font-bold">{huidig.titel}</AlertDialogTitle>
+              <AlertDialogTitle className="font-kop text-lg font-bold">{huidig.titel}</AlertDialogTitle>
               {huidig.tekst && (
-                <AlertDialogDescription className="text-base whitespace-pre-line text-inkt">{huidig.tekst}</AlertDialogDescription>
+                <AlertDialogDescription className="text-base whitespace-pre-line text-card-foreground">{huidig.tekst}</AlertDialogDescription>
               )}
             </AlertDialogHeader>
             {huidig.soort === "invoer" && (

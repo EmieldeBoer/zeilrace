@@ -9,7 +9,7 @@ import { BootStip } from "./BootKaart";
 export function Voorspelling({ rijen, naam, eigen }: { rijen: VoorspelRij[]; naam: (b: string) => string; eigen?: string }) {
   if (!rijen.length) return null;
   return (
-    <div className="perkament rounded-md border border-[#8a6a3a] px-3 pt-1 pb-2">
+    <div className="vlak rounded-md border border-rand px-3 pt-1 pb-2">
       <Table className="max-[420px]:text-[.88rem]">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -20,7 +20,7 @@ export function Voorspelling({ rijen, naam, eigen }: { rijen: VoorspelRij[]; naa
         </TableHeader>
         <TableBody>
           {rijen.map((r, i) => (
-            <TableRow key={r.boot} className={cn(!r.zeker && "italic", r.boot === eigen && "font-bold", i === 0 && "text-bloed")}>
+            <TableRow key={r.boot} className={cn(!r.zeker && "italic", r.boot === eigen && "font-bold", i === 0 && "font-bold text-winst")}>
               <TableCell className="text-center font-bold">{i + 1}</TableCell>
               <TableCell className="max-w-[140px] truncate max-[420px]:max-w-[104px]"><BootStip boot={r.boot} className="mr-1.5" />{naam(r.boot)}</TableCell>
               <TableCell className="text-right">

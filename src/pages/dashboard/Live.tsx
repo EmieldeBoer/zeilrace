@@ -6,6 +6,7 @@
 import L from "leaflet";
 import { useMutation } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router";
 import { api } from "../../../convex/_generated/api";
 import { BOTEN, FLEET } from "../../../convex/lib/config";
 import { SPEL } from "../../../convex/lib/spel";
@@ -17,9 +18,8 @@ import { BuitLijst, SpelScore } from "@/components/Spel";
 import { Voorspelling } from "@/components/Voorspelling";
 import { Alert } from "@/components/ui/alert";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import type { RaceData } from "@/hooks/useRace";
 import { useWind } from "@/hooks/useWind";
-import type { Wl } from "@/hooks/useWl";
+import { useGroep } from "@/hooks/useGroep";
 import {
   afgelegdM, baanLengteNm, baanVanBoot, bootData, eigenStartVan, gecorrigeerdeTijd, lussenVan, maakLusPlan, maakPlan,
   startNaam, tijdOmTeWinnen, vertragingVan, voorspelEindstand, voorspellingVan, akkoordVan, type SpoorPunt,
@@ -39,7 +39,7 @@ import { animeer, ontploffing } from "@/kaart/piraatLagen";
 import { SpelLagen, Vloot } from "@/kaart/vloot";
 import { Journaal } from "./Journaal";
 import { Planning } from "./Planning";
-import { WlLogin, WlPaneel, type WlTab } from "./WlPaneel";
+import { WlPaneel, type WlTab } from "./WlPaneel";
 
 export type Concept = { lines: Lijnen; marks: (Boei & { id: string })[] };
 export type InstelModus = null | "start" | "finish" | "boei" | "weg";
@@ -54,12 +54,13 @@ const lijnUitleg = ": het eerste punt is vrij, het tweede snapt naar een windstr
 
 type KaartStaat = { kaart: L.Map; meetlat: Meetlat; vloot: Vloot; spel: SpelLagen; baan: L.Layer[]; tijdelijk: L.Layer[]; snap: L.Polyline | null };
 
-export function Live({ race, sporen, wl, wlModus, nu, actief }: {
-  race: RaceData; sporen: Record<string, SpoorPunt[]>; wl: Wl; wlModus: boolean; nu: number; actief: boolean;
-}) {
+export function Live({ sporen, nu, actief }: { sporen: Record<string, SpoorPunt[]>; nu: number; actief: boolean }) {
+  const { groep, token, isHost, race } = useGroep();
+  const piraat = groep.piraat;
   const { baan, posities, spel, times, gerond, akkoord, naamVan } = race;
   const { lines, marks, raceStart, startPlan, voorstel } = baan;
-  const admin = wl.isWl, wlZicht = wlModus && admin;
+  // Hosts zien en horen wat de wedstrijdleiding nodig heeft (rondingslijnen, alarmen, kanonschoten, mijnen)
+  const admin = isHost, wlZicht = isHost;
   const { bevestig } = useBevestig();
 
   // ---- Toestand ----
@@ -108,12 +109,12 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
 
   // ---- Mutaties van de wedstrijdleiding ----
   const m = {
-    baan: useMutation(api.wl.baan), voorstel: useMutation(api.wl.stelStartVoor), voorstelWeg: useMutation(api.wl.trekVoorstelIn),
-    gerond: useMutation(api.wl.gerond), rondAf: useMutation(api.wl.rondAf), wisLive: useMutation(api.wl.wisLive),
-    vrijgeven: useMutation(api.wl.vrijgeven), veld: useMutation(api.wl.veld), spelStart: useMutation(api.wl.spelStart),
-    spelStop: useMutation(api.wl.spelStop), zeeslag: useMutation(api.wl.zeeslagOpslaan),
+    baan: useMutation(api.host.baan), voorstel: useMutation(api.host.stelStartVoor), voorstelWeg: useMutation(api.host.trekVoorstelIn),
+    gerond: useMutation(api.host.gerond), rondAf: useMutation(api.host.rondAf), wisLive: useMutation(api.host.wisLive),
+    vrijgeven: useMutation(api.host.vrijgeven), veld: useMutation(api.host.veld), spelStart: useMutation(api.host.spelStart),
+    spelStop: useMutation(api.host.spelStop), zeeslag: useMutation(api.host.zeeslagOpslaan),
   };
-  const token = wl.token;
+  const g = { groep: groep.id, token };
   const doe = useCallback(async (fn: () => Promise<unknown>, ok?: string) => {
     try { await fn(); if (ok) setWlStatus(ok); return true; } catch (e) { setWlStatus("Mislukt: " + foutTekst(e)); return false; }
   }, []);
@@ -164,7 +165,7 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
         .bindTooltip((isConcept ? "✎ " : "") + (t === "start" ? "START" : "FINISH") + maat, { permanent: true, direction: "center", className: "lijn-label" });
     });
     const lussen = lussenVan(startPlan);
-    if (admin) {                                                        // alleen voor de wedstrijdleiding
+    if (admin) {                                                        // alleen voor hosts
       tekenRondingslijnen(kaart, ms, ls, k.baan);
       if (lussen) FLEET.forEach((b) => tekenRondingslijnen(kaart, baanVanBoot(ms, lussen, b), ls, k.baan, BOTEN[b].kleur, (x) => !!x.lus));
     }
@@ -286,18 +287,16 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
       setWlStatus("Speelveld niet opgeslagen."); return;
     }
     const veld: Veld = { lat: midden.lat, lng: midden.lng, r };
-    await doe(() => m.veld({ token, veld }), `Speelveld opgeslagen (straal ${formatAfstand(r)}).`);
+    await doe(() => m.veld({ ...g, veld }), `Speelveld opgeslagen (straal ${formatAfstand(r)}).`);
   }
 
   // ---- Schepen en sporen ----
-  const eersteFix = useRef(true);
   useEffect(() => {
     const k = kr.current; if (!k) return;
     FLEET.forEach((b) => {
       const d = posities[b]; if (!d) return;
       k.vloot.zetPositie(b, d, d.heading != null && (d.speed ?? 0) > 0.4 ? d.heading : null, schipLabel(b));
       if (geselecteerd === b) k.kaart.panTo([d.lat, d.lng], { animate: true });
-      if (eersteFix.current) { k.kaart.setView([d.lat, d.lng], 14); eersteFix.current = false; }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kaartKlaar, posities]);
@@ -305,6 +304,22 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
     const k = kr.current; if (!k) return;
     FLEET.forEach((b) => k.vloot.zetSpoor(b, sporen[b]));
   }, [kaartKlaar, sporen]);
+  // De kaart een keer passend maken op de baan en de boten, en opnieuw zodra er een (nieuwe) baan is
+  const gefitOp = useRef<string | null>(null);
+  useEffect(() => {
+    const k = kr.current; if (!k || !actief) return;
+    const sleutel = `${baan.gen}:${heeftLijn(lines.start) || heeftLijn(lines.finish) || marks.length > 0}`;
+    if (gefitOp.current === sleutel) return;
+    const b = grenzenVan([...k.baan, ...k.vloot.lagen()]);
+    if (!b) return;
+    gefitOp.current = sleutel;
+    // pas na de layout, en op de kaart die er dan staat (in dev maakt StrictMode de kaart twee keer)
+    setTimeout(() => {
+      const kk = kr.current; if (!kk) return;
+      const g = grenzenVan([...kk.baan, ...kk.vloot.lagen()]);
+      if (g) { kk.kaart.invalidateSize(); kk.kaart.fitBounds(g, { padding: [40, 40], maxZoom: 16 }); }
+    }, 60);
+  }, [kaartKlaar, actief, posities, lines, marks, baan.gen]);
   // Elke seconde: labels (levens), wrakken, spookschepen, schootslijnen en het speelveld
   useEffect(() => {
     const k = kr.current; if (!k) return;
@@ -409,7 +424,7 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
       const rem = volgende.t - nu, wie = momenten.filter((x) => x.t === volgende.t).map((x) => naamVan(x.b)).join(" + ");
       return { soort: "wacht", urgent: rem <= 60000, laatste10: rem <= 10000,
         boven: achter ? "START " + wie.toUpperCase() + " OVER" : "START OVER", cijfers: formatDuur(rem),
-        onder: <>om {formatKlok(volgende.t)}{achter && <div className="mt-1 font-sans text-[clamp(.85rem,2vw,1rem)] font-normal tracking-normal text-ivoor-zacht">
+        onder: <>om {formatKlok(volgende.t)}{achter && <div className="mt-1 font-sans text-[clamp(.85rem,2vw,1rem)] font-normal tracking-normal text-muted-foreground">
           {momenten.map((x) => `${x.t <= nu ? "✓ " : ""}${naamVan(x.b)} ${formatKlok(x.t)}`).join(" · ")}</div>}</> } satisfies Aftel;
     }
     return { soort: "gestart", boven: `GESTART ${klokHM(momenten[0].t)}`, cijfers: formatDuur(nu - momenten[0].t) } satisfies Aftel;
@@ -419,15 +434,15 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
   //  Scheepsjournaal: elk uur een notitie van de verteller
   // =========================================================
   const journaalData = useCallback((t: number): Verteller.VertellerInvoer => ({ raceStart, startPlan, times, rounded: gerond,
-    boeien: marks, lijnen: lines, sporen, naam: naamVan, nu: t, wind: windKn != null ? { kn: windKn, richting: windRichting } : null }),
-  [raceStart, startPlan, times, gerond, marks, lines, sporen, naamVan, windKn, windRichting]);
+    boeien: marks, lijnen: lines, sporen, naam: naamVan, nu: t, wind: windKn != null ? { kn: windKn, richting: windRichting } : null, piraat, quotes: baan.quotes }),
+  [raceStart, startPlan, times, gerond, marks, lines, sporen, naamVan, windKn, windRichting, piraat, baan.quotes]);
   const vijfSec = Math.floor(nu / 5000);
   const journaal = useMemo(() => {
     const t = Date.now(), loopt = !!raceStart && raceStart <= t;
-    if (!loopt && !wlModus) return null;
+    if (!loopt && !isHost) return null;
     const d = journaalData(t);
     return { loopt, notities: [...testNotities, ...Verteller.journaal(d)].sort((a, b) => b.t - a.t), volgende: Verteller.volgende(d) };
-  }, [vijfSec, journaalData, testNotities, raceStart, wlModus]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [vijfSec, journaalData, testNotities, raceStart, isHost]); // eslint-disable-line react-hooks/exhaustive-deps
   // Bij een nieuwe generatie (race afgerond of gereset) gaan de testnotities weg
   useEffect(() => { setTestNotities([]); }, [baan.gen]);
 
@@ -459,13 +474,13 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
         winnaar: st.winnaar && !st.gelijk ? st.winnaar.boot : null,
         journaal: Piraat.journaal({ ...opslag, eind: s.eind || over }, naamVan, pTs).map((n) => ({ t: n.t, kop: n.kop, tekst: n.tekst })),
         sporen: Object.keys(sp).length ? sp : undefined });
-      await m.zeeslag({ token, z });
+      await m.zeeslag({ ...g, z });
       bewaard.current.add(s.start);
       setWlStatus("🏴‍☠️ Zeeslag opgeslagen ✓ — de replay en het scheepsjournaal staan bij Uitslagen.");
     } catch (e) {
       setWlStatus("Zeeslag opslaan mislukt: " + foutTekst(e));
     } finally { zeeslagOpslaan.current = null; }
-  }, [admin, spel, posTs, sporen, naamVan, token, m.zeeslag]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [admin, spel, posTs, sporen, naamVan, groep.id, token, m.zeeslag]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (admin && spelStand.start && spelStand.over && !spelStand.wacht) archiveerZeeslag();
   }, [admin, spelStand.start, spelStand.over, spelStand.wacht, archiveerZeeslag]);
@@ -518,28 +533,27 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
         tekst: (lopend ? "⚠️ DE RACE LOOPT.\nDe boten krijgen de nieuwe baan direct op hun scherm.\n\n" : "") + "Wijzigingen: " + verschillenTekst() }))) return;
       const ls: Lijnen = {};
       (["start", "finish"] as const).forEach((t) => { if (heeftLijn(concept.lines[t])) ls[t] = concept.lines[t]; });
-      if (await doe(() => m.baan({ token, lines: ls, marks: concept.marks.map((b) => ({ id: b.id, lat: b.lat, lng: b.lng })) }),
+      if (await doe(() => m.baan({ ...g, lines: ls, marks: concept.marks.map((b) => ({ id: b.id, lat: b.lat, lng: b.lng })) }),
         "Baan bevestigd ✓ — de boten zien de nieuwe baan.")) { setConcept(null); zetModus(null); }
     },
     annuleer: () => { setConcept(null); zetModus(null, "Wijzigingen geannuleerd."); },
     stelStartVoor: (modus: StartPlan["modus"]) => stelStartVoor(modus),
     voorstelWeg: async () => {
-      if (!admin || raceStart || !voorstel || !(await bevestig({ titel: "Het startvoorstel intrekken?", gevaar: true, ok: "Intrekken" }))) return;
-      await doe(() => m.voorstelWeg({ token }), "Startvoorstel ingetrokken.");
+      if (raceStart || !voorstel || !(await bevestig({ titel: "Het startvoorstel intrekken?", gevaar: true, ok: "Intrekken" }))) return;
+      await doe(() => m.voorstelWeg(g), "Startvoorstel ingetrokken.");
     },
     rondAf: () => rondRaceAf(),
     reset: async () => {
       if (!admin || !(await bevestig({ titel: "Live race wissen?", gevaar: true, ok: "Wissen",
         tekst: "Live tijden, boei-rondingen, sporen én startsein wissen zónder op te slaan? (de baan blijft staan)" }))) return;
-      await doe(() => m.wisLive({ token }), "Live race gewist.");
+      await doe(() => m.wisLive(g), "Live race gewist.");
     },
     vrijgeven: async () => {
       if (!admin || !(await bevestig({ titel: "Alle boten vrijgeven?", ok: "Vrijgeven",
         tekst: "Daarna kan elke telefoon opnieuw een boot kiezen (nodig als een bemanning van telefoon wisselt)." }))) return;
-      await doe(() => m.vrijgeven({ token }), "Boten vrijgegeven ✓");
+      await doe(() => m.vrijgeven(g), "Boten vrijgegeven ✓");
     },
-    uitloggen: () => { wl.logout(); },
-    veld: () => {
+        veld: () => {
       const aan = !veldModus;
       setVeldModus(aan);
       if (veldMidden.current) { kr.current?.kaart.removeLayer(veldMidden.current.marker); veldMidden.current = null; }
@@ -550,7 +564,7 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
       if (spelStand.wacht || spelStand.bezig) { setWlStatus("Stop eerst de zeeslag."); return; }
       if (!(await bevestig({ titel: "Het speelveld weghalen?", gevaar: true, ok: "Weghalen",
         tekst: "Dan verdwijnen ook de schootslijnen." }))) return;
-      await doe(() => m.veld({ token, veld: null }), "Speelveld weggehaald.");
+      await doe(() => m.veld({ ...g, veld: null }), "Speelveld weggehaald.");
     },
     spelStart: async () => {
       if (!admin) return;
@@ -560,21 +574,21 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
       // de vorige zeeslag eerst bewaren (loopt hij nog, dan telt hij tot nu)
       if (spel?.start && !spelStand.wacht) await archiveerZeeslag({ ...spel, eind: spel.eind || Date.now() });
       const start = Date.now() + SPEL.aftelMs;
-      await doe(() => m.spelStart({ token, start }), `🏴‍☠️ Het aftellen is begonnen: de zeeslag begint om ${formatKlok(start)}.`);
+      await doe(() => m.spelStart({ ...g, start }), `🏴‍☠️ Het aftellen is begonnen: de zeeslag begint om ${formatKlok(start)}.`);
     },
     spelStop: async () => {
       if (!admin || !spel?.start) return;
       if (spelStand.wacht) {
         if (await bevestig({ titel: "Het aftellen naar de zeeslag stoppen?", gevaar: true, ok: "Stoppen" }))
-          await doe(() => m.spelStop({ token, wat: "aftellen" }));
+          await doe(() => m.spelStop({ ...g, wat: "aftellen" }));
       } else if (spelStand.bezig) {
         if (await bevestig({ titel: "De zeeslag nu beëindigen?", tekst: "De huidige stand is de eindstand.", gevaar: true, ok: "Beëindigen" }))
-          await doe(() => m.spelStop({ token, wat: "einde" }));
+          await doe(() => m.spelStop({ ...g, wat: "einde" }));
       } else {
         if (!(await bevestig({ titel: "Uitslag van het scherm halen?", ok: "Weghalen",
           tekst: "Het speelveld blijft staan; de zeeslag zelf blijft bewaard bij Uitslagen." }))) return;
         await archiveerZeeslag();
-        await doe(() => m.spelStop({ token, wat: "wissen" }));
+        await doe(() => m.spelStop({ ...g, wat: "wissen" }));
       }
     },
     gerond: async (boot: string, id: string, label: string) => {
@@ -583,10 +597,10 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
       if (al) {
         if (!(await bevestig({ titel: `Ronding terugdraaien?`, gevaar: true, ok: "Terugdraaien",
           tekst: `Ronding van ${label} voor ${naamVan(boot)} terugdraaien? De telefoon moet de boei dan opnieuw ronden.` }))) return;
-        await doe(() => m.gerond({ token, boot, id, ts: null }), `${label} voor ${naamVan(boot)} teruggezet naar niet gerond.`);
+        await doe(() => m.gerond({ ...g, boot, id, ts: null }), `${label} voor ${naamVan(boot)} teruggezet naar niet gerond.`);
       } else {
         if (!(await bevestig({ titel: "Handmatig als gerond markeren?", tekst: `${label} voor ${naamVan(boot)} handmatig als GEROND markeren (tijd: nu)?` }))) return;
-        await doe(() => m.gerond({ token, boot, id, ts: Date.now() }), `${label} voor ${naamVan(boot)} handmatig als gerond gemarkeerd.`);
+        await doe(() => m.gerond({ ...g, boot, id, ts: Date.now() }), `${label} voor ${naamVan(boot)} handmatig als gerond gemarkeerd.`);
       }
     },
     journaalNu: () => setTestNotities((l) => [...l, Verteller.notitieNu(journaalData(Date.now()))]),
@@ -600,7 +614,6 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
     return d.getTime();
   };
   async function stelStartVoor(modus: StartPlan["modus"]) {
-    if (!admin) return;
     if (concept) { setWlStatus("Bevestig eerst de baan."); return; }
     if (raceStart) { setWlStatus("De start ligt al vast. Rond eerst de race af of reset de live tijden."); return; }
     const nm = baanLengteNm(lines, marks);
@@ -631,7 +644,7 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
       sp.verwacht = {};
       FLEET.forEach((b) => { sp.verwacht![b] = Math.round(BOTEN[b].gph * lus.lengte[b] * plan.factor) * 1000; });
     }
-    if (await doe(() => m.voorstel({ token, t, plan: sp }), `📨 Startvoorstel verstuurd: ${formatKlok(t)}. Wacht op akkoord van alle boten.`))
+    if (await doe(() => m.voorstel({ ...g, t, plan: sp }), `📨 Startvoorstel verstuurd: ${formatKlok(t)}. Wacht op akkoord van alle boten.`))
       setStartTijd("");
   }
 
@@ -691,7 +704,7 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
         const notities = Verteller.journaal({ ...journaalData(Date.now()), afgerond: true }).map((n) => ({ t: n.t, kop: n.kop, tekst: n.tekst }));
         if (notities.length) res.journaal = notities;
       }
-      const nr = await m.rondAf({ token, res: zonderLeeg(res) as never });
+      const nr = await m.rondAf({ ...g, res: zonderLeeg(res) as never });
       setWlStatus(res.sporen ? `Race ${nr} opgeslagen ✓ — bekijk de replay (met video) bij Uitslagen.` : `Race ${nr} opgeslagen ✓ (geen sporen voor een replay).`);
     } catch (e) {
       setWlStatus("Opslaan mislukt: " + foutTekst(e));
@@ -700,7 +713,7 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
 
   // ---- Statusregel van de wedstrijdleiding ----
   const standaardStatus = raceStart ? (raceStart > nu ? "🔒 Start vastgelegd om " : "🔫 Gestart om ") + formatKlok(raceStart)
-    : voorstel ? `📨 Startvoorstel voor ${formatKlok(voorstel.t)}: ${akkoordVan(voorstel, akkoord).length} van ${FLEET.length} boten akkoord.`
+    : voorstel ? `📨 Startvoorstel voor ${formatKlok(voorstel.t)}: ${akkoordVan(voorstel, akkoord).filter((b) => race.mee.includes(b)).length} van ${race.mee.length} boten akkoord.`
     : "Nog geen start voorgesteld.";
   const plan = useMemo(() => {
     const nmB = baanLengteNm(huidigeBaan.lines, huidigeBaan.marks);
@@ -718,16 +731,16 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
           {aftel && <AftelKlok a={aftel} variant="kaart" />}
         </KaartVlak>
       </div>
-      <aside className="w-[400px] flex-none overflow-y-auto border-l-[3px] border-messing-donker p-[18px] shadow-[inset_4px_0_12px_#000a] [background:var(--hout-bg)] max-[820px]:w-full max-[820px]:overflow-visible max-[820px]:border-t-[3px] max-[820px]:border-l-0 max-[820px]:pb-[calc(28px+env(safe-area-inset-bottom))]">
-        <h1 className="titel-goud m-0 mb-0.5 text-[2.1rem]">☠ Zeilrace</h1>
+      <aside className="w-[400px] flex-none overflow-y-auto border-l-2 border-kader bg-paneel px-[18px] pt-1 pb-6 max-[820px]:w-full max-[820px]:overflow-visible max-[820px]:border-t-2 max-[820px]:border-l-0 max-[820px]:pb-[calc(28px+env(safe-area-inset-bottom))]">
         {alarmen.map((b) => (
-          <Alert key={b} className="mb-2 border-2 border-bloed-licht bg-[linear-gradient(180deg,#7a1d12,#5a130b)] font-bold text-[#ffe9dc]">
+          <Alert key={b} className="mt-3 border-2 border-[var(--rood-rand)] bg-[image:var(--rood-bg)] text-base font-bold text-white">
             ⚠️ {naamVan(b)}: geen GPS sinds {formatKlok(posities[b]?.ts)}
           </Alert>
         ))}
 
-        <h2 className="sectie-kop">Boten — live</h2>
-        <p className="-mt-0.5 mb-2.5 text-[.95rem] leading-snug text-ivoor-zacht">Tik op een boot om hem op de kaart te volgen. ⛶ op de kaart toont weer de hele baan.</p>
+        <Welkom geenBaan={!heeftLijn(lines.start) && !marks.length} geenBoot={!race.mee.length} isHost={isHost} code={groep.code} />
+        <h2 className="sectie-kop">Boten</h2>
+        <p className="-mt-0.5 mb-2.5 text-[.95rem] leading-snug text-muted-foreground">Tik op een boot om hem op de kaart te volgen. ⛶ op de kaart toont weer de hele baan.</p>
         <div className="flex flex-col gap-3">
           {FLEET.map((b) => {
             const ts = posities[b]?.ts, online = !!ts && nu - ts < 30000, t = times[b] || {};
@@ -742,18 +755,18 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
         {voorspelRijen.length > 0 && <>
           <h2 className="sectie-kop">🔮 Voorspelde eindstand</h2>
           <Voorspelling rijen={voorspelRijen} naam={naamVan} />
-          <p className="mt-2 text-[.95rem] leading-snug text-ivoor-zacht">Tot finish = verwachte tijd tot de finish (met de kloktijd eronder). Totaal = verzeilde tijd
+          <p className="mt-2 text-[.95rem] leading-snug text-muted-foreground">Tot finish = verwachte tijd tot de finish (met de kloktijd eronder). Totaal = verzeilde tijd
             vanaf de eigen start; Gecorr. = totaal × rating. ≈ en cursief = voorspeld uit het tempo langs de baan (gemiddeld sinds
             de start en het laatste kwartier); 🏁 = binnen.</p>
         </>}
 
-        {!!spelStand.start && <>
+        {piraat && !!spelStand.start && <>
           <h2 className="sectie-kop">🏴‍☠️ Het Piratenspel</h2>
-          <div className="perkament rounded-md border-2 border-bloed px-3.5 py-3">
+          <div className="vlak rounded-md border-2 border-signaal px-3.5 py-3">
             <div className="mb-2 text-muted-foreground italic">{Piraat.statusTekst(spelStand, naamVan)}</div>
             <SpelScore st={spelStand} naam={naamVan} />
             <Collapsible defaultOpen className="mt-3">
-              <CollapsibleTrigger className="cursor-pointer font-kap text-[.9rem] font-bold">📦 Wat zit er in de schatkisten?</CollapsibleTrigger>
+              <CollapsibleTrigger className="cursor-pointer font-kop text-[.9rem] font-bold">📦 Wat zit er in de schatkisten?</CollapsibleTrigger>
               <CollapsibleContent>
                 <BuitLijst />
                 <p className="text-[.95rem] leading-snug text-muted-foreground">Vaar binnen 50 m langs een kist en je krijgt wat erin zit. Zolang je lading bij je hebt,
@@ -763,21 +776,38 @@ export function Live({ race, sporen, wl, wlModus, nu, actief }: {
           </div>
         </>}
 
-        {wlModus && !admin && !wl.laden && <WlLogin wl={wl} />}
-        {wlZicht && (
-          <WlPaneel tab={wlTab} setTab={setWlTab} acties={acties} status={wlStatus ?? standaardStatus} bezig={bezig}
+        {(
+          <WlPaneel isHost={isHost} piraat={piraat} tab={wlTab} setTab={setWlTab} acties={acties} status={wlStatus ?? standaardStatus} bezig={bezig}
             concept={concept ? { tekst: verschillenTekst(), lopend } : null} instelModus={instelModus} veldModus={veldModus}
             raceStart={raceStart} voorstel={voorstel} nmCompleet={baanLengteNm(lines, marks) != null}
             startTijd={startTijd || (raceStart ? "" : klokHM(voorgesteldeStartTijd(nu)))} setStartTijd={setStartTijd}
             correctie={{ gerond, times, naamVan, baanVan }} />
         )}
 
-        {journaal && <Journaal j={journaal} wlModus={wlModus} nu={nu} alleBinnen={FLEET.every((b) => times[b]?.finish != null)}
+        {journaal && <Journaal j={journaal} test={isHost} nu={nu} alleBinnen={FLEET.every((b) => times[b]?.finish != null)}
           onNu={acties.journaalNu} />}
 
         <Planning raceStart={raceStart} startPlan={startPlan} voorstel={voorstel} akkoord={akkoord} naamVan={naamVan} nu={nu}
-          concept={!!concept} marks={huidigeBaan.marks} windKn={windKn} plan={plan} toon={wlZicht} />
+          concept={!!concept} marks={huidigeBaan.marks} windKn={windKn} plan={plan} toon={isHost} mee={race.mee} />
       </aside>
+    </div>
+  );
+}
+
+// Eerste stappen: zonder baan of zonder boten op het water uitleggen wat er nu moet gebeuren
+function Welkom({ geenBaan, geenBoot, isHost, code }: { geenBaan: boolean; geenBoot: boolean; isHost: boolean; code: string }) {
+  if (!geenBaan && !geenBoot) return null;
+  return (
+    <div className="vlak mt-4 rounded-lg border-2 border-[var(--seingeel)] px-4 py-3">
+      <h2 className="font-kop text-lg font-extrabold">Zo begin je</h2>
+      <ol className="mt-1.5 flex list-decimal flex-col gap-1.5 pl-5 text-[1.02rem] leading-snug">
+        {geenBoot && <li>Iedereen aan boord: open de groep op je telefoon en druk op <b>Meevaren</b>. Kies je boot en druk op <b>Start tracking</b>.</li>}
+        {geenBaan && (isHost
+          ? <li>Zet onder <b>Organisatie → Baan</b> een startlijn, boeien en een finishlijn uit op de kaart.</li>
+          : <li>Een host zet de baan uit. Daarna verschijnen de lijnen en boeien op de kaart.</li>)}
+        <li>Stel onder <b>Start</b> een starttijd voor. Elke boot die meevaart, geeft akkoord op zijn telefoon.</li>
+      </ol>
+      {geenBoot && <Link to={`/g/${code}/tracker`} className="mt-3 inline-flex min-h-12 items-center rounded-md bg-[var(--seingeel)] px-4 font-kop font-extrabold text-[#0b1d33]">⛵ Meevaren</Link>}
     </div>
   );
 }

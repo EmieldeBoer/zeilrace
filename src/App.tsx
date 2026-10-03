@@ -2,12 +2,15 @@ import { Component, lazy, Suspense, type ReactNode } from "react";
 import { BrowserRouter, Route, Routes } from "react-router";
 import { BevestigProvider } from "@/components/Bevestig";
 import { FeestPaneel } from "@/components/FeestPaneel";
+import { Laden } from "@/components/Pagina";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { foutTekst } from "@/lib/fouten";
 
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const Tracker = lazy(() => import("./pages/Tracker"));
+const Home = lazy(() => import("./pages/Home"));
+const NieuweGroep = lazy(() => import("./pages/NieuweGroep"));
+const HostUitnodiging = lazy(() => import("./pages/HostUitnodiging"));
+const GroepPagina = lazy(() => import("./pages/GroepPagina"));
 
 // Gaat er iets mis bij het laden (geen verbinding, server weg), dan een nette melding
 class Vangnet extends Component<{ children: ReactNode }, { fout: unknown }> {
@@ -16,10 +19,13 @@ class Vangnet extends Component<{ children: ReactNode }, { fout: unknown }> {
   render() {
     if (!this.state.fout) return this.props.children;
     return (
-      <div className="p-6 text-ivoor">
-        <h1 className="titel-goud text-3xl">☠ Er ging iets mis</h1>
-        <p className="mt-3">{foutTekst(this.state.fout)}</p>
-        <button className="mt-4 underline" onClick={() => location.reload()}>Opnieuw laden</button>
+      <div className="mx-auto max-w-lg p-6">
+        <h1 className="titel text-3xl">Er ging iets mis</h1>
+        <p className="mt-3 text-lg">{foutTekst(this.state.fout)}</p>
+        <div className="mt-5 flex gap-3">
+          <button className="rounded-md bg-primary px-4 py-3 font-bold text-primary-foreground" onClick={() => location.reload()}>Opnieuw laden</button>
+          <a className="rounded-md border border-rand px-4 py-3 font-bold" href="/">Naar het begin</a>
+        </div>
       </div>
     );
   }
@@ -31,11 +37,14 @@ export default function App() {
       <TooltipProvider>
         <BevestigProvider>
           <BrowserRouter>
-            <Suspense fallback={<div className="p-6 text-ivoor-zacht italic">Laden…</div>}>
+            <Suspense fallback={<Laden />}>
               <Routes>
-                <Route path="/tracker" element={<Tracker />} />
-                <Route path="/tracker.html" element={<Tracker />} />
-                <Route path="*" element={<Dashboard />} />
+                <Route path="/nieuw" element={<NieuweGroep />} />
+                <Route path="/host/:hostCode" element={<HostUitnodiging />} />
+                <Route path="/g/:code" element={<GroepPagina deel="dashboard" />} />
+                <Route path="/g/:code/tracker" element={<GroepPagina deel="tracker" />} />
+                <Route path="/g/:code/groep" element={<GroepPagina deel="groep" />} />
+                <Route path="*" element={<Home />} />
               </Routes>
             </Suspense>
           </BrowserRouter>

@@ -9,27 +9,30 @@
 //  Geen AI: de zinnen worden opgebouwd uit de sporen, tijden en
 //  rondingen. Iedereen die het dashboard opent ziet dezelfde notities,
 //  ook van de uren vóórdat hij keek (ze worden uit de sporen herleid).
-//  Tussendoor: piratenversierzinnen en quotes uit BOOT_QUOTES (config.ts).
+//  Tussendoor: uitspraken van aan boord (de quotes van de groep) en, in
+//  piratenmodus, piratenversierzinnen. Zonder piratenmodus blijven de
+//  piratenzinnen weg en vertelt hij gewoon.
 //
 //  journaal(d) → [{ t, kop, tekst }]   (oud → nieuw)
 //    d = { raceStart, startPlan, times, rounded, boeien, lijnen,
 //          sporen: {boot: [{lat,lng,ts}]}, naam: boot => string,
 //          nu, wind: { kn, richting } | null, afgerond?: true }
 // ============================================================
-import { BOOT_QUOTES, BOTEN, FLEET, RONDINGS_LIJN_M, RONDINGS_MARGE_MAX_M } from "../../convex/lib/config";
-import type { BootQuote } from "../../convex/lib/config";
-import type { Boei, LatLng, Lijnen, StartPlan, Uitslag } from "../../convex/lib/validators";
+import { BOTEN, FLEET, metVloot, RONDINGS_LIJN_M, RONDINGS_MARGE_MAX_M } from "../../convex/lib/config";
+import type { Boei, LatLng, Lijnen, Quote, StartPlan, Uitslag } from "../../convex/lib/validators";
 import { afstandMeter, alsBoeien, bft, boeiId, boeiPrevNext, kompas, lijnstukkenKruisen, rondingsLijn } from "./geo";
 import { baanVanBoot, doelVanBoot, eigenStartVan, lussenVan, tijdOmTeWinnen, vertragingVan } from "./baan";
 import type { Gerond, SpoorPunt, TijdenMap } from "./baan";
 import { formatAfstand, formatDuur, klokHM } from "./format";
 import { normaliseerSpoor } from "./spoor";
+import { vlootVan } from "./uitslag";
 
 export type VertellerInvoer = {
   raceStart: number | null; startPlan: StartPlan | Partial<StartPlan> | null;
   times: TijdenMap; rounded: Record<string, Gerond>; boeien: Boei[]; lijnen: Lijnen;
   sporen: Record<string, SpoorPunt[]>; naam: (boot: string) => string; nu: number;
   wind: { kn: number; richting: number | null } | null; afgerond?: boolean; ratings?: Record<string, number>;
+  piraat?: boolean; quotes?: Quote[];
 };
 export type JournaalNotitie = { t: number; kop: string; tekst: string };
 
@@ -49,9 +52,15 @@ type Gebeurtenis = { t: number; boot: string; soort: Soort; kop: string; voor: (
 const UUR = 3600e3, HALF_UUR = UUR / 2, MINUUT = 60e3;
 
 // Vaste 'willekeur' per notitie, zodat iedereen dezelfde zinnen ziet
-function kiezer(zaad: number): Kies {
+// Zonder piratenmodus vallen de piratenzinnen uit de keuze (er blijft altijd een gewone over)
+const PIRATENTAAL = /\b(arr|matey|mateys|rum|dubloenen|schatkaart|schatkist|schat|muiterij|kijker|kanonschot|piraat|Davy)\b/i;
+function kiezer(zaad: number, piraat = true): Kies {
   let s = zaad % 2147483647; if (s <= 0) s += 2147483646;
-  return <T,>(lijst: T[]): T => { s = s * 16807 % 2147483647; return lijst[s % lijst.length]; };
+  return <T,>(lijst: T[]): T => {
+    const gewoon = piraat ? lijst : lijst.filter((x) => typeof x !== "string" || !PIRATENTAAL.test(x));
+    const l = gewoon.length ? gewoon : lijst;
+    s = s * 16807 % 2147483647; return l[s % l.length];
+  };
 }
 const plat = (s: string) => s.replace(/\s+/g, " ").trim();
 const opsomming = (a: string[]) => a.length <= 1 ? (a[0] || "") : a.slice(0, -1).join(", ") + " en " + a[a.length - 1];
@@ -139,7 +148,7 @@ const isBinnen = (v: Stand): v is Binnen => v.finish != null;
 // ---- Eén notitie op tijdstip t ----
 // o = { soort: 'uur'|'start'|'boei'|'finish'|'kop'|'einde'|'test', voor, onderwerp, vorigeT, laatste }
 function notitie(d: D, t: number, o: Opties): string {
-  const kies = kiezer(Math.floor(d.raceStart / 1000) + Math.floor(t / 1000) * 7919);
+  const kies = kiezer(Math.floor(d.raceStart / 1000) + Math.floor(t / 1000) * 7919, !!d.piraat);
   const vloot = toestand(d, t), zinnen = o.voor ? [o.voor(kies)] : [];
   if (!vloot.length) return plat(zinnen.join(" ")) || "Stilte op zee: er is nog geen schip uitgevaren.";
   const onderweg = vloot.filter((v) => v.start != null && v.finish == null);
@@ -394,13 +403,13 @@ const VERSIERZINNEN = [
   "Kom je bij mij aan boord? Ik heb rum, een kaart en plek in de hangmat.",
   "Ben jij een kanonskogel? Want je raakte me recht in mijn hart.",
   "Ik zoek geen schat meer — ik heb jou gevonden. Arr."];
-const bootQuotes = () => BOOT_QUOTES
-  .map((q): Exclude<BootQuote, string> => typeof q === "string" ? { tekst: q } : q).filter((q) => q && q.tekst);
+const bootQuotes = (d: D) => (d.quotes || [])
+  .map((q): Exclude<Quote, string> => typeof q === "string" ? { tekst: q } : q).filter((q) => q && q.tekst);
 function tussendoor(d: D, nr: number, soort: Soort): string {
   if (!d.raceStart || !d.deelnemers || !d.deelnemers.length) return "";
-  const kies = kiezer(Math.floor(d.raceStart / 1000) + nr * 104729);
+  const kies = kiezer(Math.floor(d.raceStart / 1000) + nr * 104729, !!d.piraat);
   const schuif = Math.floor(d.raceStart / 60000), beurt = Math.floor(nr / 3);
-  const quotes = bootQuotes();
+  const quotes = bootQuotes(d);
   if (nr % 3 === 2 && quotes.length) {
     const q = quotes[(schuif + beurt) % quotes.length];
     const tekst = `„${q.tekst.replace(/^["„“”']+|["„“”']+$/g, "")}”${q.wie ? ` (${q.wie})` : ""}`;
@@ -411,7 +420,7 @@ function tussendoor(d: D, nr: number, soort: Soort): string {
       : kies([`Zoals ze aan boord zeggen: ${tekst}`, `Een oude zeebonk zou zeggen: ${tekst}`,
               `${tekst} — wijsheid uit de kombuis.`]);
   }
-  if (nr % 3 === 1 && soort !== "einde") {
+  if (nr % 3 === 1 && soort !== "einde" && d.piraat) {
     const zin = `„${VERSIERZINNEN[(schuif + beurt) % VERSIERZINNEN.length]}”`, boot = d.naam(kies(d.deelnemers));
     return kies([`Aan boord van ${boot} oefent iemand alvast voor de haven: ${zin}`,
                  `Over het water schalt vanaf ${boot}: ${zin}`,
@@ -509,7 +518,8 @@ function rondingenUitSporen(d: Basis): Record<string, Gerond> {
   });
   return uit;
 }
-export function uitArchief(res: Uitslag | null | undefined, naam: (b: string) => string): { notities: JournaalNotitie[]; achteraf: boolean } {
+export function uitArchief(res: Uitslag | null | undefined, naam: (b: string) => string,
+  extra: { piraat?: boolean; quotes?: Quote[] } = {}): { notities: JournaalNotitie[]; achteraf: boolean } {
   if (!res) return { notities: [], achteraf: false };
   const bewaard: unknown = res.journaal;
   if (Array.isArray(bewaard) || (bewaard && typeof bewaard === "object"))
@@ -526,10 +536,12 @@ export function uitArchief(res: Uitslag | null | undefined, naam: (b: string) =>
   });
   const d: Basis = { raceStart: res.gun, startPlan: { modus: res.modus || "gelijk", vertraging: res.vertraging || undefined, lussen: res.lussen || undefined },
     times: res.tijden || {}, boeien: alsBoeien(res.baan && res.baan.marks), lijnen: (res.baan && res.baan.lines) || {},
-    sporen, naam, wind: null, rounded: {}, afgerond: true, ratings, nu: 0 };
-  d.rounded = res.rondingen || rondingenUitSporen(d);
-  const eindes = FLEET.map((b) => finishVan(d, b)).filter((v): v is number => v != null)
-    .concat(Object.values(sporen).map((p) => p.length ? p[p.length - 1].ts : 0));
-  d.nu = Math.max(res.gun, ...eindes);
-  return { notities: journaal(d), achteraf: true };
+    sporen, naam, wind: null, rounded: {}, afgerond: true, ratings, nu: 0, ...extra };
+  return metVloot(vlootVan(res), () => {
+    d.rounded = res.rondingen || rondingenUitSporen(d);
+    const eindes = FLEET.map((b) => finishVan(d, b)).filter((v): v is number => v != null)
+      .concat(Object.values(sporen).map((p) => p.length ? p[p.length - 1].ts : 0));
+    d.nu = Math.max(res.gun!, ...eindes);
+    return { notities: journaal(d), achteraf: true };
+  });
 }

@@ -8,10 +8,10 @@ import { akkoordVan, lussenVan, startNaam, vertragingVan, type LusPlan, type Pla
 import { formatAfstand, formatDuur, formatKlok } from "@/lib/format";
 import { bft } from "@/lib/geo";
 
-export function Planning({ raceStart, startPlan, voorstel, akkoord, naamVan, nu, concept, marks, windKn, plan, toon }: {
+export function Planning({ raceStart, startPlan, voorstel, akkoord, naamVan, nu, concept, marks, windKn, plan, toon, mee }: {
   raceStart: number | null; startPlan: StartPlan | null; voorstel: Voorstel | null; akkoord: Record<string, number | undefined>;
   naamVan: (b: string) => string; nu: number; concept: boolean; marks: Boei[]; windKn: number | null;
-  plan: { nm: number | null; plan: Plan | null; lus: LusPlan | null }; toon: boolean;
+  plan: { nm: number | null; plan: Plan | null; lus: LusPlan | null }; toon: boolean; mee: string[];
 }) {
   const { nm } = plan;
   if (nm == null && !toon && !raceStart && !voorstel) return null;
@@ -19,10 +19,10 @@ export function Planning({ raceStart, startPlan, voorstel, akkoord, naamVan, nu,
   return (
     <section>
       <h2 className="sectie-kop">Baanplanning</h2>
-      <div className="perkament rounded-md border border-[#8a6a3a] px-3.5 py-3">
+      <div className="vlak rounded-md border border-rand px-3.5 py-3">
         {raceStart ? (
           <div className="mb-2.5 leading-snug">
-            <b className="text-bloed">🔒 {startNaam(startPlan?.modus)} vastgelegd</b>
+            <b className="text-signaal">🔒 {startNaam(startPlan?.modus)} vastgelegd</b>
             {FLEET.map((b) => ({ b, t: raceStart + vertragingVan(startPlan, b) })).sort((x, y) => x.t - y.t).map((x) => (
               <div key={x.b}><BootStip boot={x.b} className="mr-1.5" />{naamVan(x.b)} — {formatKlok(x.t)}
                 {lussen?.[x.b] && ` · lus +${formatAfstand(lussen[x.b].extraM)}`}</div>
@@ -30,11 +30,13 @@ export function Planning({ raceStart, startPlan, voorstel, akkoord, naamVan, nu,
           </div>
         ) : voorstel && (
           <div className="mb-2.5 leading-snug">
-            <b className="text-bloed">📨 Startvoorstel: {startNaam(voorstel.plan?.modus).toLowerCase()} om {formatKlok(voorstel.t)}</b>
-            {voorstel.t <= nu && <span className="font-bold text-bloed"> verlopen</span>}
+            <b className="text-signaal">📨 Startvoorstel: {startNaam(voorstel.plan?.modus).toLowerCase()} om {formatKlok(voorstel.t)}</b>
+            {voorstel.t <= nu && <span className="font-bold text-signaal"> verlopen</span>}
             {FLEET.map((b) => (
-              <div key={b}><BootStip boot={b} className="mr-1.5" />{naamVan(b)}: {akkoordVan(voorstel, akkoord).includes(b) ? "✔ akkoord" : "⏳ nog niet"}</div>
+              <div key={b} className={mee.includes(b) ? "" : "opacity-55"}><BootStip boot={b} className="mr-1.5" />{naamVan(b)}: {
+                !mee.includes(b) ? "vaart niet mee" : akkoordVan(voorstel, akkoord).includes(b) ? "✔ akkoord" : "⏳ nog niet"}</div>
             ))}
+            {!mee.length && <div className="mt-1 font-bold text-signaal">Nog geen boot vaart mee: open de tracker op een boot (Meevaren).</div>}
           </div>
         )}
         {nm == null || !plan.plan ? (
@@ -43,7 +45,7 @@ export function Planning({ raceStart, startPlan, voorstel, akkoord, naamVan, nu,
           const p = plan.plan, lus = plan.lus;
           const volg = [...FLEET].sort((a, b) => p.verwacht[a] - p.verwacht[b]);
           return <>
-            <div className="font-kap font-bold">{concept ? "✎ Concept-baan" : "Baan"}: {nm.toFixed(1)} zeemijl · {marks.length} {marks.length === 1 ? "boei" : "boeien"}</div>
+            <div className="font-kop font-bold">{concept ? "✎ Concept-baan" : "Baan"}: {nm.toFixed(1)} zeemijl · {marks.length} {marks.length === 1 ? "boei" : "boeien"}</div>
             <div className="mt-0.5 mb-2 text-[.92rem] leading-snug text-muted-foreground">
               Verwachte tijden {windKn != null ? `bij ${bft(windKn)} Bft wind` : "bij gemiddelde wind"} — schatting op basis van de ORC-rating.</div>
             <Table className="text-[.92rem]">
@@ -66,7 +68,7 @@ export function Planning({ raceStart, startPlan, voorstel, akkoord, naamVan, nu,
               </TableBody>
             </Table>
             <div className="mt-2 text-[.92rem] leading-snug text-muted-foreground">Achterv. = startvertraging bij start B. Lus = extra afstand bij start C (lusstart).
-              {lus && !lus.past && <span className="font-bold text-bloed"> De lussen passen niet goed op deze baan: maak de raken langer.</span>}</div>
+              {lus && !lus.past && <span className="font-bold text-signaal"> De lussen passen niet goed op deze baan: maak de raken langer.</span>}</div>
           </>;
         })()}
       </div>

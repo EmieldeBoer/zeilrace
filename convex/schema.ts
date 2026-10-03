@@ -1,14 +1,25 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
-  vBoei, vLijnen, vPositie, vSpelVelden, vStartPlan, vUitslagVelden, vVoorstel, vZeeslagVelden,
+  vBoei, vBootSnapshot, vLijnen, vPositie, vQuote, vSpelVelden, vStartPlan, vUitslagVelden, vVoorstel, vZeeslagVelden,
 } from "./lib/validators";
 
-// Alles hangt aan raceId (RACE_ID in convex/lib/config.ts).
+// Alles hangt aan een groep. Wie de link van een groep heeft, kan lid worden;
+// leden zien de live race en kunnen een boot claimen. Hosts beheren de groep.
 export default defineSchema({
-  // De baan en de start: één document per race. Alleen de wedstrijdleiding schrijft hier.
-  wedstrijden: defineTable({
-    raceId: v.string(),
+  // Een toestel (browser). We bewaren alleen de hash van het geheime token.
+  spelers: defineTable({
+    tokenHash: v.string(),
+    naam: v.optional(v.string()),
+  }).index("by_tokenHash", ["tokenHash"]),
+
+  // Een groep: de uitnodigingscodes, de instellingen, de baan en de live start
+  groepen: defineTable({
+    naam: v.string(),
+    code: v.string(),          // uitnodiging voor leden (8 tekens, ook zo in te typen)
+    hostCode: v.string(),      // uitnodiging voor hosts (lang, alleen als link)
+    piraat: v.boolean(),       // piratenmodus: piratenthema en de zeeslag
+    door: v.optional(v.id("spelers")),
     lines: vLijnen,
     marks: v.array(vBoei),
     raceStart: v.optional(v.number()),
@@ -16,57 +27,68 @@ export default defineSchema({
     voorstel: v.optional(vVoorstel),
     // Verandert bij elke reset: oude sporen tellen dan niet meer mee
     gen: v.number(),
-  }).index("by_raceId", ["raceId"]),
+    quotes: v.optional(v.array(vQuote)),
+  }).index("by_code", ["code"]).index("by_hostCode", ["hostCode"]),
 
-  // Per boot: wie hem gebruikt (claim = geheim toesteltoken, wordt nooit teruggegeven),
-  // teamnaam, tijden, rondingen en het akkoord op het startvoorstel.
+  leden: defineTable({
+    groep: v.id("groepen"),
+    speler: v.id("spelers"),
+    rol: v.union(v.literal("host"), v.literal("lid")),
+  }).index("by_groep_and_speler", ["groep", "speler"]).index("by_speler", ["speler"]),
+
+  // De boten van een groep: wat de host instelt (naam, kleur, rating, lengte) en de
+  // live toestand (wie hem gebruikt, teamnaam, tijden, rondingen, akkoord)
   boten: defineTable({
-    raceId: v.string(),
-    boot: v.string(),
-    claim: v.optional(v.string()),
+    groep: v.id("groepen"),
+    boot: v.string(),          // vaste id binnen de groep, bijv. "b7k2"
+    model: v.string(),
+    kleur: v.string(),
+    gph: v.number(),
+    lengte: v.number(),
+    volgorde: v.number(),
     naam: v.optional(v.string()),
+    claim: v.optional(v.id("spelers")),
     start: v.optional(v.number()),
     finish: v.optional(v.number()),
     gerond: v.record(v.string(), v.number()),
     akkoord: v.optional(v.number()),
-  }).index("by_raceId_and_boot", ["raceId", "boot"]),
+  }).index("by_groep_and_boot", ["groep", "boot"]),
 
   // De laatste positie per boot (wordt elke paar seconden bijgewerkt)
   posities: defineTable({
-    raceId: v.string(),
+    groep: v.id("groepen"),
     boot: v.string(),
     ...vPositie.fields,
-  }).index("by_raceId_and_boot", ["raceId", "boot"]),
+    ontvangen: v.optional(v.number()),     // servertijd van de laatste positie (voor de afremming)
+    spoorGen: v.optional(v.number()),      // zoveel spoorpunten heeft deze boot in generatie spoorGen
+    spoorPunten: v.optional(v.number()),
+  }).index("by_groep_and_boot", ["groep", "boot"]),
 
   // Het gevaren spoor: één document per punt, tijdens een race of zeeslag
   spoorpunten: defineTable({
-    raceId: v.string(),
+    groep: v.id("groepen"),
     gen: v.number(),
     boot: v.string(),
     lat: v.number(),
     lng: v.number(),
     ts: v.number(),
-  }).index("by_raceId_and_gen", ["raceId", "gen"]),
+  }).index("by_groep_and_gen", ["groep", "gen"]),
 
-  // Het piratenspel van de race (speelveld, salvo's, straffen, kisten, mijnen)
+  // Het piratenspel (speelveld, salvo's, straffen, kisten, mijnen)
   spel: defineTable({
-    raceId: v.string(),
+    groep: v.id("groepen"),
     ...vSpelVelden,
-  }).index("by_raceId", ["raceId"]),
+  }).index("by_groep", ["groep"]),
 
-  // Afgeronde races (met sporen voor de replay) en bewaarde zeeslagen
+  // Afgeronde races (met sporen voor de replay) en bewaarde zeeslagen.
+  // boten = de boten zoals ze toen waren (kleur, rating), ook als ze later weg zijn.
   uitslagen: defineTable({
-    raceId: v.string(),
+    groep: v.id("groepen"),
     ...vUitslagVelden,
-  }).index("by_raceId_and_nr", ["raceId", "nr"]),
+    boten: v.optional(v.record(v.string(), vBootSnapshot)),
+  }).index("by_groep_and_nr", ["groep", "nr"]),
   zeeslagen: defineTable({
-    raceId: v.string(),
+    groep: v.id("groepen"),
     ...vZeeslagVelden,
-  }).index("by_raceId_and_start", ["raceId", "start"]),
-
-  // Ingelogde wedstrijdleiding (token in de browser, hier met verloopdatum)
-  sessies: defineTable({
-    token: v.string(),
-    verloopt: v.number(),
-  }).index("by_token", ["token"]),
+  }).index("by_groep_and_start", ["groep", "start"]),
 });

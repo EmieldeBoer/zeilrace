@@ -1,16 +1,50 @@
 // ============================================================
-//  Uitslagen en zeeslagen van de oude Firebase-site overzetten naar Convex.
+//  De groep van de oude Firebase-site overzetten naar Convex: de drie boten,
+//  de quotes, de baan, en alle uitslagen en zeeslagen (met hun replays).
+//  Piratenmodus staat aan, zoals op de oude site.
 //
 //    bun scripts/importeer-firebase.ts --ophalen        haalt de race op uit Firebase (alleen lezen)
 //    bun scripts/importeer-firebase.ts export.json      of: een JSON-export uit de Firebase-console
-//    extra: --baan  zet ook de huidige baan (lijnen en boeien) klaar
 //
-//  Het script schrijft JSONL-bestanden naar import/ en toont de opdrachten
-//  om ze in te lezen (bunx convex import …). Het schrijft zelf niets in Convex
-//  en niets in Firebase. Lees elke tabel maar één keer in, anders staan races dubbel.
+//  Zonder --schrijf laat het script alleen zien wat het zou overzetten.
+//    --schrijf          maakt de groep echt aan (in de deployment uit .env.local)
+//    --prod             in de productie-deployment in plaats daarvan
+//    --code XXXXXXXX    uitslagen toevoegen aan een bestaande groep in plaats van een nieuwe te maken
+//  Het script schrijft nooit iets in Firebase.
 // ============================================================
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { RACE_ID } from "../convex/lib/config";
+import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+
+const RACE_ID = "frankrijk-2026";
+const BOTEN = [
+  { boot: "SO389", model: "Sun Odyssey 389", kleur: "#e6194b", gph: 635, lengte: 10.98 },
+  { boot: "SO469", model: "Sun Odyssey 469", kleur: "#3cb44b", gph: 560, lengte: 13.67 },
+  { boot: "SO519", model: "Sun Odyssey 519", kleur: "#4363d8", gph: 537, lengte: 15.24 },
+];
+const snapshots = Object.fromEntries(BOTEN.map(({ boot, ...rest }) => [boot, rest]));
+// De quotes van de Gillepsie (SO519) voor de verteller
+const QUOTES = [
+  "Onderzeeër: is dat niet gewoon een eiland?",
+  "Als er overheen is gepoept, zou je het dan nog houden?",
+  "Parel in je buik",
+  "Zeilen is voor even, twerken voor het leven",
+  { tekst: "Skipper by day, alcoholic by night", wie: "Emiel de Boer" },
+  "Sriracha dop",
+  "Heb je wel eens een aubergine in je reet gehad?",
+  "Kikadewado: kind kan de was doen",
+  "Daar kreeg ik een kleine tia van",
+  "Wakeboarden is gewoon een combi van twerken en snowboarden",
+  "Maak je vaker foto's van je poes?",
+  "Home is where the (homo) lulu is",
+  "Bipolaire piña colada",
+  "Mag ik aan die kan likken?",
+  "Straks gaat Dirk ook mee en heeft Milan Casper-shift",
+  "Hoge cappu-dichtheid",
+  "Moon-paradox: hoe meer je moont, hoe slechter je erin wordt",
+  "Moonflip en flashdive",
+  "Hee, ik plas niet uit mijn kont",
+  "Jari wilde z'n ari laten zien → vallende ster → gecrashte moonflip",
+].map((q) => ({ boot: "SO519", ...(typeof q === "string" ? { tekst: q } : q) }));
 
 const FIREBASE = {
   apiKey: "AIzaSyDdrSzr8E3_MXqDLUq9aEvf2zg-nJi30gs",
@@ -45,7 +79,7 @@ const modus = (m: unknown) => (["gelijk", "achtervolging", "lus"].includes(m as 
 function uitslag(nr: number, r: Obj) {
   const sp = recordVan(r.sporen, (v) => { const s = spoor(v); return s.length ? s : undefined; });
   return schoon({
-    raceId: RACE_ID, nr: getal(r.nr) ?? nr, ts: getal(r.ts) ?? 0, naam: tekst(r.naam),
+    nr: getal(r.nr) ?? nr, ts: getal(r.ts) ?? 0, naam: tekst(r.naam),
     uitslag: recordVan(r.uitslag, (u) => isObj(u) ? schoon({ gefinisht: !!u.gefinisht, elapsed: getal(u.elapsed),
       corrected: getal(u.corrected), afstand: getal(u.afstand) }) : undefined),
     namen: recordVan(r.namen, tekst),
@@ -85,7 +119,7 @@ function spel(s: unknown) {
 function zeeslag(start: number, z: Obj) {
   const sp = recordVan(z.sporen, (v) => { const s = spoor(v); return s.length ? s : undefined; });
   return schoon({
-    raceId: RACE_ID, start: getal(z.start) ?? start, ts: getal(z.ts) ?? start, over: getal(z.over) ?? start, t0: getal(z.t0) ?? start,
+    start: getal(z.start) ?? start, ts: getal(z.ts) ?? start, over: getal(z.over) ?? start, t0: getal(z.t0) ?? start,
     namen: recordVan(z.namen, tekst), deelnemers: lijst(z.deelnemers).filter((x): x is string => typeof x === "string"),
     spel: spel(z.spel),
     stand: lijst(z.stand).filter(isObj).map((r) => schoon({ boot: tekst(r.boot) ?? "", levens: getal(r.levens) ?? 0, hits: getal(r.hits) ?? 0,
@@ -106,29 +140,41 @@ async function ophalen(): Promise<Obj> {
 }
 
 const args = process.argv.slice(2);
-const bron = args.find((a) => !a.startsWith("--"));
+const bron = args.find((a, i) => !a.startsWith("--") && args[i - 1] !== "--code");
 if (!bron && !args.includes("--ophalen")) {
-  console.log("Gebruik: bun scripts/importeer-firebase.ts --ophalen   of   bun scripts/importeer-firebase.ts export.json   [--baan]");
+  console.log("Gebruik: bun scripts/importeer-firebase.ts --ophalen | export.json   [--schrijf] [--prod] [--code XXXXXXXX]");
   process.exit(1);
 }
 let data: Obj = bron ? JSON.parse(readFileSync(bron, "utf8")) : await ophalen();
 // Een export van de hele database, of alleen van races/<race>
 if (isObj(data.races) && isObj((data.races as Obj)[RACE_ID])) data = (data.races as Obj)[RACE_ID] as Obj;
 
-const uitslagen = Object.entries(record(data.results)).filter(([, r]) => isObj(r)).map(([nr, r]) => uitslag(+nr, r as Obj));
+const uitslagen = Object.entries(record(data.results)).filter(([, r]) => isObj(r)).map(([nr, r]) => ({ ...uitslag(+nr, r as Obj), boten: snapshots }));
 const zeeslagen = Object.entries(record(data.zeeslagen)).filter(([, z]) => isObj(z)).map(([s, z]) => zeeslag(+s, z as Obj));
-mkdirSync("import", { recursive: true });
-const jsonl = (rijen: unknown[]) => rijen.map((r) => JSON.stringify(r)).join("\n") + "\n";
-writeFileSync("import/uitslagen.jsonl", jsonl(uitslagen));
-writeFileSync("import/zeeslagen.jsonl", jsonl(zeeslagen));
 console.log(`${uitslagen.length} race(s): ${uitslagen.map((u) => u.nr + (u.naam ? ` (${u.naam})` : "")).join(", ") || "geen"}`);
 console.log(`${zeeslagen.length} zeeslag(en)`);
-const opdrachten = [
-  "bunx convex import --table uitslagen --append import/uitslagen.jsonl",
-  "bunx convex import --table zeeslagen --append import/zeeslagen.jsonl",
-];
-if (args.includes("--baan")) {
-  writeFileSync("import/wedstrijden.jsonl", jsonl([{ raceId: RACE_ID, lines: lijnen(data.lines), marks: boeien(data.marks), gen: Date.now() }]));
-  opdrachten.push("bunx convex import --table wedstrijden --replace import/wedstrijden.jsonl   (vervangt de huidige baan)");
+
+const waarde = (naam: string) => { const i = args.indexOf(naam); return i >= 0 ? args[i + 1] : undefined; };
+if (!args.includes("--schrijf")) {
+  console.log("\nNiets geschreven. Voeg --schrijf toe om de groep aan te maken (en --prod voor productie).");
+  process.exit(0);
 }
-console.log("\nInlezen in de deployment uit .env.local (voeg --prod toe voor productie):\n" + opdrachten.map((o) => "  " + o).join("\n"));
+// Elke stap is een interne mutatie, aangeroepen via de Convex-CLI (die de rechten van de deployment heeft)
+function run(fn: string, a: unknown) {
+  const json = JSON.stringify(a);
+  if (json.length > 900_000) console.warn(`Let op: ${fn} heeft ${Math.round(json.length / 1000)} kB aan gegevens, dat kan te groot zijn.`);
+  const r = spawnSync("bunx", ["convex", "run", ...(args.includes("--prod") ? ["--prod"] : []), fn, json], { encoding: "utf8" });
+  if (r.status !== 0) throw new Error(`${fn} mislukte:\n${r.stderr || r.stdout}`);
+  return r.stdout.trim();
+}
+let code = waarde("--code");
+if (!code) {
+  const groep = JSON.parse(run("beheer:importeerGroep", {
+    naam: "Frankrijk 2026", piraat: true, boten: BOTEN, quotes: QUOTES, lines: lijnen(data.lines), marks: boeien(data.marks),
+  })) as { code: string; hostCode: string };
+  code = groep.code;
+  console.log(`\nGroep gemaakt. Code ${code}.`);
+  console.log(`Open deze hostlink om host te worden (houd hem geheim): /host/${groep.hostCode}`);
+}
+for (const u of uitslagen) { run("beheer:importeerUitslag", { code, uitslag: u }); console.log(`Race ${u.nr} overgezet.`); }
+for (const z of zeeslagen) { run("beheer:importeerZeeslag", { code, zeeslag: z }); console.log(`Zeeslag van ${new Date(z.start).toLocaleString("nl-NL")} overgezet.`); }

@@ -36,9 +36,9 @@ export function BuitLijst() {
   return (
     <ul className="my-2 list-none p-0">
       {buitOverzicht().map((b) => (
-        <li key={b.soort} className="border-b border-[rgba(107,81,48,.35)] py-1.5 last:border-b-0">
+        <li key={b.soort} className="border-b border-lijn py-1.5 last:border-b-0">
           <div className="flex justify-between gap-2 font-bold"><span>{b.icoon} {b.naam}</span>
-            <span className="font-kap text-[.85rem] font-normal text-muted-foreground">{b.pct}%</span></div>
+            <span className="font-kop text-[.85rem] font-normal text-muted-foreground">{b.pct}%</span></div>
           <div className="text-[.95rem] leading-snug text-muted-foreground">{b.tekst}{b.lading && <i> Bewaar je tot je hem gebruikt.</i>}</div>
         </li>
       ))}

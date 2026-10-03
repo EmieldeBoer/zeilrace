@@ -121,6 +121,11 @@ export const vZeeslagVelden = {
 };
 export const vZeeslag = v.object(vZeeslagVelden);
 
+// Een boot zoals de host hem instelt (ook bewaard bij elke uitslag)
+export const vBootSnapshot = v.object({ model: v.string(), kleur: v.string(), gph: v.number(), lengte: v.number() });
+// Een uitspraak van aan boord voor het scheepsjournaal (piratenmodus)
+export const vQuote = v.union(v.string(), v.object({ tekst: v.string(), boot: v.optional(v.string()), wie: v.optional(v.string()) }));
+
 export type LatLng = Infer<typeof vLatLng>;
 export type Lijn = Infer<typeof vLijn>;
 export type Lijnen = Infer<typeof vLijnen>;
@@ -141,3 +146,5 @@ export type Tijden = Infer<typeof vTijden>;
 export type Uitslag = Infer<typeof vUitslag>;
 export type Zeeslag = Infer<typeof vZeeslag>;
 export type StandRij = Infer<typeof vStandRij>;
+export type BootSnapshot = Infer<typeof vBootSnapshot>;
+export type Quote = Infer<typeof vQuote>;

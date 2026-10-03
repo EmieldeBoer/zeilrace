@@ -1,42 +1,70 @@
 # ⛵ Zeilrace
 
-Live GPS-tracking voor een zeilrace. De telefoons op de boten sturen hun positie door, en iedereen kijkt live mee op het
-dashboard. De site is gebouwd met React, TypeScript en shadcn/ui, de database en de serverlogica draaien op Convex, en de
-site staat op Vercel.
+Live GPS-tracking en wedstrijden voor een groep zeilboten. Iemand maakt een groep met de boten en deelt de link. Op elke
+boot opent iemand de link op een telefoon en drukt op *Meevaren*. Daarna ziet iedereen de boten live op de kaart, zet een
+host de baan uit, en vaart de groep races met rating. Wie wil, zet de piratenmodus aan voor de zeeslag tussen de races door.
+
+Geen accounts: elke browser krijgt een geheim toesteltoken, en de link of code van de groep is de uitnodiging.
+
+De site is gebouwd met React, TypeScript en shadcn/ui. De database en de serverlogica draaien op Convex, de site staat op Vercel.
 
 | Pagina | Wat het is |
 |---|---|
-| `/` | Het dashboard met de tabs Live, Regels en Uitslagen |
-| `/?wl` | Het dashboard met de wedstrijdleiding (inloggen met het wachtwoord) |
-| `/tracker` | De telefoonpagina op elke boot (optioneel `?boot=SO469`). Het oude adres `/tracker.html` werkt ook. |
+| `/` | Begin: een groep maken, meedoen met een code, en je eigen groepen |
+| `/nieuw` | Een nieuwe groep: naam, boten en spelvormen |
+| `/g/CODE` | Het dashboard van een groep (Live, Uitslagen, Regels). Wie nog geen lid is, kan hier meedoen. |
+| `/g/CODE/tracker` | *Meevaren*: de telefoonpagina op een boot |
+| `/g/CODE/groep` | Leden, boten, uitnodigen en instellingen |
+| `/host/HOSTCODE` | Uitnodiging om host te worden |
+
+## Rollen
+
+- **Lid:** iedereen die de link of code van de groep heeft. Een lid kijkt live mee, vaart mee met een boot, stelt een
+  start voor (of trekt het voorstel in) en geeft akkoord op de start voor zijn eigen boot.
+- **Host:** wie de groep maakte, en wie de hostlink heeft geopend of door een host host is gemaakt. Een host zet de baan
+  uit, rondt races af, corrigeert rondingen en uitslagen, beheert de leden en de boten, en zet de piratenmodus aan of uit.
+  Er is altijd minstens één host.
+
+Een start ligt pas vast als elke boot die meevaart akkoord heeft gegeven. Daarom mag ieder lid een start voorstellen:
+niemand kan een start opdringen. Een boot kan van telefoon wisselen: de nieuwe telefoon vraagt of hij de boot moet
+overnemen, en de oude stopt dan vanzelf.
 
 ## Hoe het in elkaar zit
 
 | Map of bestand | Wat erin staat |
 |---|---|
-| `convex/lib/config.ts` | De boten met hun ORC-rating, het race-id, de rondingslijnen, de lusstart en de bootquotes |
-| `convex/lib/spel.ts` | Instellingen van het piratenspel en wat er in de schatkisten zit |
-| `convex/schema.ts` | De tabellen in Convex |
-| `convex/boot.ts`, `convex/spel.ts` | Wat een tracker mag schrijven: positie, spoor, start, rondingen, finish, akkoord, salvo's, kisten en mijnen |
-| `convex/wl.ts` | Inloggen en alles wat alleen de wedstrijdleiding mag |
-| `convex/race.ts`, `convex/uitslagen.ts` | Wat de site leest |
-| `src/pages/Dashboard.tsx`, `src/pages/dashboard/` | Het dashboard: Live, wedstrijdleiding, journaal, planning, regels, uitslagen en replay |
-| `src/pages/Tracker.tsx`, `src/pages/tracker/` | De tracker: GPS, detectie van start, boeien en finish, het kanon en het kompas |
+| `convex/schema.ts` | De tabellen: groepen, spelers (toestellen), leden, boten, posities, sporen, spel, uitslagen en zeeslagen |
+| `convex/groepen.ts` | Groep maken, meedoen, host worden, leden, boten en instellingen |
+| `convex/boot.ts`, `convex/spel.ts` | Wat een tracker mag schrijven: claim, positie, spoor, start, rondingen, finish, akkoord, salvo's, kisten en mijnen |
+| `convex/host.ts` | Baan, startvoorstel (elk lid), afronden, correcties, de zeeslag en de uitslagen (host) |
+| `convex/race.ts`, `convex/uitslagen.ts` | Wat de site leest (alleen voor leden) |
+| `convex/beheer.ts` | Interne functies: oude sporen opruimen en het overzetten vanuit Firebase |
+| `convex/lib/` | Toegangscontrole (`db.ts`), validators, rekenregels voor boten en rating (`config.ts`) en het piratenspel (`spel.ts`) |
+| `src/pages/` | Begin, nieuwe groep, het dashboard (`dashboard/`), de tracker (`tracker/`) en de groepspagina |
 | `src/lib/` | De rekenregels: baan en rating (`baan.ts`), meetkunde (`geo.ts`), piratenspel (`piraat.ts`), verteller, polars, export, geluid en feest |
 | `src/kaart/` | Leaflet: de kaart, de schepen, de baan en de lagen van het piratenspel |
-| `src/components/ui/` | De shadcn-componenten. Het piratenthema zit in `src/index.css`. |
+| `src/components/ui/` | De shadcn-componenten. Beide thema's (Signaal en Piraat) zitten in `src/index.css`. |
 | `scripts/` | De simulatie voor lokaal testen en het overzetten vanuit Firebase |
 
-**Beveiliging.** Elke telefoon maakt een geheim toesteltoken aan en bewaart dat in de browser. Met *Start tracking* claimt
-de telefoon een boot. Daarna accepteert de server alleen van dat toestel schrijfacties voor die boot. *Boten vrijgeven*
-bij de wedstrijdleiding haalt alle claims weg. De wedstrijdleiding logt in met het wachtwoord in de omgevingsvariabele
-`WL_WACHTWOORD` op de Convex-deployment. De server geeft dan een sessie van 30 dagen terug, en na 10 foute pogingen in
-10 minuten wacht hij. De regels die vroeger in `database.rules.json` stonden, controleren de mutaties in `convex/` nu zelf:
-
-- Start- en finishtijden en boeironden kunnen maar één keer worden gezet.
-- Een starttijd ligt pas vast als alle boten akkoord zijn met het voorstel. Daarna kan niemand hem nog wijzigen,
-  ook de wedstrijdleiding niet (alleen wissen met *Race afronden* of *Live tijden resetten*).
-- Alleen de wedstrijdleiding mag de baan, het startvoorstel, het speelveld en de uitslagen wijzigen.
+**Beveiliging.**
+- Elke browser maakt een geheim toesteltoken aan (32 willekeurige bytes) en bewaart dat lokaal. De server bewaart alleen
+  een SHA-256-hash ervan.
+- Alles wat je leest of schrijft, controleert de server tegen je lidmaatschap van de groep. Zonder lidmaatschap krijg je
+  niets terug. De hostcode zien alleen hosts.
+- Een boot schrijven kan alleen het toestel dat hem heeft geclaimd. Een ander toestel kan hem alleen overnemen na een
+  bevestiging, en dan stopt het eerste.
+- Een groepscode heeft 8 tekens, een hostcode 20. Een host kan beide links vervangen; wie al lid of host is, blijft dat.
+  Haalt een host een andere host weg of maakt hij die weer lid, dan krijgt de groep vanzelf een nieuwe hostlink.
+- Groepen maken en meedoen hebben een limiet per toestel en een limiet voor de hele site (`@convex-dev/rate-limiter`),
+  tegen het raden van codes en tegen spam. Een toestel komt pas in de database als de code klopt.
+- Posities worden op de klok van de server afgeremd (hooguit één per seconde per boot) en een boot heeft hooguit
+  30.000 spoorpunten per race.
+- Getallen van buiten moeten eindig zijn (geen NaN of Infinity), en een boei, kist of mijn moet echt bestaan.
+  Een startplan mag alleen boten van de groep noemen.
+- Start- en finishtijden en boeironden kunnen maar één keer worden gezet. Een vastgelegde start kan niemand wijzigen,
+  ook een host niet (alleen wissen met *Race afronden* of *Live tijden resetten*).
+- `vercel.json` zet de beveiligingsheaders, met een Content-Security-Policy die alleen Convex, Open-Meteo en de
+  kaarttegels van OpenStreetMap toelaat.
 
 ## Lokaal draaien
 
@@ -54,63 +82,53 @@ bun run dev
 CONVEX_AGENT_MODE=anonymous bunx convex dev
 ```
 
-Zet daarna het wachtwoord van de wedstrijdleiding op die deployment:
+Er zijn geen omgevingsvariabelen nodig. GPS werkt in de browser alleen op `localhost` of via https.
+
+**Simulatie.** Tegen een lokale backend kun je een race naspelen zonder boot (het script weigert elke andere deployment).
+Het maakt een eigen testgroep en onthoudt die in `.simulatie.json`. Boten kies je met hun nummer:
 
 ```
-bunx convex env set WL_WACHTWOORD jouw-wachtwoord
+bun scripts/simulatie.ts groep            # testgroep met 3 boten (met 'groep piraat' staat de piratenmodus aan)
+bun scripts/simulatie.ts baan             # baan bij Toulon uitzetten
+bun scripts/simulatie.ts race 1,2,3       # start voorstellen, akkoord geven en de baan varen
+bun scripts/simulatie.ts akkoord 1,2      # akkoord op het huidige startvoorstel
+bun scripts/simulatie.ts zeeslag 1,2      # piratenmodus aan, speelveld, zeeslag en salvo's
+bun scripts/simulatie.ts reset            # live race wissen en boten vrijgeven
 ```
 
-GPS werkt in de browser alleen op `localhost` of via https.
-
-**Simulatie.** Tegen een lokale backend kun je een race naspelen zonder boot (het script weigert elke andere deployment):
-
-```
-bun scripts/simulatie.ts baan                    # baan bij Toulon uitzetten
-bun scripts/simulatie.ts race SO389,SO469        # start voorstellen, akkoord geven en de baan varen
-bun scripts/simulatie.ts akkoord SO389,SO469     # akkoord op het huidige startvoorstel
-bun scripts/simulatie.ts zeeslag SO389,SO469     # speelveld, zeeslag en salvo's
-bun scripts/simulatie.ts reset                   # live race wissen en boten vrijgeven
-```
-
-Het script logt in met `WL_WACHTWOORD` (standaard `test1234`).
+`groep` toont de link om mee te kijken en de hostlink. Draait Vite op een andere poort, zet dan `SITE=http://localhost:5174`.
 
 ## Online zetten
 
 **Convex.**
 1. Koppel de map aan je Convex-project met `bunx convex dev` (log in en kies het project).
-2. Zet `WL_WACHTWOORD` op de productie-deployment: `bunx convex env set WL_WACHTWOORD … --prod`.
-3. Maak in het Convex-dashboard (Settings → Deploy keys) een production deploy key aan.
+2. Maak in het Convex-dashboard (Settings → Deploy keys) een production deploy key aan.
 
 **Vercel.**
 1. Importeer de repository op https://vercel.com. Vercel leest `vercel.json`: installeren met Bun en bouwen met
    `bunx convex deploy --cmd 'bun run build'`. Dat zet eerst de Convex-functies op productie en bouwt daarna de site.
 2. Zet in Vercel de omgevingsvariabele `CONVEX_DEPLOY_KEY` op de deploy key. `VITE_CONVEX_URL` vult Convex zelf in tijdens de build.
-3. Deploy. `vercel.json` zet ook de beveiligingsheaders (die stonden eerst in `_headers` voor Netlify), met een
-   Content-Security-Policy die alleen Convex, Open-Meteo en de kaarttegels van OpenStreetMap toelaat.
+3. Deploy. Open de site, maak een groep en deel de link.
 
-**Uitslagen overzetten vanuit Firebase.** Het script haalt de race op uit de oude Firebase-database (alleen lezen,
-anoniem, net als een kijker) of leest een JSON-export uit de Firebase-console. Het schrijft JSONL-bestanden naar
-`import/` en toont de opdrachten om ze in te lezen:
+**De groep van de oude Firebase-site overzetten.** Het script haalt de race op uit de oude Firebase-database (alleen
+lezen, anoniem, net als een kijker) of leest een JSON-export uit de Firebase-console. Het maakt een groep met de drie
+boten, de quotes en de baan (piratenmodus aan) en zet alle uitslagen en zeeslagen erin. Zonder `--schrijf` laat het
+alleen zien wat het zou doen:
 
 ```
-bun scripts/importeer-firebase.ts --ophalen          # of: bun scripts/importeer-firebase.ts export.json
-bunx convex import --table uitslagen --append import/uitslagen.jsonl --prod
-bunx convex import --table zeeslagen --append import/zeeslagen.jsonl --prod
+bun scripts/importeer-firebase.ts --ophalen                    # proefdraaien
+bun scripts/importeer-firebase.ts --ophalen --schrijf --prod   # echt overzetten naar productie
 ```
 
-Lees elke tabel maar één keer in, anders staan de races dubbel. Met `--baan` zet het script ook de huidige baan klaar.
+Het script toont daarna de hostlink: open die om host van de groep te worden. Met `--code XXXXXXXX` voeg je de
+uitslagen toe aan een bestaande groep in plaats van een nieuwe te maken.
 
-## De boten en hun rating
+## Boten en rating
 
-| Boot | ORC GPH (s/zm) | Rating (ToT = 600/GPH) | Bron |
-|---|---|---|---|
-| Sun Odyssey 389 | 635 | 0.945 | **Schatting**: geen actief certificaat gevonden. Afgeleid van zusterromp SO 379, lengteregressie over Sun Odyssey-certificaten en een correctie voor de ondiepe kiel. |
-| Sun Odyssey 469 | 560 | 1.071 | Actieve ORC-certificaten (met spinnaker), omgerekend naar zeilen zonder spinnaker (+6–8 %) |
-| Sun Odyssey 519 | 537 | 1.117 | Zusterromp SO 509 (actieve ORC-certificaten) |
-
-GPH is het aantal seconden per zeemijl. Hoe lager, hoe sneller de boot. Het zijn
-charterboten met onbekende zeilen en lading, dus de ratings zijn een redelijke schatting,
-geen officieel certificaat. Aanpassen kan in `convex/lib/config.ts` (`gph`).
+Elke groep heeft zijn eigen boten (hooguit 12): een naam, een kleur, een rating en de lengte. De rating is
+Time-on-Time: 1,000 is gemiddeld, hoger is sneller. De app rekent hem om naar ORC GPH (seconden per zeemijl,
+GPH = 600 / rating). Weet je de rating niet, laat dan 1,000 staan. De lengte bepaalt alleen hoe groot het scheepje
+op de kaart is. Een host past de boten aan op de groepspagina. Oude uitslagen bewaren de boten zoals ze toen waren.
 
 **Uitslagen** tellen bij een gelijke start met rating: gecorrigeerde tijd = verzeilde tijd × rating (Time-on-Time).
 Bij een achtervolgings- of lusstart zit de rating al in de start of de baan: daar wint wie het eerst binnen is.
@@ -120,10 +138,10 @@ Per race staat de verzeilde tijd er ter informatie bij, en een uitklapbaar **�
 **⚖️ Ratingcheck** (tab Uitslagen): per race de rating waarmee elke boot precies gelijk was geëindigd,
 geschaald op dezelfde gemiddelde rating, plus het gemiddelde over alle races. Bij een lusstart rekent hij met de
 baanlengte van elke boot. Vanaf 3 races per boot
-geeft hij een advies voor `convex/lib/config.ts`. Bemanning, starts en het soort baan tellen mee: beoordeel dus
+geeft hij een advies voor de rating op de groepspagina. Bemanning, starts en het soort baan tellen mee: beoordeel dus
 meerdere races met verschillende omstandigheden.
 
-**Startopties** (tab 🏁 Race van de wedstrijdleiding):
+**Startopties** (onder *Start* op het dashboard):
 - **A · Gelijke start:** iedereen tegelijk weg. De rating corrigeert achteraf.
 - **B · Achtervolgingsstart:** de langzaamste boot start eerst. De anderen starten later,
   met het verschil in verwachte tijd. Wie het eerst finisht, wint.
@@ -145,18 +163,18 @@ wind van Open-Meteo, weergegeven in Beaufort.
 
 ## Gebruik op de racedag
 
-**Wedstrijdleiding** (`/?wl`, inloggen met het wachtwoord van de wedstrijdleiding):
+**Host** (onder *Organisatie* op het dashboard):
 1. Zet de start- en finishlijn en de boeien uit. Bij een lijn is het eerste punt vrij; het tweede snapt naar
    een van de acht windstreken (N, NO, O, …) en een lengte van 0,5, 1, 1,5 … zm. Wijzigingen zijn eerst een **concept**
    (geel op de kaart). Pas na **✓ Bevestigen** zien de boten ze. Zo voeg je tijdens de
    race niet per ongeluk een boei toe, maar kun je de baan wel bewust aanpassen,
    bijvoorbeeld bij een windshift.
-2. Kies in de tab **🏁 Race** een **starttijd** (de app stelt het eerste 5-minutenmoment minstens 10 minuten vooruit voor)
+2. Kies onder **Start** een **starttijd** (dat mag elk lid) (de app stelt het eerste 5-minutenmoment minstens 10 minuten vooruit voor)
    en stel een start voor: **Start A: gelijk**, **Start B: achtervolging** of **Start C: lussen**.
    De verwachte tijden en vertragingen staan in de baanplanning.
 3. Elke boot krijgt het voorstel op de tracker (met één glas van de scheepsbel) en tikt **✔ Akkoord**. Dat kan alleen
    de telefoon die de boot heeft geclaimd, dus eerst *Start tracking*. Zodra de laatste boot akkoord geeft, legt de server
-   de start meteen vast 🔒. Het dashboard van de wedstrijdleiding hoeft daarvoor niet open te staan.
+   de start meteen vast 🔒. Het dashboard hoeft daarvoor niet open te staan.
    - Een voorstel dat niet op tijd door iedereen is goedgekeurd, verloopt. Stel dan een nieuwe tijd voor.
    - Een nieuw voorstel vervangt het oude; iedereen moet dan opnieuw akkoord geven. *✖ Startvoorstel intrekken* haalt het weg.
    - Zolang er een voorstel open staat, telt het passeren van de startlijn nog niet.
@@ -167,7 +185,7 @@ wind van Open-Meteo, weergegeven in Beaufort.
 **Boeironden:**
 - Bij elke boei hoort een onzichtbare rondingslijn aan de buitenkant van de bocht. Wie die oversteekt, heeft de boei gerond.
 - Ligt een boei vrijwel op een rechte lijn, dan loopt de lijn dwars door de boei en telt passeren aan elke kant.
-- Mist een telefoon een ronding, dan kan de wedstrijdleiding die via *🛠 Boeironding handmatig corrigeren*
+- Mist een telefoon een ronding, dan kan een host die via *🛠 Boeironding handmatig corrigeren*
   goedkeuren of terugdraaien. De tracker neemt dat direct over.
 
 **Scheepsjournaal:**
@@ -178,8 +196,9 @@ wind van Open-Meteo, weergegeven in Beaufort.
   samen met een uurnotitie, dan worden ze één notitie.
 - De slotnotitie geeft de uitslag op het water én met de rating, ook als de race wordt afgerond terwijl er nog
   boten varen. Boten die niet uitvaren, blijven buiten het verhaal.
-- De verteller praat als een piraat (arr, matey, schatkisten en -kaarten). Om de paar notities volgt een
-  piratenversierzin of een quote van aan boord uit `BOOT_QUOTES` in `convex/lib/config.ts` (een tekst, of `{ tekst, boot, wie }`).
+- In de piratenmodus praat de verteller als een piraat (arr, matey, schatkisten en -kaarten) en volgt om de paar
+  notities een piratenversierzin. Heeft de groep quotes van aan boord (zoals de overgezette Firebase-groep), dan komt
+  er af en toe een voorbij.
 
 **🔮 Voorspelde eindstand** (tijdens de race, op het dashboard en de tracker): per boot de tijd tot de finish (met de
 verwachte kloktijd), de totale verzeilde tijd en de gecorrigeerde totale tijd, gesorteerd op die laatste. De tijd tot de
@@ -188,7 +207,7 @@ eigen baan) gedeeld door het tempo langs de baan: half het gemiddelde sinds de s
 Boten die binnen zijn staan er met hun echte tijd (🏁). Dezelfde voorspelling staat onder **Voorspelling** in de
 bootkaarten: tijd tot finish, eindtijd (verzeilde tijd) en eindtijd met rating.
 
-**🏁 Finish uit spoor** (tab Uitslagen, alleen wedstrijdleiding): voor een opgeslagen race met een boot zonder finish
+**🏁 Finish uit spoor** (tab Uitslagen, alleen hosts): voor een opgeslagen race met een boot zonder finish
 (bijv. als de finishlijn tijdens de race is verlengd) haalt de knop de eerste kruising van de finishlijn uit het spoor,
 toont het voorstel en past na bevestiging de tijden, de uitslag en het journaal aan.
 
@@ -210,20 +229,20 @@ race aan (de langzaamste tot de snelste 10%), met een kleurbalk in knopen.
 **Overstaghoeken** (in de replay: *⤢ Overstaghoeken tonen*): bij elk overstagmoment de hoek op de kaart en per boot
 het gemiddelde in de legenda. Een overstag is een blijvende koerswijziging van minstens 55° met een stabiele koers
 ervoor en erna. Zonder winddata is een gijp daar niet van te onderscheiden.
-- Met `?wl` staat er een testknop om meteen een notitie over dit moment te maken. Die blijft alleen lokaal.
+- Hosts hebben een testknop om meteen een notitie over dit moment te maken. Die blijft alleen lokaal.
 - Iedereen die het dashboard opent, ziet dezelfde notities, ook die van eerdere uren.
 
 **Op de boot** (tracker):
-- De eerste keer verschijnt een kompas (later weer te openen via 🧭 naast de titel). Waar het naar
+- In de piratenmodus verschijnt de eerste keer een kompas (later weer te openen via 🧭). Waar het naar
   wijst, moeten de zeilers zelf ontdekken 😉
-1. Kies je boot, vul eventueel een teamnaam in en druk op **Start tracking**.
+1. Open de groep, druk op **Meevaren**, kies je boot, vul eventueel een teamnaam in en druk op **Start tracking**.
    Geef toestemming voor locatie en meldingen.
 2. Telefoon aan de lader en de pagina open laten (het scherm blijft aan).
 3. Bovenin staat een grote aftelklok naar **jouw** start. De knop 🎯 volgt je eigen boot;
    tik op een andere boot om die te volgen.
 
-**🏴‍☠️ Het piratenspel** (zeeslag tussen de races door):
-1. De wedstrijdleiding opent *🏴‍☠️ Piratenspel* en kiest **⭕ Speelveld tekenen**: tik het midden. Standaard wordt het een
+**🏴‍☠️ Het piratenspel** (zeeslag tussen de races door, alleen in de piratenmodus):
+1. Een host opent onder *Organisatie* de tab *🏴‍☠️ Spel* en kiest **⭕ Speelveld tekenen**: tik het midden. Standaard wordt het een
    cirkel van 919 m straal (`veldStandaardM`); kies *Annuleren* om zelf de rand te tikken.
 2. **🏴‍☠️ Start zeeslag** telt 5 minuten af, met dezelfde grote aftelklok en kanonschoten (5 min, 1 min, start) als de race.
    Daarna heeft elk schip 3 levens en 10 salvo's. Tijdens het aftellen en de zeeslag slaan de trackers hun spoor op.
@@ -236,7 +255,7 @@ ervoor en erna. Zonder winddata is een gijp daar niet van te onderscheiden.
    - **Lading** (je houdt het vast tot je het gebruikt; zolang pak je geen nieuwe kist, en je krijgt 💰 achter de levens):
      🔭 *dubbel bereik* (volgende salvo 300 m), ↔️ *breder schot* (volgende salvo waaiert ± 30° uit),
      ⬆️ *voorkanon* (volgende salvo schiet ook recht vooruit) en 💣 *zeemijn* (leg hem met *Leg een zeemijn*;
-     wie er later binnen 25 m langs vaart, verliest een leven, jijzelf niet; alleen jij en de wedstrijdleiding zien hem).
+     wie er later binnen 25 m langs vaart, verliest een leven, jijzelf niet; alleen jij en de hosts zien hem).
    - **Meteen:** 🛡️ *schild* (de volgende treffer kaatst af), 👻 *spookschip* (3 minuten zien de anderen je schip niet
      op de kaart, ook niet op het dashboard), ⚡ *snel herladen* (5 minuten lang 30 seconden herladen) en
      🪤 *boobytrap* (je kanon is 5 minuten onklaar).
@@ -246,11 +265,11 @@ ervoor en erna. Zonder winddata is een gijp daar niet van te onderscheiden.
    dan de meeste salvo's over.
 7. **⏹ Stop** beëindigt de zeeslag. Nog een keer drukken haalt de uitslag van het scherm.
    Het speelveld (de rode cirkel) en de schootslijnen zijn voor iedereen te zien zolang het speelveld er staat;
-   **🗑 Speelveld weg** haalt het weg. Voor een zeeslag kan de wedstrijdleiding de start- en finishlijn weghalen met
+   **🗑 Speelveld weg** haalt het weg. Voor een zeeslag kan een host de start- en finishlijn weghalen met
    **🗑 Start- en finishlijn weg** (tab Baan; via het concept, dus pas na bevestigen). Het scorebord zie je alleen tijdens
    en na een zeeslag. De regels staan altijd in de tab Regels, onder *De Piratencode*. De boten zijn dan eenvoudige scheepjes in kaartstijl; tijdens de zeeslag worden
    het piratenschepen (sloep, brigantijn, fregat, op schaal van de echte romplengte).
-8. **Bewaard bij Uitslagen:** zodra de zeeslag voorbij is, slaat het dashboard van een ingelogde wedstrijdleider hem op
+8. **Bewaard bij Uitslagen:** zodra de zeeslag voorbij is, slaat het dashboard van een host hem op
    (ook vóór een nieuwe zeeslag of het wissen van de uitslag). Onder *🏴‍☠️ Zeeslagen* staan dan de eindstand, een
    **▶ Replay** (sporen, krimpend speelveld, schatkisten, mijnen, een rookwolkje bij elk salvo en vliegende kogels tijdens
    het afspelen, met de levens per schip) en een **📜 Scheepsjournaal**. Zonder race worden de sporen daarna gewist.
@@ -282,7 +301,7 @@ de afstand en de koers, en vanaf het derde punt ook het totaal. Nog een keer op 
   20 seconden geen GPS-fix is of als locatie wordt geweigerd. Losse GPS-haperingen geven geen alarm.
   Zonder positie herstart de app de GPS elke 15 seconden, en zodra er weer een positie is, stopt het alarm.
 - Zit de pagina op de achtergrond, dan komt er een systeemmelding.
-- De wedstrijdleiding krijgt een alarm als een boot offline gaat.
+- Hosts krijgen een alarm als een boot offline gaat.
 - Op de **iPhone** werken meldingen alleen als de site via *Deel → Zet op beginscherm*
   als app is toegevoegd.
 - Een melding sturen naar een telefoon waarop de pagina helemaal **gesloten** is, kan

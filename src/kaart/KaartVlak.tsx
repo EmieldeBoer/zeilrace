@@ -45,13 +45,13 @@ export function KaartVlak({ onKaart, knoppen = [], wind, className, children }: 
   return (
     <div className={cn("relative isolate overflow-hidden", className)}>
       <div ref={vak} className="absolute inset-0 z-0" />
-      <div className="absolute top-2.5 right-2.5 z-[800] flex flex-col overflow-hidden rounded-md border-2 border-messing-donker shadow-[0_2px_8px_rgba(0,0,0,.6)]">
+      <div className="absolute top-2.5 right-2.5 z-[800] flex flex-col overflow-hidden rounded-md border-2 border-kader shadow-[0_2px_8px_rgba(0,0,0,.6)]">
         {alle.map((k) => (
           <Tooltip key={k.id}>
             <TooltipTrigger render={
               <Button size="icon-lg" aria-label={k.titel} aria-pressed={k.actief || undefined} onClick={k.klik}
-                className={cn("rounded-none border-0 border-b border-messing-donker last:border-b-0 font-sans text-[22px] shadow-none",
-                  k.actief && "bg-[image:linear-gradient(#4f9a74,var(--color-verdigris))] text-white shadow-[inset_0_0_0_2px_var(--color-verdigris-licht)]")} />
+                className={cn("rounded-none border-0 border-b border-kader last:border-b-0 font-sans text-[22px] shadow-none",
+                  k.actief && "[background:var(--groen-bg)] text-white shadow-[inset_0_0_0_3px_var(--color-kader-licht)]")} />
             }>{k.tekst}</TooltipTrigger>
             <TooltipContent side="left">{k.titel}</TooltipContent>
           </Tooltip>
@@ -69,12 +69,12 @@ function WindWidget({ wind }: { wind: WindStaat }) {
   const w = typeof wind === "object" ? wind : null;
   return (
     <div className="plaquette absolute bottom-6 left-2.5 z-[800] flex items-center gap-3 rounded-[10px] px-3 py-1.5 pointer-events-none">
-      <div className={cn("text-[28px] leading-none text-goud transition-transform duration-500 [text-shadow:0_0_6px_rgba(240,199,94,.4)]", !w && "opacity-25")}
+      <div className={cn("text-[28px] leading-none text-kop transition-transform duration-500 [text-shadow:0_0_6px_rgba(240,199,94,.4)]", !w && "opacity-25")}
         style={w ? { transform: `rotate(${w.richting + 180}deg)` } : undefined} title="wijst mee met de wind">↑</div>
       <div>
-        <div className="font-kap text-[.66rem] tracking-[.14em] text-ivoor-zacht uppercase">Wind</div>
-        <div className="font-kap text-[1.3rem] font-bold text-goud">{w ? bft(w.kn) : "–"} Bft</div>
-        <div className="text-[.85rem] text-ivoor-zacht">
+        <div className="font-kop text-[.66rem] tracking-[.14em] text-muted-foreground uppercase">Wind</div>
+        <div className="font-kop text-[1.3rem] font-bold text-kop">{w ? bft(w.kn) : "–"} Bft</div>
+        <div className="text-[.85rem] text-muted-foreground">
           {w ? `uit ${kompas(w.richting)} (${Math.round(w.richting)}°) · vlagen ${bft(w.vlagen)} Bft`
             : wind === "fout" ? "wind niet beschikbaar" : "laden…"}
         </div>
@@ -102,9 +102,9 @@ function ZeemijlSchaal({ kaart }: { kaart: L.Map }) {
   }, [kaart]);
   if (!schaal) return null;
   return (
-    <div className="pointer-events-none absolute right-2.5 bottom-6 z-[800] rounded-[3px] border border-[#8a6a3a] bg-[rgba(234,216,174,.9)] px-[7px] pt-[3px] pb-0.5 shadow-[0_1px_4px_rgba(0,0,0,.4)]">
-      <div className="flex h-1.5 border-[1.5px] border-inkt" style={{ width: schaal.px }}><i className="flex-1 bg-inkt" /><i className="flex-1" /></div>
-      <div className="text-center font-kap text-[10px] leading-[1.3] font-bold tracking-[.03em] text-inkt">{schaal.tekst}</div>
+    <div className="pointer-events-none absolute right-2.5 bottom-6 z-[800] rounded-[3px] border border-rand bg-[rgba(234,216,174,.9)] px-[7px] pt-[3px] pb-0.5 shadow-[0_1px_4px_rgba(0,0,0,.4)]">
+      <div className="flex h-1.5 border-[1.5px] border-stip" style={{ width: schaal.px }}><i className="flex-1 bg-stip" /><i className="flex-1" /></div>
+      <div className="text-center font-kop text-[10px] leading-[1.3] font-bold tracking-[.03em] text-card-foreground">{schaal.tekst}</div>
     </div>
   );
 }

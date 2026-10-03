@@ -1,12 +1,12 @@
 // 🏆 Uitslagen: klassement, ratingcheck, polars, elke race (met replay, journaal en
 // voor de wedstrijdleiding naam, finish uit spoor en wissen) en de bewaarde zeeslagen
-import { useMutation, useQuery } from "convex/react";
+import { useMutation, usePaginatedQuery } from "convex/react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { api } from "../../../convex/_generated/api";
-import { BOTEN, FLEET } from "../../../convex/lib/config";
+import { BOTEN, FLEET, registreerBoten } from "../../../convex/lib/config";
 import { SPEL } from "../../../convex/lib/spel";
-import type { Uitslag, WindUur, Zeeslag } from "../../../convex/lib/validators";
+import type { BootSnapshot, Quote, Uitslag, WindUur, Zeeslag } from "../../../convex/lib/validators";
 import { BootStip } from "@/components/BootKaart";
 import { useBevestig } from "@/components/Bevestig";
 import { PolarDiagram } from "@/components/uitslagen/PolarDiagram";
@@ -14,14 +14,14 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import type { Wl } from "@/hooks/useWl";
+import { useGroep } from "@/hooks/useGroep";
 import { startNaam } from "@/lib/baan";
 import { foutTekst } from "@/lib/fouten";
 import { datumKort, formatAfstand, formatDuur, formatKlok } from "@/lib/format";
 import { harten } from "@/lib/piraat";
 import * as Polar from "@/lib/polar";
 import {
-  afstandUitSpoor, DNF_PUNTEN, finishVoorstellen, kanFinishUitSpoor, raceEinde, racePlek, rangen, RATING_MIN_RACES, ratingVerdiend, uitslagLijst,
+  afstandUitSpoor, dnfPunten, finishVoorstellen, kanFinishUitSpoor, raceEinde, racePlek, rangen, RATING_MIN_RACES, ratingVerdiend, uitslagLijst,
 } from "@/lib/uitslag";
 import * as Verteller from "@/lib/verteller";
 import { JournaalLijst } from "./Journaal";
@@ -31,22 +31,35 @@ export type ReplayKeuze = { soort: "race"; res: Uitslag } | { soort: "zeeslag"; 
 const Blok = ({ children, className }: { children: ReactNode; className?: string }) =>
   <Card className={cn("mb-5 gap-0 rounded-md px-4 pt-1.5 pb-3", className)}>{children}</Card>;
 const Kop = ({ children }: { children: ReactNode }) =>
-  <h3 className="mx-0.5 mt-3.5 mb-1 flex flex-wrap items-center gap-1.5 font-kap text-[1.05rem] font-bold">{children}</h3>;
+  <h3 className="mx-0.5 mt-3.5 mb-1 flex flex-wrap items-center gap-1.5 font-kop text-[1.05rem] font-bold">{children}</h3>;
 const Sub = ({ children, className }: { children: ReactNode; className?: string }) =>
   <div className={cn("mx-0.5 mb-2 text-[.9rem] text-muted-foreground italic", className)}>{children}</div>;
 const Knop = (p: React.ComponentProps<typeof Button>) => <Button size="sm" {...p} />;
 
-export function Uitslagen({ wl, naamVan, onReplay }: { wl: Wl; naamVan: (b: string) => string; onReplay: (k: ReplayKeuze) => void }) {
-  const races = useQuery(api.uitslagen.races);
-  const zeeslagen = useQuery(api.uitslagen.zeeslagen);
-  const admin = wl.isWl, token = wl.token;
+// Alle pagina's ophalen; undefined tot ze er allemaal zijn
+function useAlles<T>(p: { results: T[]; status: string; loadMore: (n: number) => void }): T[] | undefined {
+  const { status, loadMore } = p;
+  useEffect(() => { if (status === "CanLoadMore") loadMore(3); }, [status, loadMore]);
+  return status === "Exhausted" ? p.results : undefined;
+}
+
+export function Uitslagen({ onReplay }: { onReplay: (k: ReplayKeuze) => void }) {
+  const { groep, token, isHost, race } = useGroep();
+  const g = { groep: groep.id, token };
+  const races = useAlles(usePaginatedQuery(api.uitslagen.races, g, { initialNumItems: 3 }));
+  const zeeslagen = useAlles(usePaginatedQuery(api.uitslagen.zeeslagen, groep.piraat ? g : "skip", { initialNumItems: 3 }));
+  const admin = isHost, naamVan = race.naamVan;
+  const verteller = { piraat: groep.piraat, quotes: race.baan.quotes };
   const { bevestig, invoer, melding } = useBevestig();
-  const wis = useMutation(api.wl.uitslagWis), hernoem = useMutation(api.wl.uitslagNaam);
-  const finishFix = useMutation(api.wl.uitslagFinish), zeeslagWis = useMutation(api.wl.zeeslagWis);
+  const wis = useMutation(api.host.uitslagWis), hernoem = useMutation(api.host.uitslagNaam);
+  const finishFix = useMutation(api.host.uitslagFinish), zeeslagWis = useMutation(api.host.zeeslagWis);
   const doe = async (fn: () => Promise<unknown>) => { try { await fn(); } catch (e) { await melding({ titel: "Mislukt", tekst: foutTekst(e) }); } };
 
-  if (races === undefined || zeeslagen === undefined) return <div className="mx-auto max-w-[820px] py-5 text-ivoor-zacht italic">Uitslagen laden…</div>;
-  const lijst = [...races].sort((a, b) => a.nr - b.nr) as Uitslag[];
+  if (races === undefined || (groep.piraat && zeeslagen === undefined)) return <div className="mx-auto max-w-[820px] py-5 text-muted-foreground italic">Uitslagen laden…</div>;
+  // de boten zoals ze in elke race waren (ook boten die niet meer in de groep zitten)
+  (races ?? []).forEach((r) => registreerBoten((r as { boten?: Record<string, BootSnapshot> }).boten));
+  const lijst = [...(races ?? [])].sort((a, b) => a.nr - b.nr) as Uitslag[];
+  const zs = (zeeslagen ?? []) as Zeeslag[];
   const nummers = lijst.map((r) => r.nr);
   const perNr = Object.fromEntries(lijst.map((r) => [r.nr, r]));
 
@@ -58,42 +71,42 @@ export function Uitslagen({ wl, naamVan, onReplay }: { wl: Wl; naamVan: (b: stri
         voorstel.map((v) => `${nm(v.boot)}: finish ${formatKlok(v.finish)} → verzeild ${formatDuur(v.elapsed)}, gecorrigeerd ${formatDuur(v.corrected)}`).join("\n") +
         "\n\nHet tijdstip is tussen twee spoorpunten ingeschat (enkele seconden nauwkeurig). " +
         "Het bewaarde journaal wordt vervangen door een journaal uit de sporen met de nieuwe uitslag." }))) return;
-    await doe(() => finishFix({ token, nr: res.nr, finishes: voorstel }));
+    await doe(() => finishFix({ ...g, nr: res.nr, finishes: voorstel }));
   }
 
   return (
     <div className="mx-auto max-w-[820px]">
-      <h1 className="titel-goud mb-1 text-[2.4rem]">🏆 De Buit — uitslagen &amp; klassement</h1>
-      <p className="mb-[22px] text-[1.08rem] leading-normal text-ivoor-zacht italic">Klassement volgens low-point (laagste totaal wint), op
+      <h1 className="titel mb-1 text-[2.4rem]">{groep.piraat ? "🏆 De Buit: uitslagen & klassement" : "Uitslagen & klassement"}</h1>
+      <p className="mb-[22px] text-[1.08rem] leading-normal text-muted-foreground italic">Klassement volgens low-point (laagste totaal wint), op
         <b> gecorrigeerde tijd</b> (met rating). Per race zie je ook de verzeilde tijd. Per race kun je de <b>replay</b> bekijken:
         sleep door de tijd, speel hem af, of maak er een video of foto van.</p>
 
       {!nummers.length ? (
-        <div className="px-0.5 py-5 text-ivoor-zacht italic">Nog geen races afgerond. De wedstrijdleiding rondt een race af via
-          "Race afronden &amp; opslaan" (Live-tab met ?wl).</div>
+        <div className="px-0.5 py-5 text-muted-foreground italic">Nog geen races afgerond. Een host rondt een race af via
+          "Race afronden & opslaan" (Live, Organisatie → Start).</div>
       ) : <>
         <Klassement nummers={nummers} perNr={perNr} naamVan={naamVan} />
         <RatingCheck nummers={nummers} perNr={perNr} naamVan={naamVan} />
         <Polars races={lijst} naamVan={naamVan} />
         {[...lijst].reverse().map((res) => (
-          <RaceBlok key={res.nr} res={res} naamVan={naamVan} admin={admin}
+          <RaceBlok key={res.nr} res={res} naamVan={naamVan} admin={admin} verteller={verteller}
             onReplay={() => onReplay({ soort: "race", res })}
             onNaam={async () => {
               const naam = await invoer({ titel: `Naam voor race ${res.nr}`, tekst: "Leeg = geen naam.", standaard: res.naam || "", max: 60, ok: "Opslaan" });
-              if (naam !== null) await doe(() => hernoem({ token, nr: res.nr, naam }));
+              if (naam !== null) await doe(() => hernoem({ ...g, nr: res.nr, naam }));
             }}
             onFinish={() => corrigeerFinish(res)}
             onWis={async () => { if (await bevestig({ titel: `Race ${res.nr} definitief verwijderen uit de uitslagen?`, gevaar: true, ok: "🗑 Verwijderen" }))
-              await doe(() => wis({ token, nr: res.nr })); }} />
+              await doe(() => wis({ ...g, nr: res.nr })); }} />
         ))}
       </>}
 
-      {zeeslagen.length > 0 && <>
-        <h2 className="titel-goud mt-8 mb-3 text-[1.8rem]">🏴‍☠️ Zeeslagen</h2>
-        {[...(zeeslagen as Zeeslag[])].sort((a, b) => b.start - a.start).map((z) => (
+      {groep.piraat && zs.length > 0 && <>
+        <h2 className="titel mt-8 mb-3 text-[1.8rem]">🏴‍☠️ Zeeslagen</h2>
+        {[...zs].sort((a, b) => b.start - a.start).map((z) => (
           <ZeeslagBlok key={z.start} z={z} naamVan={naamVan} admin={admin} onReplay={() => onReplay({ soort: "zeeslag", z })}
             onWis={async () => { if (await bevestig({ titel: "Deze zeeslag definitief verwijderen?", gevaar: true, ok: "🗑 Verwijderen" }))
-              await doe(() => zeeslagWis({ token, start: z.start })); }} />
+              await doe(() => zeeslagWis({ ...g, start: z.start })); }} />
         ))}
       </>}
     </div>
@@ -103,12 +116,14 @@ export function Uitslagen({ wl, naamVan, onReplay }: { wl: Wl; naamVan: (b: stri
 // ---- Klassement op gecorrigeerde tijd (met rating), low-point ----
 function Klassement({ nummers, perNr, naamVan }: { nummers: number[]; perNr: Record<number, Uitslag>; naamVan: (b: string) => string }) {
   const punten: Record<string, Record<number, number>> = {}, totaal: Record<string, number> = {};
-  FLEET.forEach((b) => { punten[b] = {}; totaal[b] = 0; });
+  const boten = [...new Set([...FLEET, ...nummers.flatMap((nr) => Object.keys(perNr[nr].uitslag || {}))])].filter((b) => BOTEN[b]);
+  const DNF_PUNTEN = dnfPunten(boten.length);
+  boten.forEach((b) => { punten[b] = {}; totaal[b] = 0; });
   nummers.forEach((nr) => {
     const r = rangen(uitslagLijst(perNr[nr]), "corrected");
-    FLEET.forEach((b) => { punten[b][nr] = r[b] || DNF_PUNTEN; totaal[b] += punten[b][nr]; });
+    boten.forEach((b) => { punten[b][nr] = r[b] || DNF_PUNTEN; totaal[b] += punten[b][nr]; });
   });
-  const volgorde = [...FLEET].sort((a, b) => {
+  const volgorde = [...boten].sort((a, b) => {
     if (totaal[a] !== totaal[b]) return totaal[a] - totaal[b];
     for (let k = nummers.length - 1; k >= 0; k--) {        // gelijkspel: laatste race beslist
       const nr = nummers[k];
@@ -128,7 +143,7 @@ function Klassement({ nummers, perNr, naamVan }: { nummers: number[]; perNr: Rec
         </TableRow></TableHeader>
         <TableBody>
           {volgorde.map((b, i) => (
-            <TableRow key={b} className={cn(i === 0 && "font-bold text-bloed")}>
+            <TableRow key={b} className={cn(i === 0 && "font-bold text-winst")}>
               <TableCell className="text-center font-bold">{i === 0 ? "👑 " : ""}{i + 1}</TableCell>
               <TableCell className="max-w-[150px] truncate"><BootStip boot={b} className="mr-1.5" />{naamVan(b)}</TableCell>
               {nummers.map((nr) => <TableCell key={nr} className="text-center">{punten[b][nr]}</TableCell>)}
@@ -146,7 +161,7 @@ function RatingCheck({ nummers, perNr, naamVan }: { nummers: number[]; perNr: Re
   const perRace = nummers.map((nr) => ({ nr, v: ratingVerdiend(perNr[nr]) })).filter((x): x is { nr: number; v: Record<string, number> } => !!x.v);
   if (!perRace.length) return null;
   const pct = (x: number) => (x >= 0 ? "+" : "−") + Math.abs(x * 100).toFixed(1) + "%";
-  const boten = FLEET.filter((b) => perRace.some((x) => x.v[b] != null));
+  const boten = [...new Set(perRace.flatMap((x) => Object.keys(x.v)))].filter((b) => BOTEN[b]);
   const samen: Record<string, { n: number; verdiend: number; afwijking: number }> = {};
   boten.forEach((b) => {
     const verh = perRace.map((x) => x.v[b]).filter((v) => v != null).map((v) => v / BOTEN[b].rating);
@@ -159,7 +174,7 @@ function RatingCheck({ nummers, perNr, naamVan }: { nummers: number[]; perNr: Re
     <Blok>
       <Kop>⚖️ Ratingcheck</Kop>
       <Sub>Welke rating had elke boot nodig gehad om precies gelijk te eindigen? Gemiddeld over de afgeronde races, met dezelfde
-        gemiddelde rating als nu. {!advies && <b>Indicatie — nog te weinig races voor een advies (vanaf {RATING_MIN_RACES} per boot).</b>}</Sub>
+        gemiddelde rating als nu. {!advies && <b>Indicatie: nog te weinig races voor een advies (vanaf {RATING_MIN_RACES} per boot).</b>}</Sub>
       <Table>
         <TableHeader><TableRow className="hover:bg-transparent">
           <TableHead>Boot</TableHead><TableHead className="text-right">Nu</TableHead>
@@ -173,12 +188,12 @@ function RatingCheck({ nummers, perNr, naamVan }: { nummers: number[]; perNr: Re
               <TableCell className="text-right">{BOTEN[b].rating.toFixed(3)}</TableCell>
               {perRace.map((x) => <TableCell key={x.nr} className="text-right">{x.v[b] != null ? x.v[b].toFixed(3) : "—"}</TableCell>)}
               <TableCell className="text-right"><b>{samen[b].verdiend.toFixed(3)}</b></TableCell>
-              <TableCell className={cn("text-right", Math.abs(samen[b].afwijking) >= 0.03 && "font-bold text-bloed")}>{pct(samen[b].afwijking)}</TableCell>
+              <TableCell className={cn("text-right", Math.abs(samen[b].afwijking) >= 0.03 && "font-bold text-signaal")}>{pct(samen[b].afwijking)}</TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
-      {advies && <Sub className="mt-2">{lijst.length ? <>Advies (in <code>convex/lib/config.ts</code>, via de GPH): {lijst.map((b, i) =>
+      {advies && <Sub className="mt-2">{lijst.length ? <>Advies (een host past de rating aan bij Groep → Boten): {lijst.map((b, i) =>
         <span key={b}>{i ? " · " : ""}{naamVan(b)}: {BOTEN[b].rating.toFixed(3)} → <b>{samen[b].verdiend.toFixed(3)}</b></span>)}</>
         : "De ratings kloppen goed: geen boot wijkt 2% of meer af."}</Sub>}
       <Sub>Let op: bemanning, starts en het soort baan (kruisen, ruime wind) tellen hier ook mee. Beoordeel liever meerdere races
@@ -213,7 +228,7 @@ function Polars({ races, naamVan }: { races: Uitslag[]; naamVan: (b: string) => 
   }, [sleutel, bruikbaar]);
   if (!bruikbaar.length) return null;
   if (!cache) return <Blok><Kop>🧭 Polars</Kop><Sub>Wind ophalen en polars opbouwen…</Sub></Blok>;
-  const boten = FLEET.filter((b) => cache.data[b] && cache.data[b].n);
+  const boten = Object.keys(cache.data).filter((b) => BOTEN[b] && cache.data[b].n);
   if (!boten.length) return <Blok><Kop>🧭 Polars</Kop><Sub>Nog geen bruikbare metingen (geen wind of sporen gevonden).</Sub></Blok>;
   const gekozen = boot && boten.includes(boot) ? boot : boten[0];
   const p = cache.data[gekozen];
@@ -246,13 +261,13 @@ function Polars({ races, naamVan }: { races: Uitslag[]; naamVan: (b: string) => 
 }
 
 // ---- Eén race ----
-function RaceBlok({ res, naamVan, admin, onReplay, onNaam, onFinish, onWis }: {
-  res: Uitslag; naamVan: (b: string) => string; admin: boolean; onReplay: () => void; onNaam: () => void; onFinish: () => void; onWis: () => void;
+function RaceBlok({ res, naamVan, admin, verteller, onReplay, onNaam, onFinish, onWis }: {
+  res: Uitslag; naamVan: (b: string) => string; admin: boolean; verteller: { piraat: boolean; quotes: Quote[] }; onReplay: () => void; onNaam: () => void; onFinish: () => void; onWis: () => void;
 }) {
   const lijst = uitslagLijst(res), rMet = rangen(lijst, "corrected");
   const nm = (b: string) => res.namen?.[b] || naamVan(b);
   lijst.sort((a, b) => (rMet[a.naam] || 99) - (rMet[b.naam] || 99));
-  const journaal = useMemo(() => { try { return Verteller.uitArchief(res, nm); } catch { return null; } },
+  const journaal = useMemo(() => { try { return Verteller.uitArchief(res, nm, verteller); } catch { return null; } },
     [res]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <Blok>
@@ -274,7 +289,7 @@ function RaceBlok({ res, naamVan, admin, onReplay, onNaam, onFinish, onWis }: {
           {lijst.map((r) => {
             const afst = r.afstand != null ? r.afstand : afstandUitSpoor(res, r.naam);
             return (
-              <TableRow key={r.naam} className={cn(rMet[r.naam] === 1 && "font-bold text-bloed")}>
+              <TableRow key={r.naam} className={cn(rMet[r.naam] === 1 && "font-bold text-winst")}>
                 <TableCell className="text-center font-bold">{rMet[r.naam] === 1 ? "👑 " : ""}{rMet[r.naam] || "–"}</TableCell>
                 <TableCell className="max-w-[150px] truncate"><BootStip boot={r.naam} className="mr-1.5" />{nm(r.naam)}</TableCell>
                 <TableCell className="text-right">{r.gefinisht ? formatDuur(r.elapsed) : "DNF"}</TableCell>
@@ -287,7 +302,7 @@ function RaceBlok({ res, naamVan, admin, onReplay, onNaam, onFinish, onWis }: {
       </Table>
       {journaal && journaal.notities.length > 0 && (
         <Collapsible className="mx-0.5 mt-2.5 mb-1">
-          <CollapsibleTrigger className="min-h-9 cursor-pointer font-kap text-[.9rem] font-bold text-bloed">📜 Scheepsjournaal
+          <CollapsibleTrigger className="min-h-9 cursor-pointer font-kop text-[.9rem] font-bold text-signaal">📜 Scheepsjournaal
             {journaal.achteraf && <small className="font-sans font-normal text-muted-foreground italic"> (achteraf opgemaakt uit de sporen)</small>}</CollapsibleTrigger>
           <CollapsibleContent><JournaalLijst notities={[...journaal.notities].reverse()} className="max-h-[60vh] bg-[rgba(255,250,230,.45)] shadow-none [background-image:none]" /></CollapsibleContent>
         </Collapsible>
@@ -316,7 +331,7 @@ function ZeeslagBlok({ z, naamVan, admin, onReplay, onWis }: {
           </TableRow></TableHeader>
           <TableBody>
             {z.stand.map((r, i) => (
-              <TableRow key={r.boot} className={cn(i === 0 && z.winnaar && "font-bold text-bloed")}>
+              <TableRow key={r.boot} className={cn(i === 0 && z.winnaar && "font-bold text-winst")}>
                 <TableCell className="text-center font-bold">{i === 0 && z.winnaar ? "👑 " : ""}{i + 1}</TableCell>
                 <TableCell className="max-w-[150px] truncate"><BootStip boot={r.boot} className="mr-1.5" />{nm(r.boot)}</TableCell>
                 <TableCell>{r.levens ? harten(r.levens) : "☠️ gezonken"}</TableCell>
@@ -329,7 +344,7 @@ function ZeeslagBlok({ z, naamVan, admin, onReplay, onWis }: {
       )}
       {z.journaal.length > 0 && (
         <Collapsible className="mx-0.5 mt-2.5 mb-1">
-          <CollapsibleTrigger className="min-h-9 cursor-pointer font-kap text-[.9rem] font-bold text-bloed">📜 Scheepsjournaal</CollapsibleTrigger>
+          <CollapsibleTrigger className="min-h-9 cursor-pointer font-kop text-[.9rem] font-bold text-signaal">📜 Scheepsjournaal</CollapsibleTrigger>
           <CollapsibleContent><JournaalLijst notities={[...z.journaal].reverse()} className="max-h-[60vh] bg-[rgba(255,250,230,.45)] shadow-none [background-image:none]" /></CollapsibleContent>
         </Collapsible>
       )}

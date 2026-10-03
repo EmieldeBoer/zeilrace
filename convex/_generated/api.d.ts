@@ -10,7 +10,8 @@
 
 import type * as beheer from "../beheer.js";
 import type * as boot from "../boot.js";
-import type * as crons from "../crons.js";
+import type * as groepen from "../groepen.js";
+import type * as host from "../host.js";
 import type * as lib_config from "../lib/config.js";
 import type * as lib_db from "../lib/db.js";
 import type * as lib_spel from "../lib/spel.js";
@@ -18,7 +19,6 @@ import type * as lib_validators from "../lib/validators.js";
 import type * as race from "../race.js";
 import type * as spel from "../spel.js";
 import type * as uitslagen from "../uitslagen.js";
-import type * as wl from "../wl.js";
 
 import type {
   ApiFromModules,
@@ -29,7 +29,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   beheer: typeof beheer;
   boot: typeof boot;
-  crons: typeof crons;
+  groepen: typeof groepen;
+  host: typeof host;
   "lib/config": typeof lib_config;
   "lib/db": typeof lib_db;
   "lib/spel": typeof lib_spel;
@@ -37,7 +38,6 @@ declare const fullApi: ApiFromModules<{
   race: typeof race;
   spel: typeof spel;
   uitslagen: typeof uitslagen;
-  wl: typeof wl;
 }>;
 
 /**

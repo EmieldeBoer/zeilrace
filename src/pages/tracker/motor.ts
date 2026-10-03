@@ -7,7 +7,8 @@
 // ============================================================
 import type { ConvexReactClient } from "convex/react";
 import { api } from "../../../convex/_generated/api";
-import { BOTEN, FLEET, RONDINGS_LIJN_M, RONDINGS_MARGE_MAX_M } from "../../../convex/lib/config";
+import type { Id } from "../../../convex/_generated/dataModel";
+import { FLEET, RONDINGS_LIJN_M, RONDINGS_MARGE_MAX_M } from "../../../convex/lib/config";
 import { BUIT, SPEL } from "../../../convex/lib/spel";
 import type { Schot } from "../../../convex/lib/validators";
 import type { BaanData, BootInfo, PositieInfo } from "@/hooks/useRace";
@@ -18,7 +19,6 @@ import { formatDuur, formatKlok, groteLetter } from "@/lib/format";
 import { GELUID, initAudio, kanonschot, scheepsbel, speel } from "@/lib/geluid";
 import { afstandMeter, boeiPrevNext, lijnstukkenKruisen, peiling, rondingsLijn, heeftLijn, type LatLng } from "@/lib/geo";
 import * as Piraat from "@/lib/piraat";
-import { toestelToken } from "@/lib/toestel";
 import type { SpelData } from "../../../convex/lib/validators";
 
 export type Melding = { tekst: string; soort?: "goed" | "fout" };
@@ -40,8 +40,9 @@ const vrijNummer = (lijst: Record<string, unknown> | undefined, max: number) => 
 export class TrackerMotor {
   private convex: ConvexReactClient;
   private opnieuw: () => void;
-  readonly token = toestelToken();
-  data: MotorData = { baan: { lines: {}, marks: [], raceStart: null, startPlan: null, voorstel: null, gen: 0 }, boten: {}, posities: {}, spel: null, naamVan: (b) => b };
+  private readonly groep: Id<"groepen">;
+  readonly token: string;
+  data: MotorData = { baan: { lines: {}, marks: [], raceStart: null, startPlan: null, voorstel: null, gen: 0, quotes: [] }, boten: {}, posities: {}, spel: null, naamVan: (b) => b };
   spelStand: Piraat.SpelStand = Piraat.stand(null, {});
 
   boot: string = FLEET[0];
@@ -83,8 +84,10 @@ export class TrackerMotor {
   private vorigBezig: { start?: number; bezig: boolean } | null = null;
   private vorigeKrimpCheck: number | null = null;
 
-  constructor(convex: ConvexReactClient, opnieuw: () => void) {
+  constructor(convex: ConvexReactClient, groep: Id<"groepen">, token: string, opnieuw: () => void) {
     this.convex = convex;
+    this.groep = groep;
+    this.token = token;
     this.opnieuw = opnieuw;
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").then((r) => { this.swReg = r; }).catch(() => {});
   }
@@ -127,7 +130,13 @@ export class TrackerMotor {
     this.data = d;
     if (!this.actief) return;
     const s = d.boten[this.boot];
-    if (!s) return;
+    if (!s) { this.stop(false); this.meld("Deze boot is uit de groep gehaald. Kies een andere boot.", "fout"); return; }
+    // Een ander toestel heeft de boot overgenomen (bijv. een andere telefoon aan boord)
+    if (!s.vanMij) {
+      this.stop(false);
+      this.meld(`Je boot is overgenomen${s.claimNaam ? " door " + s.claimNaam : ""} op een ander toestel. Deze telefoon stuurt geen positie meer.`, "fout");
+      return;
+    }
     // Auto-reset: wist de wedstrijdleiding de race (tijden weg), dan wist de tracker zijn eigen voortgang
     if (s.start == null && s.finish == null && (this.mijnTijden.start != null || this.mijnTijden.finish != null) && !this.wachtend.has("start")) {
       this.mijnTijden = { start: null, finish: null };
@@ -149,26 +158,25 @@ export class TrackerMotor {
     const samen: Gerond = { ...gerond };
     this.wachtend.forEach((id) => { if (this.mijnGerond[id] != null && samen[id] == null) samen[id] = this.mijnGerond[id]; });
     this.mijnGerond = samen;
-    if (nieuw.length) this.meld(`🟠 ${nieuw.join(", ")} gerond (door de wedstrijdleiding)`, "goed");
-    else if (weg.length && this.mijnTijden.start != null) this.meld(`↩️ Wedstrijdleiding: ${weg.join(", ")} moet je nog ronden`, "fout");
+    if (nieuw.length) this.meld(`🟠 ${nieuw.join(", ")} gerond (door een host)`, "goed");
+    else if (weg.length && this.mijnTijden.start != null) this.meld(`↩️ Host: ${weg.join(", ")} moet je nog ronden`, "fout");
   }
 
   // =========================================================
   //  Starten / stoppen (boot claimen, zodat niemand anders jouw boot kan gebruiken)
   // =========================================================
-  async start(teamnaam: string) {
-    if (!("geolocation" in navigator)) { this.meld("Deze telefoon/browser ondersteunt geen GPS.", "fout"); return; }
+  // Start tracking. Gebruikt een ander toestel de boot al, dan komt { bezet: naam } terug
+  // en kan de pagina vragen of je hem wilt overnemen (overnemen = true).
+  async start(teamnaam: string, overnemen = false): Promise<{ bezet: string | null } | null> {
+    if (!("geolocation" in navigator)) { this.meld("Deze telefoon of browser kan geen GPS gebruiken.", "fout"); return null; }
     initAudio();
     this.vraagMeldingToestemming();
     const boot = this.boot;
     try {
-      const r = await this.convex.mutation(api.boot.claim, { boot, token: this.token });
-      if (!r.ok) {
-        this.meld(`${BOTEN[boot].model} is al in gebruik op een ander toestel. Kies je eigen boot, of vraag de wedstrijdleiding om "Boten vrijgeven".`, "fout");
-        return;
-      }
-      await this.convex.mutation(api.boot.naam, { boot, token: this.token, naam: teamnaam });
-    } catch (e) { this.meld(foutTekst(e), "fout"); return; }
+      const r = await this.convex.mutation(api.boot.claim, { groep: this.groep, token: this.token, boot, overnemen });
+      if (!r.ok) return { bezet: r.door };
+      await this.convex.mutation(api.boot.naam, { groep: this.groep, token: this.token, boot, naam: teamnaam });
+    } catch (e) { this.meld(foutTekst(e), "fout"); return null; }
     const s = this.data.boten[boot];
     this.mijnTijden = { start: s?.start ?? null, finish: s?.finish ?? null };
     this.mijnGerond = { ...(s?.gerond || {}) }; this.serverGerond = null; this.wachtend.clear();
@@ -178,8 +186,13 @@ export class TrackerMotor {
     await this.vraagWakeLock();
     this.startGps();
     this.opnieuw();
+    return null;
   }
-  stop() {
+  // Stoppen. Is de race voor deze boot niet bezig, dan komt de boot ook vrij voor een ander toestel.
+  stop(loslaten = true) {
+    const midden = this.data.baan.raceStart != null && this.mijnTijden.start != null && this.mijnTijden.finish == null;
+    if (loslaten && this.actief && !midden)
+      this.convex.mutation(api.boot.loslaten, { groep: this.groep, token: this.token, boot: this.boot }).catch(() => {});
     if (this.watchId !== null) navigator.geolocation.clearWatch(this.watchId);
     this.watchId = null; this.actief = false;
     if (this.wakeLock) { this.wakeLock.release().catch(() => {}); this.wakeLock = null; }
@@ -246,7 +259,7 @@ export class TrackerMotor {
     // Positie altijd (live stip); spoor alleen tijdens een race (er staat een startsein)
     // of een zeeslag (aftellen of bezig), voor de replay achteraf
     const st = this.spelStand, spoor = this.data.baan.raceStart != null || !!(st.wacht || st.bezig);
-    this.schrijf(this.convex.mutation(api.boot.positie, { boot: this.boot, token: this.token, spoor, lat: latitude, lng: longitude, ts: nu,
+    this.schrijf(this.convex.mutation(api.boot.positie, { groep: this.groep, token: this.token, boot: this.boot, spoor, lat: latitude, lng: longitude, ts: nu,
       acc: accuracy, ...(spd != null ? { speed: spd } : {}), ...(hdg != null ? { heading: hdg } : {}) }));
   }
   // Losse GPS-fouten (Android meldt die soms tussen goede posities door) geven
@@ -273,7 +286,7 @@ export class TrackerMotor {
     const id = baan[v].id;
     this.mijnGerond[id] = huidig.ts;
     this.wachtend.add(id);
-    this.schrijf(this.convex.mutation(api.boot.gerond, { boot: this.boot, token: this.token, id, ts: huidig.ts })).finally(() => this.wachtend.delete(id));
+    this.schrijf(this.convex.mutation(api.boot.gerond, { groep: this.groep, token: this.token, boot: this.boot, id, ts: huidig.ts })).finally(() => this.wachtend.delete(id));
     speel(GELUID.boei);
     this.meld(`🟠 ${baan[v].label} gerond om ${formatKlok(huidig.ts)}`, "goed");
   }
@@ -287,7 +300,7 @@ export class TrackerMotor {
       if ((t0 == null || huidig.ts >= t0) && lijnstukkenKruisen(A, B, lines.start.a, lines.start.b)) {
         this.mijnTijden.start = huidig.ts;
         this.wachtend.add("start");
-        this.schrijf(this.convex.mutation(api.boot.start, { boot: this.boot, token: this.token, ts: huidig.ts })).finally(() => this.wachtend.delete("start"));
+        this.schrijf(this.convex.mutation(api.boot.start, { groep: this.groep, token: this.token, boot: this.boot, ts: huidig.ts })).finally(() => this.wachtend.delete("start"));
         speel(GELUID.startlijn);
         this.meld("✓ Startlijn gepasseerd om " + formatKlok(huidig.ts), "goed");
       }
@@ -298,7 +311,7 @@ export class TrackerMotor {
     if (heeftLijn(lines.finish) && this.mijnTijden.start != null && this.mijnTijden.finish == null && alleGerond &&
         lijnstukkenKruisen(A, B, lines.finish.a, lines.finish.b)) {
       this.mijnTijden.finish = huidig.ts;
-      this.schrijf(this.convex.mutation(api.boot.finish, { boot: this.boot, token: this.token, ts: huidig.ts }));
+      this.schrijf(this.convex.mutation(api.boot.finish, { groep: this.groep, token: this.token, boot: this.boot, ts: huidig.ts }));
       speel(GELUID.finish);
       this.meld("🏁 Gefinisht om " + formatKlok(huidig.ts), "goed");
       const t0 = this.mijnStart() ?? this.mijnTijden.start;
@@ -313,7 +326,7 @@ export class TrackerMotor {
     if (!v || !this.actief || v.t <= Date.now()) return;
     initAudio();
     try {
-      const r = await this.convex.mutation(api.boot.akkoord, { boot: this.boot, token: this.token, voorstelId: v.id });
+      const r = await this.convex.mutation(api.boot.akkoord, { groep: this.groep, token: this.token, boot: this.boot, voorstelId: v.id });
       if (r.vast) this.meld(`🔒 Iedereen akkoord: de start ligt vast om ${formatKlok(v.t)}.`, "goed");
     } catch (e) { this.meld(foutTekst(e), "fout"); }
   }
@@ -397,7 +410,7 @@ export class TrackerMotor {
     if (Object.keys(raak).length) schot.raak = raak;
     this.herladenTot = Date.now() + Piraat.herlaadDuur(mij, Date.now());
     navigator.vibrate?.(120);
-    try { await this.convex.mutation(api.spel.schot, { boot: ik, token: this.token, nr: String(nr), schot }); }
+    try { await this.convex.mutation(api.spel.schot, { groep: this.groep, token: this.token, boot: ik, nr: String(nr), schot }); }
     catch (e) { this.herladenTot = 0; this.meld(foutTekst(e), "fout"); return; }
     const n = this.data.naamVan;
     const geraakt = Object.keys(raak).filter((b) => !st.boten[b].schild), afgekaatst = Object.keys(raak).filter((b) => st.boten[b].schild);
@@ -415,7 +428,7 @@ export class TrackerMotor {
     const nr = vrijNummer(this.data.spel?.mijnen?.[ik], SPEL.maxMijnen);
     if (nr == null) { tip("Je hebt al 10 mijnen gelegd!"); return; }
     try {
-      await this.convex.mutation(api.spel.mijn, { boot: ik, token: this.token, nr: String(nr),
+      await this.convex.mutation(api.spel.mijn, { groep: this.groep, token: this.token, boot: ik, nr: String(nr),
         mijn: { ts: Date.now(), lat: +this.mijnPositie.lat.toFixed(6), lng: +this.mijnPositie.lng.toFixed(6) } });
       this.meld("💣 Zeemijn gelegd. Jij kunt er gerust overheen varen, de anderen niet.", "goed");
       navigator.vibrate?.(80);
@@ -434,7 +447,7 @@ export class TrackerMotor {
     st.mijnen.filter((m) => m.actief && m.boot !== ik && !this.mijnGemeld.has(st.start + "/" + m.id) && afstandMeter(m, pos) <= SPEL.mijnM)
       .forEach((m) => {
         this.mijnGemeld.add(st.start + "/" + m.id);
-        this.schrijf(this.convex.mutation(api.spel.mijnraak, { boot: ik, token: this.token, mijnId: m.id, ts: Date.now() }));
+        this.schrijf(this.convex.mutation(api.spel.mijnraak, { groep: this.groep, token: this.token, boot: ik, mijnId: m.id, ts: Date.now() }));
       });
   }
   // Buiten het speelveld: elke 20 seconden een leven kwijt
@@ -449,7 +462,7 @@ export class TrackerMotor {
     this.buitenSinds = nu;
     const nr = vrijNummer(this.data.spel?.straf?.[ik], SPEL.levens);
     if (nr == null) return;
-    this.schrijf(this.convex.mutation(api.spel.straf, { boot: ik, token: this.token, nr: String(nr), ts: nu }));
+    this.schrijf(this.convex.mutation(api.spel.straf, { groep: this.groep, token: this.token, boot: ik, nr: String(nr), ts: nu }));
     speel(GELUID.alarm);
     navigator.vibrate?.([300, 100, 300]);
   }
@@ -463,7 +476,7 @@ export class TrackerMotor {
     if (!k) return;
     this.kistBezig = true;
     const start = this.data.spel!.start!;
-    this.convex.mutation(api.spel.kist, { boot: ik, token: this.token, nr: k.nr, ts: Date.now() })
+    this.convex.mutation(api.spel.kist, { groep: this.groep, token: this.token, boot: ik, nr: k.nr, ts: Date.now() })
       .then((r) => {
         if (!r.gepakt) return;
         const soort = Piraat.inhoud({ start }, k.nr), b = BUIT[soort];

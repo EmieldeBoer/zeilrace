@@ -1,27 +1,24 @@
 // ============================================================
-//  Zeilrace — dashboard
-//  Publiek: kaart, live data per boot, regels, uitslagen.
-//  Wedstrijdleiding: open met ?wl en log in met het wachtwoord.
+//  Zeilrace: het dashboard van een groep
+//  Live (kaart, boten, start, organisatie), Uitslagen en Regels.
 // ============================================================
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { GroepBalk } from "@/components/GroepBalk";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useGroep } from "@/hooks/useGroep";
 import { useNu } from "@/hooks/useNu";
-import { useRace } from "@/hooks/useRace";
 import { useSporen } from "@/hooks/useSporen";
-import { useWl } from "@/hooks/useWl";
 import { raceWeergave, zeeslagWeergave, type ReplayData } from "@/lib/uitslag";
 import { Live } from "./dashboard/Live";
 import { Regels } from "./dashboard/Regels";
 import { Replay } from "./dashboard/Replay";
 import { Uitslagen, type ReplayKeuze } from "./dashboard/Uitslagen";
 
-type Tab = "live" | "regels" | "uitslagen";
+type Tab = "live" | "uitslagen" | "regels";
 
 export default function Dashboard() {
-  const wlModus = useMemo(() => new URLSearchParams(location.search).has("wl"), []);
-  const race = useRace();
-  const sporen = useSporen(race.geladen ? race.baan.gen : null);
-  const wl = useWl();
+  const { groep, token, race } = useGroep();
+  const sporen = useSporen(groep.id, token, race.geladen ? race.baan.gen : null);
   const nu = useNu(1000);
   const [tab, setTab] = useState<Tab>("live");
   const [uitslagenGezien, setUitslagenGezien] = useState(false);
@@ -34,22 +31,24 @@ export default function Dashboard() {
 
   return (
     <Tabs value={tab} onValueChange={(v) => { setTab(v as Tab); if (v === "uitslagen") setUitslagenGezien(true); }} className="h-full gap-0">
-      <TabsList variant="line" className="h-auto w-full flex-none justify-start gap-0 rounded-none border-b-2 border-messing-donker bg-[linear-gradient(180deg,#120c07,#0a0704)] p-0 pt-[env(safe-area-inset-top)] shadow-[0_2px_0_#000,0_3px_10px_#000a]">
-        {([["live", "⚓ Live"], ["regels", "📜 Regels"], ["uitslagen", "🏆 Uitslagen"]] as const).map(([w, t]) => (
-          <TabsTrigger key={w} value={w}
-            className="h-auto min-h-[52px] flex-none rounded-none border-0 border-b-3 border-transparent px-[22px] py-3 font-kap text-[.95rem] font-bold tracking-[.06em] text-ivoor-zacht after:hidden hover:text-goud data-active:border-messing data-active:bg-transparent data-active:text-goud data-active:[text-shadow:0_0_10px_rgba(240,199,94,.35)] dark:data-active:border-messing dark:data-active:bg-transparent dark:data-active:text-goud max-[820px]:flex-1 max-[820px]:px-1 max-[820px]:text-[.85rem] max-[820px]:tracking-[.03em]">
-            {t}
-          </TabsTrigger>
-        ))}
-      </TabsList>
+      <GroepBalk waar="dashboard">
+        <TabsList variant="line" className="h-auto w-full justify-start gap-0 rounded-none bg-transparent p-0 px-1">
+          {([["live", "Live"], ["uitslagen", "Uitslagen"], ["regels", "Regels"]] as const).map(([w, t]) => (
+            <TabsTrigger key={w} value={w}
+              className="h-auto min-h-12 flex-none rounded-none border-0 border-b-4 border-transparent px-5 py-2.5 font-kop text-[.95rem] font-extrabold tracking-[.04em] text-muted-foreground after:hidden hover:text-foreground data-active:border-[var(--seingeel)] data-active:bg-transparent data-active:text-foreground dark:data-active:border-[var(--seingeel)] dark:data-active:bg-transparent dark:data-active:text-foreground max-[820px]:flex-1 max-[820px]:px-1">
+              {t}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </GroepBalk>
       <TabsContent value="live" keepMounted className="flex min-h-0 flex-1">
-        <Live race={race} sporen={sporen} wl={wl} wlModus={wlModus} nu={nu} actief={tab === "live"} />
-      </TabsContent>
-      <TabsContent value="regels" className="min-h-0 flex-1 overflow-y-auto p-6 max-[820px]:p-4">
-        <Regels />
+        <Live sporen={sporen} nu={nu} actief={tab === "live"} />
       </TabsContent>
       <TabsContent value="uitslagen" keepMounted className="min-h-0 flex-1 overflow-y-auto p-6 max-[820px]:p-4">
-        {uitslagenGezien && <Uitslagen wl={wl} naamVan={race.naamVan} onReplay={openReplay} />}
+        {uitslagenGezien && <Uitslagen onReplay={openReplay} />}
+      </TabsContent>
+      <TabsContent value="regels" className="min-h-0 flex-1 overflow-y-auto p-6 max-[820px]:p-4">
+        <Regels piraat={groep.piraat} />
       </TabsContent>
       {replay && <Replay data={replay.data} sleutel={replay.sleutel} onSluit={() => setReplay(null)} />}
     </Tabs>

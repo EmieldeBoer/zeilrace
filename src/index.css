@@ -1,8 +1,8 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "@fontsource-variable/archivo/wdth.css";
 @import "@fontsource/pirata-one/400.css";
-@import "@fontsource/cinzel/600.css";
 @import "@fontsource/cinzel/700.css";
 @import "@fontsource/cinzel/900.css";
 @import "@fontsource/eb-garamond/500.css";
@@ -12,33 +12,34 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ============================================================
-   Thema: piratenschip. Donker scheepshout als achtergrond, kaarten
-   van vergeeld perkament, messing knoppen, ossenbloedrood en
-   verdigris. Alles loopt via de shadcn-variabelen hieronder; een
-   kaart (.perkament) zet ze voor zijn eigen inhoud om naar inkt op
-   perkament.
+   Twee thema's op dezelfde componenten.
+   - Signaal (standaard): licht en contrastrijk, leesbaar in de zon op
+     het water. Diep marineblauw, wit, en de kleuren van seinvlaggen
+     (geel, oranje, rood) voor wat aandacht vraagt.
+   - Piraat (piratenmodus van een groep): scheepshout, perkament en messing.
+   Alles loopt via de variabelen hieronder; html[data-thema="piraat"]
+   zet de piratenset aan.
    ============================================================ */
 @theme inline {
-  --font-sans: "EB Garamond", Garamond, Georgia, "Times New Roman", serif;
-  --font-heading: "Cinzel", "Trajan Pro", Georgia, serif;
-  --font-kap: "Cinzel", "Trajan Pro", Georgia, serif;
-  --font-titel: "Pirata One", "Luminari", fantasy, serif;
+  --font-sans: var(--letter-tekst);
+  --font-heading: var(--letter-kop);
+  --font-kop: var(--letter-kop);
+  --font-titel: var(--letter-titel);
 
-  --color-hout-1: #0f0a06;
-  --color-hout-2: #1a120b;
-  --color-hout-3: #251a10;
-  --color-perkament: #ead8ae;
-  --color-inkt: #2b1b0d;
-  --color-inkt-zacht: #6b5130;
-  --color-messing: #c9a24a;
-  --color-messing-donker: #7a5a1e;
-  --color-goud: #f0c75e;
-  --color-ivoor: #efe3c6;
-  --color-ivoor-zacht: #bfae88;
-  --color-bloed: #8b1e12;
-  --color-bloed-licht: #ff9a85;
-  --color-verdigris: #2f6b52;
-  --color-verdigris-licht: #a8dcb4;
+  --color-kop: var(--kop);
+  --color-signaal: var(--signaal);
+  --color-winst: var(--winst);
+  --color-goed: var(--goed);
+  --color-goed-licht: var(--goed-licht);
+  --color-kader: var(--kader);
+  --color-kader-licht: var(--kader-licht);
+  --color-stip: var(--stip);
+  --color-rand: var(--rand);
+  --color-lijn: var(--lijn);
+  --color-paneel: var(--paneel);
+  --color-balk: var(--balk);
+  --color-balk-foreground: var(--balk-foreground);
+  --color-accent-geel: var(--seingeel);
 
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -80,20 +81,115 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ---------- Signaal (standaard) ---------- */
 :root {
+  color-scheme: light;
+  --letter-tekst: "Archivo Variable", system-ui, sans-serif;
+  --letter-kop: "Archivo Variable", system-ui, sans-serif;
+  --letter-titel: "Archivo Variable", system-ui, sans-serif;
+  --kop-rek: 112%;           /* koppen iets breder (font-stretch) */
+  --titel-rek: 125%;
+  --titel-gewicht: 900;
+
+  --marine: #0b2545;
+  --seingeel: #ffc400;
+  --seinoranje: #f26419;
+  --seinrood: #d62828;
+
+  --background: #e9eef4;
+  --foreground: #0b1d33;
+  --paneel: #f5f7fa;
+  --balk: #0b2545;
+  --balk-foreground: #ffffff;
+  --card: #ffffff;
+  --card-foreground: #0b1d33;
+  --popover: #ffffff;
+  --popover-foreground: #0b1d33;
+  --primary: #0b2545;
+  --primary-foreground: #ffffff;
+  --secondary: #ffffff;
+  --secondary-foreground: #0b2545;
+  --muted: #eef2f6;
+  --muted-foreground: #4a5b70;
+  --accent: #e3eaf3;
+  --accent-foreground: #0b2545;
+  --destructive: #c1121f;
+  --border: #c5d0dc;
+  --input: #9fb0c3;
+  --ring: #ffc400;
+  --kop: #0b2545;
+  --signaal: #c1121f;
+  --winst: #12703f;
+  --goed: #12703f;
+  --goed-licht: #12703f;
+  --kader: #0b2545;
+  --kader-licht: #ffc400;
+  --stip: #0b1d33;
+  --rand: #c5d0dc;
+  --lijn: #dbe3ec;
+  --chart-1: #2c6fbb;
+  --chart-2: #2f8f63;
+  --chart-3: #e8c33a;
+  --chart-4: #e07b2c;
+  --chart-5: #c0392b;
+  --radius: 0.75rem;
+  --sidebar: var(--paneel);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--accent-foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  --vlak-bg: #ffffff;
+  --vlak-schaduw: 0 1px 2px rgba(11,37,69,.08), 0 4px 14px rgba(11,37,69,.08);
+  --knop-bg: linear-gradient(#0f2f57, #0b2545);
+  --knop-bg-hover: linear-gradient(#163c6d, #0f2f57);
+  --knop-fg: #ffffff;
+  --knop-rand: #0b2545;
+  --knop-schaduw: 0 2px 0 #061528;
+  --stil-bg: #ffffff;
+  --stil-fg: #0b2545;
+  --stil-rand: #9fb0c3;
+  --kanon-bg: linear-gradient(#ff7a33, #e8550f);
+  --kanon-rand: #b23f06;
+  --groen-bg: linear-gradient(#1d9a5b, #12703f);
+  --groen-rand: #0b5530;
+  --rood-bg: linear-gradient(#e23b3b, #c1121f);
+  --rood-rand: #8f0d17;
+  --plaquette-bg: #0b2545;
+  --plaquette-fg: #ffffff;
+  --plaquette-rand: #ffc400;
+  --plaquette-cijfer: #ffc400;
+  --urgent-bg: #b3121f;
+  --urgent-rand: #ffffff;
+  --urgent-cijfer: #ffffff;
+  --tegels-filter: saturate(.8) contrast(1.02);
+  --kaart-achtergrond: #aad3df;
+}
+
+/* ---------- Piraat (piratenmodus) ---------- */
+html[data-thema="piraat"] {
   color-scheme: dark;
-  /* hout (de achtergrond) */
+  --letter-tekst: "EB Garamond", Garamond, Georgia, "Times New Roman", serif;
+  --letter-kop: "Cinzel", "Trajan Pro", Georgia, serif;
+  --letter-titel: "Pirata One", "Luminari", fantasy, serif;
+  --kop-rek: 100%;
+  --titel-rek: 100%;
+  --titel-gewicht: 400;
+
   --background: #1a120b;
   --foreground: #efe3c6;
-  /* perkament (kaarten, dialogen) */
+  --paneel: #1a120b;
+  --balk: #0e0905;
+  --balk-foreground: #f0c75e;
   --card: #ead8ae;
   --card-foreground: #2b1b0d;
   --popover: #ead8ae;
   --popover-foreground: #2b1b0d;
-  /* messing */
   --primary: #c9a24a;
   --primary-foreground: #2b1b0d;
-  /* donker hout (stille knoppen) */
   --secondary: #2a1d12;
   --secondary-foreground: #efe3c6;
   --muted: rgba(0, 0, 0, .35);
@@ -104,47 +200,73 @@
   --border: #7a5a1e;
   --input: #8a6a3a;
   --ring: #f0c75e;
-  --chart-1: #2c6fbb;
-  --chart-2: #2f8f63;
-  --chart-3: #e8c33a;
-  --chart-4: #e07b2c;
-  --chart-5: #c0392b;
+  --kop: #f0c75e;
+  --signaal: #8b1e12;
+  --winst: var(--signaal);
+  --goed: #2f6b52;
+  --goed-licht: #a8dcb4;
+  --kader: #7a5a1e;
+  --kader-licht: #c9a24a;
+  --stip: #2b1b0d;
+  --rand: #8a6a3a;
+  --lijn: rgba(107, 81, 48, .4);
   --radius: 0.375rem;
-  --sidebar: #1a120b;
-  --sidebar-foreground: #efe3c6;
-  --sidebar-primary: #c9a24a;
-  --sidebar-primary-foreground: #2b1b0d;
-  --sidebar-accent: #3b2a18;
-  --sidebar-accent-foreground: #f0c75e;
-  --sidebar-border: #7a5a1e;
-  --sidebar-ring: #f0c75e;
 
-  --hout-bg:
-    repeating-linear-gradient(92deg, rgba(255,220,160,.018) 0 2px, transparent 2px 9px),
-    repeating-linear-gradient(88deg, rgba(0,0,0,.18) 0 1px, transparent 1px 23px),
-    linear-gradient(180deg, #1a120b, #0f0a06);
-  --perkament-bg:
+  --vlak-bg:
     radial-gradient(ellipse at 15% 10%, rgba(255,250,230,.55), transparent 55%),
     radial-gradient(ellipse at 85% 95%, rgba(140,90,30,.22), transparent 60%),
     radial-gradient(ellipse at 95% 5%, rgba(140,90,30,.15), transparent 40%),
     linear-gradient(180deg, #ead8ae, #dcc592);
-  --perkament-schaduw: inset 0 0 28px rgba(110,70,20,.35), 0 3px 10px rgba(0,0,0,.55);
-  --messing-bg: linear-gradient(#e7c26a, #a67c2e);
-  --messing-bg-hover: linear-gradient(#f1d488, #b8903a);
+  --vlak-schaduw: inset 0 0 28px rgba(110,70,20,.35), 0 3px 10px rgba(0,0,0,.55);
+  --knop-bg: linear-gradient(#e7c26a, #a67c2e);
+  --knop-bg-hover: linear-gradient(#f1d488, #b8903a);
+  --knop-fg: #2b1b0d;
+  --knop-rand: #7a5a1e;
+  --knop-schaduw: inset 0 1px 0 #f7e2a6, 0 2px 0 #3d2a0e;
+  --stil-bg: linear-gradient(#3a2a1a, #221810);
+  --stil-fg: #efe3c6;
+  --stil-rand: #7a5a1e;
+  --kanon-bg: linear-gradient(#d06a2c, #8e3c12);
+  --kanon-rand: #4a1d06;
+  --groen-bg: linear-gradient(#4f9a74, #2f6b52);
+  --groen-rand: #173a2b;
+  --rood-bg: linear-gradient(#9b2a1f, #6e1a12);
+  --rood-rand: #3d0d07;
+  --plaquette-bg: linear-gradient(180deg, rgba(37,26,16,.96), rgba(15,10,6,.96));
+  --plaquette-fg: #efe3c6;
+  --plaquette-rand: #c9a24a;
+  --plaquette-cijfer: #f0c75e;
+  --urgent-bg: linear-gradient(180deg, rgba(90,22,12,.96), rgba(40,10,6,.96));
+  --urgent-rand: #d0542f;
+  --urgent-cijfer: #ffb08a;
+  --tegels-filter: sepia(.6) saturate(.75) hue-rotate(-10deg) contrast(1.03) brightness(.96);
+  --kaart-achtergrond: #cdb88c;
 }
 
-/* Binnen een kaart of dialoog: inkt op perkament */
-.perkament, [data-slot="card"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="popover-content"], [data-slot="select-content"], [data-slot="tooltip-content"] {
-  --foreground: #2b1b0d;
+/* Binnen een kaart of dialoog: tekst op het kaartvlak */
+.vlak, [data-slot="card"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="popover-content"], [data-slot="select-content"], [data-slot="tooltip-content"] {
+  --foreground: var(--card-foreground);
+}
+html[data-thema="piraat"] :is(.vlak, [data-slot="card"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="popover-content"], [data-slot="select-content"], [data-slot="tooltip-content"]) {
   --muted: rgba(107, 81, 48, .12);
   --muted-foreground: #6b5130;
   --accent: rgba(107, 81, 48, .18);
   --accent-foreground: #2b1b0d;
   --destructive: #8b1e12;
   --border: rgba(107, 81, 48, .4);
-  --input: #8a6a3a;
   --ring: #8b1e12;
+  --kop: #2b1b0d;
+  --goed-licht: #2f6b52;
 }
+
+/* Op de donkere panelen (aftelklok, wind, feest) en de bovenbalk: lichte tekst */
+.plaquette { --foreground: var(--plaquette-fg); --kop: var(--plaquette-cijfer); --muted-foreground: rgba(255,255,255,.78); --goed-licht: #5ee08f; }
+.balk { --foreground: var(--balk-foreground); --kop: var(--seingeel); --muted-foreground: rgba(255,255,255,.75); --goed-licht: #5ee08f; }
+html[data-thema="piraat"] .plaquette, html[data-thema="piraat"] .balk { --goed-licht: #a8dcb4; }
+/* Laatste minuut van het aftellen: rood paneel */
+.plaquette.urgent { --plaquette-bg: var(--urgent-bg); --plaquette-rand: var(--urgent-rand); --kop: var(--urgent-cijfer); }
+html[data-thema="piraat"] .plaquette, html[data-thema="piraat"] .balk { --muted-foreground: #bfae88; --kop: #f0c75e; }
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -154,31 +276,45 @@
     font-size: 17px;
   }
   body {
-    @apply text-foreground;
-    background: var(--hout-bg);
+    @apply bg-background text-foreground;
+    font-variant-numeric: lining-nums tabular-nums;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html[data-thema="piraat"] body {
+    background:
+      repeating-linear-gradient(92deg, rgba(255,220,160,.018) 0 2px, transparent 2px 9px),
+      repeating-linear-gradient(88deg, rgba(0,0,0,.18) 0 1px, transparent 1px 23px),
+      linear-gradient(180deg, #1a120b, #0f0a06);
     background-color: #0f0a06;
-    font-variant-numeric: lining-nums tabular-nums;   /* Garamond heeft anders 'oude' cijfers */
   }
 }
 
 @layer components {
-.perkament, [data-slot="card"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"] {
-  background: var(--perkament-bg);
-  box-shadow: var(--perkament-schaduw);
-  color: #2b1b0d;
-}
-[data-slot="card"] { border: 1px solid #8a6a3a; }
-
-/* Koppen in Cinzel met een messing lijn erachter */
-.sectie-kop { font-family: var(--font-kap); font-size: .88rem; text-transform: uppercase; letter-spacing: .14em;
-  color: var(--color-goud); margin: 24px 0 8px; display: flex; align-items: center; gap: 10px; font-weight: 700; }
-.sectie-kop::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--color-messing-donker), transparent); }
-.titel-goud { font-family: var(--font-titel); color: var(--color-goud); text-shadow: 0 2px 0 #000, 0 0 12px rgba(240,199,94,.25); line-height: 1.1; }
-
-/* Messing plaquette (aftelklok, windwidget) */
-.plaquette { background: linear-gradient(180deg, rgba(37,26,16,.96), rgba(15,10,6,.96));
-  border: 2px solid var(--color-messing); color: var(--color-ivoor);
-  box-shadow: inset 0 0 0 3px rgba(15,10,6,.9), inset 0 0 0 4px var(--color-messing-donker), 0 6px 20px rgba(0,0,0,.7); }
+  .vlak, [data-slot="card"], [data-slot="dialog-content"], [data-slot="alert-dialog-content"] {
+    background: var(--vlak-bg);
+    box-shadow: var(--vlak-schaduw);
+    color: var(--card-foreground);
+  }
+  [data-slot="card"] { border: 1px solid var(--rand); }
+  .font-kop { font-stretch: var(--kop-rek); }
+  .titel { font-family: var(--letter-titel); font-stretch: var(--titel-rek); font-weight: var(--titel-gewicht);
+    color: var(--kop); line-height: 1.05; letter-spacing: -.01em; }
+  html[data-thema="piraat"] .titel { text-shadow: 0 2px 0 #000, 0 0 12px rgba(240,199,94,.25); letter-spacing: .02em; }
+  /* Kop van een paneelsectie met een lijn erachter */
+  .sectie-kop { font-family: var(--letter-kop); font-stretch: var(--kop-rek); font-size: .82rem; text-transform: uppercase;
+    letter-spacing: .12em; color: var(--kop); margin: 26px 0 10px; display: flex; align-items: center; gap: 10px; font-weight: 800; }
+  .sectie-kop::after { content: ""; flex: 1; height: 3px; border-radius: 2px; background: var(--seingeel); max-width: 48px; }
+  html[data-thema="piraat"] .sectie-kop::after { height: 1px; max-width: none; background: linear-gradient(90deg, var(--kader), transparent); }
+  /* Donker paneel met een kader (aftelklok, wind) */
+  .plaquette { background: var(--plaquette-bg); color: var(--plaquette-fg); border: 2px solid var(--plaquette-rand);
+    box-shadow: 0 8px 24px rgba(11,37,69,.35); }
+  html[data-thema="piraat"] .plaquette { box-shadow: inset 0 0 0 3px rgba(15,10,6,.9), inset 0 0 0 4px #7a5a1e, 0 6px 20px rgba(0,0,0,.7); }
+  /* De bovenbalk (tabbladen, replay) */
+  .balk { background: var(--balk); color: var(--balk-foreground); }
+  html[data-thema="piraat"] .balk { background: linear-gradient(180deg, #120c07, #0a0704); }
+  /* Seinvlaggenstreep onder de bovenbalk (alleen Signaal) */
+  .seinstreep { height: 5px; background: linear-gradient(90deg, var(--seingeel) 0 25%, var(--seinrood) 25% 50%, #ffffff 50% 75%, #1d4ed8 75%); }
+  html[data-thema="piraat"] .seinstreep { height: 2px; background: #7a5a1e; }
 }
 
 html, body, #root { height: 100%; }
@@ -187,49 +323,50 @@ body { overscroll-behavior: none; }
 
 @keyframes knipper { 50% { opacity: .3; } }
 .knipper { animation: knipper 1s steps(2, start) infinite; }
-@keyframes alarmpuls { 50% { background: #5a130b; } }
+@keyframes alarmpuls { 50% { background: #5a0b10; } }
 .alarmpuls { animation: alarmpuls 1s ease-in-out infinite; }
-@keyframes kadoWiebel { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
-.wiebel { animation: kadoWiebel 1.2s ease-in-out infinite; display: inline-block; }
+@media (prefers-reduced-motion: reduce) { .knipper, .alarmpuls { animation: none; } }
 
-/* ---- Kaart: oude zeekaart ---- */
-.leaflet-container { background: #cdb88c; font: inherit; }
-.leaflet-tile-pane { filter: sepia(.6) saturate(.75) hue-rotate(-10deg) contrast(1.03) brightness(.96); }
-.leaflet-bar { border: 2px solid var(--color-messing-donker) !important; box-shadow: 0 2px 8px rgba(0,0,0,.6) !important; }
-.leaflet-bar a { width: 40px; height: 40px; line-height: 40px; font-size: 20px;
-  background: linear-gradient(#e0bb62, #b08734); color: #2b1b0d; border-bottom-color: var(--color-messing-donker); }
-.leaflet-bar a:hover { background: linear-gradient(#f1d488, #c9a24a); color: #2b1b0d; }
-.leaflet-control-attribution { background: rgba(234,216,174,.85) !important; color: #6b5130; font-family: var(--font-sans); }
-.leaflet-control-attribution a { color: var(--color-bloed); }
+/* ---- Kaart ---- */
+.leaflet-container { background: var(--kaart-achtergrond); font: inherit; }
+.leaflet-tile-pane { filter: var(--tegels-filter); }
+.leaflet-bar { border: 2px solid var(--kader) !important; box-shadow: 0 2px 8px rgba(0,0,0,.35) !important; border-radius: 10px !important; overflow: hidden; }
+.leaflet-bar a { width: 44px; height: 44px; line-height: 44px; font-size: 22px;
+  background: var(--knop-bg); color: var(--knop-fg); border-bottom-color: var(--kader); }
+.leaflet-bar a:hover { background: var(--knop-bg-hover); color: var(--knop-fg); }
+.leaflet-control-attribution { background: rgba(255,255,255,.85) !important; color: #4a5b70; font-family: var(--letter-tekst); }
+html[data-thema="piraat"] .leaflet-control-attribution { background: rgba(234,216,174,.85) !important; color: #6b5130; }
 .leaflet-container.meten { cursor: crosshair; }
 .leaflet-div-icon { background: transparent; border: none; }
 
-.boei { width: 26px; height: 26px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #f3b35a, #d98b2b 60%, #9a5a14);
-  border: 2px solid #2b1b0d; color: #2b1b0d; font-weight: 700; font-size: 13px; font-family: var(--font-kap);
-  display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px rgba(234,216,174,.8), 0 2px 5px #000a; }
+.boei { width: 26px; height: 26px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #ffb35a, #f26419 60%, #b23f06);
+  border: 2px solid #0b1d33; color: #0b1d33; font-weight: 800; font-size: 13px; font-family: var(--letter-kop);
+  display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px rgba(255,255,255,.85), 0 2px 5px #0006; }
 .boei.lus { width: 22px; height: 22px; font-size: 12px; color: #fff; text-shadow: 0 1px 2px #000; }
-.boei.concept { background: var(--color-goud); border-color: var(--color-messing-donker); box-shadow: 0 0 0 4px rgba(240,199,94,.45); cursor: move; }
-.leaflet-tooltip.lijn-label { background: transparent; border: none; box-shadow: none; font-family: var(--font-kap);
-  color: #2b1b0d; font-weight: 700; font-size: 12px; text-shadow: 0 0 3px #ead8ae, 0 0 3px #ead8ae, 0 0 5px #ead8ae; }
+.boei.concept { background: #ffc400; border-color: #0b2545; box-shadow: 0 0 0 4px rgba(255,196,0,.45); cursor: move; }
+.leaflet-tooltip.lijn-label { background: transparent; border: none; box-shadow: none; font-family: var(--letter-kop);
+  color: #0b1d33; font-weight: 800; font-size: 12px; text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 5px #fff; }
+html[data-thema="piraat"] .leaflet-tooltip.lijn-label { color: #2b1b0d; text-shadow: 0 0 3px #ead8ae, 0 0 3px #ead8ae, 0 0 5px #ead8ae; }
 .leaflet-tooltip.lijn-label::before { display: none; }
-.leaflet-tooltip.boot-label { background: rgba(26,18,11,.92); border: 1px solid var(--color-messing); border-radius: 4px;
-  padding: 2px 7px; font-size: 13px; font-weight: 700; color: var(--color-ivoor); white-space: nowrap; font-family: var(--font-sans); box-shadow: none; }
-.leaflet-tooltip.boot-label::before { border-top-color: var(--color-messing) !important; }
-.leaflet-tooltip.meet-label { background: rgba(234,216,174,.95); color: #2b1b0d; border: 1px solid var(--color-bloed); border-radius: 3px;
-  font-family: var(--font-sans); font-size: 14px; line-height: 1.35; box-shadow: 0 2px 6px #0006; }
+.leaflet-tooltip.boot-label { background: rgba(11,37,69,.92); border: 1px solid #ffc400; border-radius: 6px;
+  padding: 2px 8px; font-size: 13px; font-weight: 700; color: #fff; white-space: nowrap; font-family: var(--letter-tekst); box-shadow: none; }
+.leaflet-tooltip.boot-label::before { border-top-color: #ffc400 !important; }
+html[data-thema="piraat"] .leaflet-tooltip.boot-label { background: rgba(26,18,11,.92); border-color: #c9a24a; color: #efe3c6; border-radius: 4px; }
+html[data-thema="piraat"] .leaflet-tooltip.boot-label::before { border-top-color: #c9a24a !important; }
+.leaflet-tooltip.meet-label { background: rgba(255,255,255,.96); color: #0b1d33; border: 1px solid #d62828; border-radius: 4px;
+  font-family: var(--letter-tekst); font-size: 14px; line-height: 1.35; box-shadow: 0 2px 6px #0004; }
 .overstag-label { background: none; border: none; }
-.overstag-label span { display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; font: 700 11px/1 var(--font-kap);
-  background: rgba(234,216,174,.92); color: #2b1b0d; border: 2px solid; border-radius: 9px; padding: 2px 5px; }
+.overstag-label span { display: inline-block; transform: translate(-50%, -50%); white-space: nowrap; font: 700 11px/1 var(--letter-kop);
+  background: rgba(255,255,255,.92); color: #0b1d33; border: 2px solid; border-radius: 9px; padding: 2px 5px; }
 
-/* ---- Piratenschepen op de kaart ---- */
+/* ---- Schepen op de kaart ---- */
 .schip { background: none; border: none; }
 .schip-draai { transition: transform .8s ease; }
-.schip-svg { display: block; filter: drop-shadow(0 2px 2px rgba(0,0,0,.55)); }
-.schip-svg.piraat, .schip.zeeslag .schip-svg.kaart { display: none; }    /* standaard: eenvoudig kaartscheepje */
+.schip-svg { display: block; filter: drop-shadow(0 2px 2px rgba(0,0,0,.45)); }
+.schip-svg.piraat, .schip.zeeslag .schip-svg.kaart { display: none; }    /* standaard: eenvoudig scheepje */
 .schip.zeeslag .schip-svg.piraat { display: block; }                      /* tijdens de zeeslag: piratenschip */
-.schip-svg.kaart { filter: saturate(.8) sepia(.15) drop-shadow(0 1px 1px rgba(43,27,13,.45)); }
-.schip.eigen .schip-svg { filter: drop-shadow(0 0 3px #f0c75e) drop-shadow(0 0 6px #f0c75e) drop-shadow(0 2px 2px rgba(0,0,0,.55)); }
-.schip.gekozen .schip-svg { filter: drop-shadow(0 0 4px #fff) drop-shadow(0 2px 2px rgba(0,0,0,.55)); }
+.schip.eigen .schip-svg { filter: drop-shadow(0 0 3px #ffc400) drop-shadow(0 0 6px #ffc400) drop-shadow(0 2px 2px rgba(0,0,0,.5)); }
+.schip.gekozen .schip-svg { filter: drop-shadow(0 0 4px #fff) drop-shadow(0 0 2px #0b2545) drop-shadow(0 2px 2px rgba(0,0,0,.5)); }
 .schip.wrak .schip-svg { filter: grayscale(1) brightness(.55) drop-shadow(0 1px 1px rgba(0,0,0,.6)); opacity: .8; }
 .schip.spook .schip-svg { opacity: .4; }
 .onzichtbaar { visibility: hidden !important; }
@@ -249,4 +386,4 @@ body { overscroll-behavior: none; }
 .feest-in { animation: feestIn .5s cubic-bezier(.2,1.6,.4,1); }
 
 /* ---- Polardiagram ---- */
-.polar-as { font: 700 9px var(--font-kap); fill: #6b5130; }
+.polar-as { font: 700 9px var(--letter-kop); fill: currentColor; opacity: .7; }
