@@ -575,6 +575,10 @@ function toonReplay(data, nr) {
     const veld = Piraat.veldLaag(rp.kaart, data.zeeslag.spel && data.zeeslag.spel.veld, null);
     if (veld) rp.lagen.push(veld);
     rp.zs = { veld, kistLaag: null, kistSleutel: '', mijnLaag: null, mijnSleutel: '', vorigMs: null, salvo: {} };
+    // alle geldige salvo's (in replay-seconden): daar remt de replay af en zoomt hij in
+    const zsp = data.zeeslag.spel || {};
+    rp.zs.salvoTijden = Piraat.stand(Object.assign({}, zsp, { eind: data.zeeslag.over || zsp.eind }), data.posTs, Infinity)
+      .geldig.map(g => ({ s: (g.schot.ts - data.t0) / 1000, g }));
   }
   rp.boten = data.sporen.map(s => {
     const lijn = L.polyline([], { color: s.kleur, weight: 4, opacity: .9, interactive: false }).addTo(rp.kaart);
@@ -694,6 +698,11 @@ function zetReplayTijd(t) {
   el('replayLegenda').innerHTML = rp.data.sporen.map(s =>
     `<div>${dotHtml(s.boot)}${s.finishS != null && t >= s.finishS ? '🏁 ' : ''}${esc(s.legenda)}${overstagTekst(s.boot)}</div>`).join('');
 }
+// Positie van boot b op tijdstip ms in de replay (null als er dan geen spoor is)
+function replayPosOp(b, ms) {
+  const d = rp.data, s = d.sporen.find(x => x.boot === b), p = s && positieOp(s.pts, (ms - d.t0) / 1000);
+  return p ? { lat: p.lat, lng: p.lng } : null;
+}
 // Zeeslag in de replay op tijdstip t: de stand van dat moment (levens, raak, salvo's), de kisten
 // die toen in het water lagen, de mijnen, en een rookwolkje op elke plek waar een salvo viel.
 // Tijdens het afspelen vliegen de kogels zoals live.
@@ -701,7 +710,7 @@ function zetZeeslagTijd(t) {
   const d = rp.data, z = d.zeeslag, spel = z.spel || {}, nuMs = d.t0 + t * 1000, zs = rp.zs;
   const st = Piraat.stand(Object.assign({}, spel, { eind: Math.min(spel.eind || Infinity, nuMs, z.over || Infinity) }), d.posTs, Infinity);
   if (zs.veld) zs.veld.setRadius(Piraat.straal(spel.veld, z.start, Math.min(nuMs, z.over || Infinity)));   // het krimpende speelveld
-  const posOp = (b, ms) => { const s = d.sporen.find(x => x.boot === b); const p = s && positieOp(s.pts, (ms - d.t0) / 1000); return p ? { lat: p.lat, lng: p.lng } : null; };
+  const posOp = replayPosOp;
   // kisten: alleen die op dit moment in het water lagen en nog niet gepakt waren
   const buit = {};
   Object.entries(spel.buit || {}).forEach(([nr, k]) => { if (k && k.ts <= nuMs) buit[nr] = k; });
@@ -745,6 +754,34 @@ function zetZeeslagTijd(t) {
 }
 el('replayOverstag').addEventListener('change', () => { if (rp) zetReplayTijd(rp.t); });
 el('replaySnelheidKleur').addEventListener('change', () => { if (rp) zetReplayTijd(rp.t); });
+// ---- Zeeslag-replay: rond elk salvo vertragen tot echte tijd en inzoomen op de actie ----
+// Van SALVO_VOOR s vóór tot SALVO_NA s na een salvo loopt de replay op 1× (de kogels vliegen
+// in echte tijd); daarbuiten loopt de snelheid geleidelijk op naar de gekozen snelheid
+// (1 + SALVO_REM × seconden buiten dat venster), dus afremmen en optrekken gaan vloeiend.
+const SALVO_VOOR = 3, SALVO_NA = 2, SALVO_REM = 2, SALVO_UITZOOM = 8;   // de kogels vliegen 1,2 s
+function salvoAfstand(t) {                   // seconden buiten het venster van het dichtstbijzijnde salvo (0 = erin)
+  let beste = { d: Infinity, salvo: null };
+  (rp.zs && rp.zs.salvoTijden || []).forEach(x => {
+    const d = t < x.s - SALVO_VOOR ? x.s - SALVO_VOOR - t : t > x.s + SALVO_NA ? t - x.s - SALVO_NA : 0;
+    if (d < beste.d) beste = { d, salvo: x };
+  });
+  return beste;
+}
+const replaySnelheidOp = t => rp.zs ? Math.max(1, Math.min(rp.snelheid, 1 + SALVO_REM * salvoAfstand(t).d)) : rp.snelheid;
+// Inzoomen op de schutter (met het bereik van zijn kanon) en wie hij raakt; daarna terug naar het overzicht
+function actieZoom(t) {
+  const zs = rp.zs, { d, salvo } = salvoAfstand(t);
+  if (d === 0 && salvo && zs.zoomSalvo !== salvo) {
+    if (!zs.terugBeeld) zs.terugBeeld = { c: rp.kaart.getCenter(), z: rp.kaart.getZoom() };
+    zs.zoomSalvo = salvo;
+    const g = salvo.g, vak = L.latLng(g.schot.lat, g.schot.lng).toBounds(Piraat.bereik(g.schot) * 2.3);
+    g.raak.concat(g.geblokt).forEach(b => { const p = replayPosOp(b, g.schot.ts); if (p) vak.extend([p.lat, p.lng]); });
+    rp.kaart.flyToBounds(vak, { duration: .8, maxZoom: 17, padding: [30, 30] });
+  } else if (d > SALVO_UITZOOM && zs.terugBeeld) {
+    rp.kaart.flyTo(zs.terugBeeld.c, zs.terugBeeld.z, { duration: .8 });
+    zs.terugBeeld = null; zs.zoomSalvo = null;
+  }
+}
 function speelReplay() {
   if (rp.speelt) { pauzeReplay(); return; }
   if (rp.t >= rp.eind) zetReplayTijd(0);
@@ -753,9 +790,14 @@ function speelReplay() {
   let vorig = performance.now();
   const stap = nu => {
     if (!rp.speelt) return;
-    const t = Math.min(rp.eind, rp.t + (nu - vorig) / 1000 * rp.snelheid);
+    const snelheid = replaySnelheidOp(rp.t);
+    const t = Math.min(rp.eind, rp.t + (nu - vorig) / 1000 * snelheid);
     vorig = nu;
     zetReplayTijd(t);
+    if (rp.zs) {
+      actieZoom(t);
+      if (snelheid < rp.snelheid) el('replayKlok').textContent += ` · ⏱ ${Math.round(snelheid)}×`;
+    }
     if (t >= rp.eind) pauzeReplay(); else requestAnimationFrame(stap);
   };
   requestAnimationFrame(stap);
