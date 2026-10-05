@@ -156,7 +156,8 @@ function markeerEigen() {
 // Label boven het schip: naam, en tijdens de zeeslag de levens (en schild of lading)
 function schipLabel(n) {
   const inSpel = spelStand && spelStand.start && spelStand.deelnemers.includes(n);
-  return esc(kNaam(n)) + (inSpel ? ' ' + Piraat.levensTekst(spelStand.boten[n]) : '');
+  const herlaad = inSpel && spelStand.bezig ? Piraat.herlaadTekst(spelStand.boten[n], Date.now()) : '';
+  return esc(kNaam(n)) + (inSpel ? ' ' + Piraat.levensTekst(spelStand.boten[n]) : '') + (herlaad ? ' ' + herlaad : '');
 }
 const vorigePos = {};
 function zetMarker(naam, lat, lng, koers) {

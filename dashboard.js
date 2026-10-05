@@ -474,12 +474,13 @@ function renderUitslagen() {
       '"Race afronden &amp; opslaan" (Live-tab met ?wl).</div>' + zeeslagenHtml();
     return;
   }
+  // klassement en races eerst, dan de zeeslagen; de analyses (ratingcheck en polars) onderaan
   houder.innerHTML =
     klassementHtml('Klassement', `Op gecorrigeerde tijd (met rating) · low-point · niet gefinisht = ${DNF_PUNTEN} punten`, nummers, 'corrected') +
-    ratingCheckHtml(nummers) +
-    '<div class="u-tabel" id="polarSectie"></div>' +
     [...nummers].reverse().map(raceHtml).join('') +
-    zeeslagenHtml();
+    zeeslagenHtml() +
+    ratingCheckHtml(nummers) +
+    '<div class="u-tabel" id="polarSectie"></div>';
   laadPolars(nummers);
 }
 el('uitslagenInhoud').addEventListener('click', e => {
@@ -843,7 +844,8 @@ function zetZeeslagTijd(t) {
   rp.boten.forEach(x => {
     const b = st.boten[x.s.boot];
     zetSchipStaat(x.stip, { spel: true, wrak: b.levens <= 0 });
-    const label = `${esc(x.s.naam)} ${b.levens > 0 ? Piraat.levensTekst(b) : '☠️'}`;
+    const herlaad = nuMs >= z.start ? Piraat.herlaadTekst(b, nuMs) : '';
+    const label = `${esc(x.s.naam)} ${b.levens > 0 ? Piraat.levensTekst(b) : '☠️'}${herlaad ? ' ' + herlaad : ''}`;
     if (x.label !== label) { x.stip.setTooltipContent(label); x.label = label; }
   });
   // het bereik van de kanonnen (zoals live), hooguit 10× per seconde opnieuw getekend
@@ -879,18 +881,25 @@ function salvoAfstand(t) {                   // seconden buiten het venster van 
   return beste;
 }
 const replaySnelheidOp = t => rp.zs ? Math.max(1, Math.min(rp.snelheid, 1 + SALVO_REM * salvoAfstand(t).d)) : rp.snelheid;
-// Vloeiend naar een vak vliegen: zacht op gang komen en zacht afremmen (easeInOut), in
-// plaats van Leaflets flyTo, die abrupt begint. Een nieuwe vlucht onderbreekt de vorige.
+// Vloeiend naar een vak zoomen: zacht op gang komen en zacht afremmen (easeInOut). Het is één
+// rechte zoom rond een vast draaipunt: het punt dat aan het begin en aan het eind op dezelfde
+// plek op het scherm staat, blijft tijdens de hele beweging staan. Zo zoomt de kaart in één keer
+// naar het doel, zonder eerst op een ander punt in te zoomen en dan te schuiven.
+// Het doel (midden en zoom) wordt vooraf in één keer bepaald. Een nieuwe vlucht onderbreekt de vorige.
 let vluchtId = 0;
 function vliegZacht(kaart, vak, duur, maxZoom = 17, rand = 30) {
   const id = ++vluchtId, t0 = performance.now();
-  const vanC = kaart.getCenter(), vanZ = kaart.getZoom(), naarC = vak.getCenter();
-  const naarZ = Math.min(maxZoom, kaart.getBoundsZoom(vak, false, L.point(rand, rand).multiplyBy(2)));
+  const vanZ = kaart.getZoom(), naarZ = Math.min(maxZoom, kaart.getBoundsZoom(vak, false, L.point(rand, rand).multiplyBy(2)));
+  const c0 = kaart.project(kaart.getCenter(), 0), c1 = kaart.project(vak.getCenter(), 0);   // wereldpixels op zoom 0
+  const s0 = Math.pow(2, -vanZ), s1 = Math.pow(2, -naarZ);                                 // wereldpixels per schermpixel
   const zacht = f => f < .5 ? 4 * f * f * f : 1 - Math.pow(-2 * f + 2, 3) / 2;
   (function stap(nu) {
     if (id !== vluchtId) return;
-    const f = Math.min(1, (nu - t0) / duur), e = zacht(f);
-    kaart.setView([vanC.lat + (naarC.lat - vanC.lat) * e, vanC.lng + (naarC.lng - vanC.lng) * e], vanZ + (naarZ - vanZ) * e, { animate: false });
+    const f = Math.min(1, (nu - t0) / duur), e = zacht(f), z = vanZ + (naarZ - vanZ) * e, s = Math.pow(2, -z);
+    // midden zo dat de beweging een zuivere zoom rond het draaipunt is (bij gelijke zoom: gewoon schuiven)
+    const deel = Math.abs(s0 - s1) > 1e-12 ? (s0 - s) / (s0 - s1) : e;
+    const c = L.point(c0.x + (c1.x - c0.x) * deel, c0.y + (c1.y - c0.y) * deel);
+    kaart.setView(kaart.unproject(c, 0), z, { animate: false });
     if (f < 1) requestAnimationFrame(stap);
   })(t0);
 }
@@ -957,8 +966,14 @@ function cameraRace(t) {
   if (best <= W) {
     if (rp.camDoel && rp.camDoel.vak.equals(doel.vak)) { rp.camDoel = doel; return; }   // zelfde plek: blijven staan
     rp.camDoel = doel;
-    const vak = L.latLngBounds(doel.vak.getSouthWest(), doel.vak.getNorthEast()), om = doel.vak.pad(1.5);
-    rp.boten.forEach(({ stip }) => { if (rp.kaart.hasLayer(stip) && om.contains(stip.getLatLng())) vak.extend(stip.getLatLng()); });
+    // in één keer het goede beeld: het doel plus álle boten, over het hele zoommoment (zodat
+    // niemand uit beeld vaart en er halverwege niet opnieuw gezoomd hoeft te worden)
+    const vak = L.latLngBounds(doel.vak.getSouthWest(), doel.vak.getNorthEast());
+    const groep = d.doelen.filter(x => x.vak.equals(doel.vak) && Math.abs(x.s - doel.s) <= 3 * W);   // bijv. alle starts
+    const van = Math.min(...groep.map(x => x.s)) - W, tot = Math.max(...groep.map(x => x.s)) + W;
+    d.sporen.forEach(s => {
+      for (let i = 0; i <= 10; i++) { const p = positieOp(s.pts, van + (tot - van) * i / 10); if (p) vak.extend([p.lat, p.lng]); }
+    });
     vliegZacht(rp.kaart, vak, 1500, 16, 40);
   } else if (rp.camDoel && best > W * 1.5) {
     rp.camDoel = null;
@@ -1540,7 +1555,8 @@ let veldModus = false, veldMidden = null, veldMarker = null;
 const isWrak = b => !!(spelStand && spelStand.start && spelStand.deelnemers.includes(b) && spelStand.boten[b].levens <= 0);
 function schipLabel(b) {
   const inSpel = spelStand && spelStand.start && spelStand.deelnemers.includes(b);
-  return esc(naamVan(b)) + (inSpel ? ' ' + Piraat.levensTekst(spelStand.boten[b]) : '');
+  const herlaad = inSpel && spelStand.bezig ? Piraat.herlaadTekst(spelStand.boten[b], Date.now()) : '';
+  return esc(naamVan(b)) + (inSpel ? ' ' + Piraat.levensTekst(spelStand.boten[b]) : '') + (herlaad ? ' ' + herlaad : '');
 }
 function spelPosTijden() { const t = {}; FLEET.forEach(b => { if (laatsteTs[b]) t[b] = laatsteTs[b]; }); return t; }
 const schipPos = b => posData[b] ? { lat: posData[b].lat, lng: posData[b].lng } : null;

@@ -361,6 +361,15 @@ const Piraat = (() => {
   }
   // Herlaadtijd na het laatste salvo (gehalveerd als dat salvo viel tijdens 'snel herladen')
   const herlaadDuur = (b, t) => SPEL.herlaadMs / (b && t < b.snelTot ? 2 : 1);
+  // Wanneer het kanon weer kan vuren (ms): na het herladen, na een treffer (kanon ligt stil) of na een boobytrap
+  const kanonKlaar = b => Math.max(b.laatsteSchot != null ? b.laatsteSchot + herlaadDuur(b, b.laatsteSchot) : 0,
+    b.geraakt != null ? b.geraakt + SPEL.geraaktMs : 0, b.valTot || 0);
+  // Herlaadtimer voor het label boven het schip ('' als het kanon klaar is, gezonken of het kruit op)
+  const herlaadTekst = (b, nu) => {
+    if (!b || b.levens <= 0 || b.gebruikt >= SPEL.schoten) return '';
+    const rest = kanonKlaar(b) - nu;
+    return rest > 0 ? `⏳ ${formatDuur(Math.ceil(rest / 1000) * 1000)}` : '';
+  };
   const spook = (b, nu) => !!(b && b.levens > 0 && b.spookTot > nu);
 
   // ---- Scorebord ----
@@ -500,6 +509,6 @@ const Piraat = (() => {
     }, duur * 0.7);
   }
 
-  return { kogels, raakt, binnenVeld, straal, veldOp, stand, journaal, buitHtml, harten, levensTekst, effectenTekst, herlaadDuur, spook, scoreHtml, statusTekst,
+  return { kogels, raakt, binnenVeld, straal, veldOp, stand, journaal, buitHtml, harten, levensTekst, effectenTekst, herlaadDuur, kanonKlaar, herlaadTekst, spook, scoreHtml, statusTekst,
            veldLaag, richtlijnen, animeer, ontploffing, kisten, kistLagen, inhoud, bereik, mijnLagen, SCHOT_VLAG };
 })();
