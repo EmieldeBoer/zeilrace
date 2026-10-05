@@ -11,6 +11,18 @@ function normaliseerSpoor(v) {
     [Number(p[0]), Number(p[1]), p[2] != null ? Number(p[2]) : i]);
   return pts.filter(p => !isNaN(p[0]) && !isNaN(p[1])).sort((a, b) => a[2] - b[2]);
 }
+// Rustige koers op tijd t (graden): de richting van waar de boot w seconden eerder was naar
+// waar hij w seconden later is. Dat middelt GPS-ruis weg maar volgt een overstag wel. Ligt de
+// boot (bijna) stil, dan een groter venster, en anders de vorige koers.
+function koersOp(pts, t, vorige = null) {
+  if (!pts.length) return vorige;
+  const eerste = { lat: pts[0][0], lng: pts[0][1] }, laatste = { lat: pts[pts.length - 1][0], lng: pts[pts.length - 1][1] };
+  for (const w of [20, 45, 90]) {
+    const a = positieOp(pts, t - w) || eerste, b = positieOp(pts, t + w) || laatste;
+    if (afstandMeter(a, b) >= 12) return peiling(a, b);
+  }
+  return vorige;
+}
 // Positie op tijd t (lineair tussen twee punten); null vóór het eerste punt
 function positieOp(pts, t) {
   if (!pts.length || t < pts[0][2]) return null;
@@ -180,13 +192,10 @@ async function maakScene(o, W = 1600, H = 1200) {
         g.lineWidth = 9; g.strokeStyle = 'rgba(0,0,0,.5)'; pad(g, deel);
         g.lineWidth = 5; g.strokeStyle = s.kleur; pad(g, deel);
       }
-      // koers: richting vanaf een punt minstens 8 m terug in het spoor
-      let koers = null;
-      for (let j = p.i; j >= Math.max(0, p.i - 15) && koers == null; j--)
-        koers = koersUitBeweging({ lat: s.pts[j][0], lng: s.pts[j][1] }, { lat: p.lat, lng: p.lng }, 8);
-      if (koers != null) s.laatsteKoers = koers;
-      tekenSchipCanvas(g, kop[0], kop[1], s.laatsteKoers || 0, s.boot, 5);   // zelfde model en schaal als op de kaart
-      omlijnd(g, s.naam, kop[0] + 30, kop[1] - 18, '#fff', 'bold 21px "EB Garamond", Georgia, serif', 'left');
+      // rustige koers (zie koersOp), en een kleiner schip dan live: het spoor moet zichtbaar blijven
+      s.laatsteKoers = koersOp(s.pts, t, s.laatsteKoers);
+      tekenSchipCanvas(g, kop[0], kop[1], s.laatsteKoers || 0, s.boot, 3);
+      omlijnd(g, s.naam, kop[0] + 22, kop[1] - 14, '#fff', 'bold 21px "EB Garamond", Georgia, serif', 'left');
     });
     g.restore();
     // Kop: titel + klok

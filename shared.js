@@ -464,13 +464,13 @@ function schipOnderdelen(boot, stijl = 'piraat') {
   // kader (m) rond het midden van de romp: links/rechts, boven (boegspriet) en onder
   return Object.assign({ delen: d }, kader);
 }
-function schipMaat(boot, stijl) {          // pixelmaat + ankerpunt (midden van de romp) op de kaart
-  const s = schipOnderdelen(boot, stijl), px = SCHIP_PX_PER_M;
+function schipMaat(boot, stijl, schaal = 1) {   // pixelmaat + ankerpunt (midden van de romp) op de kaart
+  const s = schipOnderdelen(boot, stijl), px = SCHIP_PX_PER_M * schaal;
   return { b: Math.round(2 * s.links * px), h: Math.round((s.boven + s.onder) * px),
            ax: Math.round(s.links * px), ay: Math.round(s.boven * px), s };
 }
-function schipSvg(boot, stijl = 'piraat') {
-  const { b, h, s } = schipMaat(boot, stijl);
+function schipSvg(boot, stijl = 'piraat', schaal = 1) {
+  const { b, h, s } = schipMaat(boot, stijl, schaal);
   const pad = p => `<path d="${p.d}" fill="${p.fill || 'none'}"${p.stroke ? ` stroke="${p.stroke}" stroke-width="${p.lw}" stroke-linecap="round"` : ''}/>`;
   return `<svg class="schip-svg ${stijl}" viewBox="${-s.links} ${-s.boven} ${2 * s.links} ${s.boven + s.onder}" width="${b}" height="${h}" aria-hidden="true">` +
     s.delen.map(pad).join('') + '</svg>';
@@ -489,21 +489,25 @@ function tekenSchipCanvas(c, x, y, koers, boot, pxPerM, stijl = 'kaart') {
   });
   c.restore();
 }
-const schipLabelOffset = boot => [0, -schipMaat(boot).ay + 4];
-function maakSchip(latlng, boot) {
-  const { b, h, ax, ay } = schipMaat(boot);
+const schipLabelOffset = (boot, schaal = 1) => [0, -schipMaat(boot, undefined, schaal).ay + 4];
+// schaal: 1 = live op de kaart; kleiner voor de replay (daar moet het spoor zichtbaar blijven)
+function maakSchip(latlng, boot, schaal = 1) {
+  const { b, h, ax, ay } = schipMaat(boot, undefined, schaal);
   const icon = L.divIcon({ className: 'schip',
     // beide uiterlijken zitten erin; de klasse 'zeeslag' op de marker kiest het piratenschip
-    html: `<div class="schip-draai" style="width:${b}px;height:${h}px;transform-origin:${ax}px ${ay}px">${schipSvg(boot, 'kaart')}${schipSvg(boot, 'piraat')}</div>`,
+    html: `<div class="schip-draai" style="width:${b}px;height:${h}px;transform-origin:${ax}px ${ay}px">${schipSvg(boot, 'kaart', schaal)}${schipSvg(boot, 'piraat', schaal)}</div>`,
     iconSize: [b, h], iconAnchor: [ax, ay] });
   const m = L.marker(latlng, { icon, keyboard: false, riseOnHover: true });
   m.on('add', () => { zetKoers(m, m._koers); zetSchipStaat(m, m._staat || {}); });
   return m;
 }
+// Draait het schip naar de koers, altijd de korte kant op (van 350° naar 10° is 20° draaien, geen 340°)
 function zetKoers(m, koers) {
   if (koers == null || isNaN(koers)) return;
-  m._koers = koers;
-  const e = m.getElement(); if (e) e.querySelector('.schip-draai').style.transform = `rotate(${koers}deg)`;
+  const vorig = m._draai;
+  const draai = vorig == null ? koers : vorig + ((((koers - vorig) % 360) + 540) % 360 - 180);
+  m._koers = koers; m._draai = draai;
+  const e = m.getElement(); if (e) e.querySelector('.schip-draai').style.transform = `rotate(${draai}deg)`;
 }
 function zetSchipStaat(m, staat) {                  // { eigen, gekozen, wrak, spel, spook: 'half' | 'weg' }
   m._staat = staat;

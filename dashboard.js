@@ -546,6 +546,7 @@ function zeeslagWeergave(key) {
 }
 
 let rp = null;   // replay-toestand
+const REPLAY_SCHAAL = 0.5;   // schepen in de replay half zo groot als live, zodat het spoor zichtbaar blijft
 function openReplay(nr) { const data = raceWeergave(nr); if (data) toonReplay(data, 'race-' + nr); }
 function openZeeslagReplay(key) { const data = zeeslagWeergave(key); if (data) toonReplay(data, 'zeeslag-' + key); }
 function toonReplay(data, nr) {
@@ -577,8 +578,9 @@ function toonReplay(data, nr) {
   }
   rp.boten = data.sporen.map(s => {
     const lijn = L.polyline([], { color: s.kleur, weight: 4, opacity: .9, interactive: false }).addTo(rp.kaart);
-    const stip = maakSchip([0, 0], s.boot)
-      .bindTooltip(esc(s.naam), { permanent: true, direction: 'top', className: 'boot-label', offset: schipLabelOffset(s.boot) });
+    const stip = maakSchip([0, 0], s.boot, REPLAY_SCHAAL)
+      .bindTooltip(esc(s.naam), { permanent: true, direction: 'top', className: 'boot-label', offset: schipLabelOffset(s.boot, REPLAY_SCHAAL) });
+    if (data.zeeslag) zetSchipStaat(stip, { spel: true });          // zeeslag: piratenschepen
     rp.lagen.push(lijn, stip);
     return { s, lijn, stip };
   });
@@ -666,7 +668,7 @@ function zetReplayTijd(t) {
     lijn.setStyle(kleurAan ? { weight: 9, opacity: .8 } : { weight: 4, opacity: .9 });
     stip.setLatLng([p.lat, p.lng]);
     if (!rp.kaart.hasLayer(stip)) stip.addTo(rp.kaart);
-    zetKoers(stip, koersInSpoor(s.pts, p));
+    zetKoers(stip, koersOp(s.pts, t, stip._koers));                 // rustige koers, zonder GPS-gewiebel
   });
   tekenSnelheidsSpoor(t, kleurAan);
   el('replayKlok').textContent = rp.data.klok(t);
@@ -732,6 +734,8 @@ function zetZeeslagTijd(t) {
     st.geldig.filter(g => g.schot.ts > zs.vorigMs && g.schot.ts <= nuMs)
       .forEach(g => { Piraat.animeer(rp.kaart, g.schot, g.raak, b => posOp(b, g.schot.ts), g.geblokt); speel(() => kanonschot()); });
   zs.vorigMs = nuMs;
+  // gezonken schepen worden een wrak
+  rp.boten.forEach(({ s, stip }) => zetSchipStaat(stip, { spel: true, wrak: st.boten[s.boot].levens <= 0 }));
   // legenda: de stand op dit moment
   const rest = b => SPEL.schoten - b.gebruikt;
   el('replayLegenda').innerHTML = d.sporen.map(s => {

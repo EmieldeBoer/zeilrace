@@ -154,6 +154,7 @@ body { font-variant-numeric: lining-nums tabular-nums; }
 /* ---- Piratenschepen op de kaart ---- */
 .schip { background: none; border: none; }
 .schip-draai { transition: transform .8s ease; }   /* maat + draaipunt per model: zie maakSchip() */
+#replayKaart .schip-draai { transition: none; }   /* replay: de koers is al rustig, en elke stap moet direct kloppen */
 .schip-svg { display: block; filter: drop-shadow(0 2px 2px rgba(0,0,0,.55)); }
 .schip-svg.piraat, .schip.zeeslag .schip-svg.kaart { display: none; }    /* standaard: eenvoudig kaartscheepje */
 .schip.zeeslag .schip-svg.piraat { display: block; }                      /* tijdens de zeeslag: piratenschip */
