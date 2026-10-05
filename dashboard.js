@@ -622,8 +622,12 @@ function toonReplay(data, nr) {
   slider.max = Math.ceil(rp.eind); slider.value = 0;
   setTimeout(() => {
     rp.kaart.invalidateSize();
-    const alle = data.sporen.flatMap(s => s.pts.map(p => [p[0], p[1]]));
-    if (alle.length) rp.kaart.fitBounds(alle, { padding: [30, 30], maxZoom: 16 });
+    // zeeslag: het hele speelveld in beeld; race: alle sporen
+    if (data.zeeslag) rp.kaart.fitBounds(speelveldVak(), { padding: [20, 20] });
+    else {
+      const alle = data.sporen.flatMap(s => s.pts.map(p => [p[0], p[1]]));
+      if (alle.length) rp.kaart.fitBounds(alle, { padding: [30, 30], maxZoom: 16 });
+    }
   }, 60);
   zetReplayTijd(data.gunS != null ? Math.max(0, data.gunS - 30) : 0);
 }
@@ -798,17 +802,23 @@ function salvoAfstand(t) {                   // seconden buiten het venster van 
   return beste;
 }
 const replaySnelheidOp = t => rp.zs ? Math.max(1, Math.min(rp.snelheid, 1 + SALVO_REM * salvoAfstand(t).d)) : rp.snelheid;
-// Inzoomen op de schutter (met het bereik van zijn kanon) en wie hij raakt; daarna terug naar het overzicht
+// Het hele speelveld in beeld (plus de sporen, als iemand erbuiten voer)
+function speelveldVak() {
+  const v = rp.data.zeeslag && rp.data.zeeslag.spel && rp.data.zeeslag.spel.veld;
+  const vak = v && v.r ? L.latLng(v.lat, v.lng).toBounds(v.r * 2) : null;
+  return vak || L.latLngBounds(rp.data.sporen.flatMap(s => s.pts.map(p => [p[0], p[1]])));
+}
+// Inzoomen op de schutter (met het bereik van zijn kanon) en wie hij raakt; daarna weer het hele speelveld
 function actieZoom(t) {
   const zs = rp.zs, { d, salvo } = salvoAfstand(t);
   if (d === 0 && salvo && zs.zoomSalvo !== salvo) {
-    if (!zs.terugBeeld) zs.terugBeeld = { c: rp.kaart.getCenter(), z: rp.kaart.getZoom() };
+    zs.terugBeeld = true;
     zs.zoomSalvo = salvo;
     const g = salvo.g, vak = L.latLng(g.schot.lat, g.schot.lng).toBounds(Piraat.bereik(g.schot) * 2.3);
     g.raak.concat(g.geblokt).forEach(b => { const p = replayPosOp(b, g.schot.ts); if (p) vak.extend([p.lat, p.lng]); });
     rp.kaart.flyToBounds(vak, { duration: .8, maxZoom: 17, padding: [30, 30] });
   } else if (d > SALVO_UITZOOM && zs.terugBeeld) {
-    rp.kaart.flyTo(zs.terugBeeld.c, zs.terugBeeld.z, { duration: .8 });
+    rp.kaart.flyToBounds(speelveldVak(), { duration: .8, padding: [20, 20] });
     zs.terugBeeld = null; zs.zoomSalvo = null;
   }
 }
