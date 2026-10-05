@@ -400,18 +400,25 @@ const Piraat = (() => {
     return L.circle([veld.lat, veld.lng], { radius: veld.r, color: '#8b1e12', weight: 3, dashArray: '10 8',
       fillColor: '#8b1e12', fillOpacity: 0.04, interactive: false }).addTo(kaart);
   }
-  // Stippellijnen: de randen van de waaier waarbinnen de breedzijde valt (geen middenlijn)
-  // lading = wat het schip uit een kist heeft: langere, wijdere of extra (vooruit) lijnen
+  // Het bereik van het kanon: per kant een waaier (licht gevuld) tot zo ver als de kogels
+  // komen, met stippellijnen langs de randen en een boog op het maximale bereik (geen middenlijn).
+  // De waaier is SPEL.raakM breder dan de kogels zelf: zo ver naast een kogel is het nog raak.
+  // lading = wat het schip uit een kist heeft: langere, wijdere of extra (vooruit) waaier
   function richtlijnen(kaart, pos, koers, oud, eigen, lading) {
     if (oud) kaart.removeLayer(oud);
     if (!pos || koers == null) return null;
-    const g = L.layerGroup(), kleur = eigen ? '#8b1e12' : '#2b1b0d';
-    const spreiding = lading === 'breed' ? SPEL.breedGr : SPEL.spreidingGr, lengte = bereik({ groot: lading === 'bereik' });
-    [90, -90].concat(lading === 'voor' ? [0] : []).forEach(zij => [-spreiding, spreiding].forEach(w => {
-      const r = richting(pos, koers + zij + w, lengte);
-      L.polyline([[pos.lat, pos.lng], [r.lat, r.lng]], { color: kleur, weight: eigen ? 2 : 1.5, dashArray: '2 6',
-        opacity: eigen ? .85 : .45, interactive: false }).addTo(g);
-    }));
+    const g = L.layerGroup(), kleur = eigen ? '#8b1e12' : '#2b1b0d', dekking = eigen ? .85 : .45;
+    const lengte = bereik({ groot: lading === 'bereik' });
+    const spreiding = (lading === 'breed' ? SPEL.breedGr : SPEL.spreidingGr) + Math.atan2(SPEL.raakM, lengte) * 180 / Math.PI;
+    [90, -90].concat(lading === 'voor' ? [0] : []).forEach(zij => {
+      const boog = [];
+      for (let i = 0; i <= 8; i++) boog.push(richting(pos, koers + zij - spreiding + 2 * spreiding * i / 8, lengte));
+      const ll = boog.map(p => [p.lat, p.lng]);
+      L.polygon([[pos.lat, pos.lng], ...ll], { stroke: false, fillColor: kleur, fillOpacity: eigen ? .16 : .09, interactive: false }).addTo(g);
+      [ll[0], ll[ll.length - 1]].forEach(r => L.polyline([[pos.lat, pos.lng], r], { color: kleur, weight: eigen ? 2 : 1.5, dashArray: '2 6',
+        opacity: dekking, interactive: false }).addTo(g));
+      L.polyline(ll, { color: kleur, weight: eigen ? 2.5 : 2, opacity: dekking, interactive: false }).addTo(g);   // boog: zo ver reikt het kanon
+    });
     return g.addTo(kaart);
   }
   function wolkje(kaart, p, straal, kleur, duur) {           // kruitdamp of een plons

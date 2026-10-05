@@ -212,9 +212,9 @@
     .replay-titel { font-family: var(--font-titel); font-size: 1.6rem; color: var(--goud); flex: 1; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #replayKaart { flex: 1; min-height: 200px; }
-    /* Zeeslag: een vierkante kaart, zodat de hele cirkel van het speelveld er goed op past */
-    .replay.zeeslag { overflow-y: auto; }
-    .replay.zeeslag #replayKaart { flex: 0 0 auto; width: min(100vw, 64vh); height: min(100vw, 64vh); align-self: center;
+    /* Replay (race en zeeslag): een vierkante kaart, zo groot als past */
+    .replay { overflow-y: auto; }
+    .replay #replayKaart { flex: 0 0 auto; width: min(100vw, 64vh); height: min(100vw, 64vh); align-self: center;
       border-left: 2px solid var(--messing-donker); border-right: 2px solid var(--messing-donker); }
     .replay-bediening { padding: 10px 14px 14px; background: linear-gradient(180deg, #1a120b, #0f0a06); border-top: 2px solid var(--messing-donker); }
     .replay-klok { font-family: var(--font-kap); font-size: 1.15rem; font-weight: 700; text-align: center; color: var(--goud); }
@@ -228,6 +228,11 @@
     .replay-optie input { width: 20px; height: 20px; accent-color: var(--messing); }
     .snelheid-schaal { display: flex; align-items: center; gap: 8px; margin: 2px 0 4px 28px; color: var(--ivoor-zacht);
       font-family: var(--font-kap); font-size: .78rem; font-weight: 700; }
+    /* op de replay-kaart (linksonder), zodat hij ook op een schermafbeelding staat */
+    .leaflet-control .snelheid-schaal { margin: 0; padding: 6px 10px; border-radius: 6px; background: rgba(26,18,11,.92);
+      border: 2px solid var(--messing); color: var(--ivoor); box-shadow: 0 2px 8px #000a; }
+    .snelheid-schaal .schaal-titel { color: var(--goud); }
+    .leaflet-control .snelheid-schaal .schaal-balk { flex: 0 0 120px; }
     .schaal-balk { flex: 0 1 180px; height: 10px; border-radius: 5px; border: 1px solid var(--messing-donker);
       background: linear-gradient(90deg, #2c6fbb, #3fa7c9, #e8c33a, #e07b2c, #c0392b); }
     .overstag-label { background: none; border: none; }
@@ -565,6 +570,7 @@
       <label class="replay-optie"><input type="checkbox" id="replayOverstag"> ⤢ Overstaghoeken tonen</label>
       <label class="replay-optie"><input type="checkbox" id="replaySnelheidKleur"> 🌈 Snelheid in kleur</label>
       <div class="snelheid-schaal" id="snelheidSchaal" hidden>
+        <span class="schaal-titel">Snelheid</span>
         <span id="schaalMin">—</span><span class="schaal-balk"></span><span id="schaalMax">—</span>
       </div>
       <div class="replay-legenda" id="replayLegenda"></div>

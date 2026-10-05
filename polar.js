@@ -166,5 +166,5 @@ const Polar = (() => {
   }
   const kleurVan = kracht => KLEUREN[kracht] || '#555';
 
-  return { windUren, bouw, svg, kleurVan, MIN_METINGEN };
+  return { windUren, windOp, bouw, svg, kleurVan, MIN_METINGEN };
 })();

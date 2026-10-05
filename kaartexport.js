@@ -23,6 +23,22 @@ function koersOp(pts, t, vorige = null) {
   }
   return vorige;
 }
+// GPS-uitschieters weghalen: een punt dat de boot alleen met meer dan MAX_KN (plus wat
+// GPS-marge) had kunnen halen, is een meetfout. Eerst een betrouwbaar beginpunt zoeken
+// (een punt dat past bij de drie volgende), dan vanaf daar vooruit en achteruit alleen
+// punten houden die haalbaar zijn vanaf het laatst gehouden punt.
+const UITSCHIETER_MAX_KN = 20, UITSCHIETER_MARGE_M = 30;
+function zonderUitschieters(pts) {
+  if (pts.length < 3) return pts;
+  const haalbaar = (a, b) => afstandMeter({ lat: a[0], lng: a[1] }, { lat: b[0], lng: b[1] }) <=
+    Math.abs(b[2] - a[2]) * UITSCHIETER_MAX_KN / 1.94384 + UITSCHIETER_MARGE_M;
+  let anker = pts.findIndex((p, i) => [1, 2, 3].every(k => !pts[i + k] || haalbaar(p, pts[i + k])));
+  if (anker < 0) anker = 0;
+  const voor = [], na = [pts[anker]];
+  for (let i = anker + 1; i < pts.length; i++) if (haalbaar(na[na.length - 1], pts[i])) na.push(pts[i]);
+  for (let i = anker - 1; i >= 0; i--) if (haalbaar(pts[i], voor.length ? voor[0] : pts[anker])) voor.unshift(pts[i]);
+  return voor.concat(na);
+}
 // Positie op tijd t (lineair tussen twee punten); null vóór het eerste punt
 function positieOp(pts, t) {
   if (!pts.length || t < pts[0][2]) return null;
@@ -90,7 +106,8 @@ function snelheidKleur(f) {
   return 'rgb(' + c0.map((c, k) => Math.round(c + (c1[k] - c) * r)).join(',') + ')';
 }
 
-// o = { titel, klok(t) → tekst, sporen: [{kleur, naam, pts, finishS}], baan: {lines, marks}, lussen }
+// o = { titel, klok(t) → tekst, sporen: [{kleur, naam, pts, finishS}], baan: {lines, marks}, lussen,
+//       snelheid?: { lo, hi } (kn) → sporen in snelheidskleur, met de legenda linksonder }
 // Geeft { canvas, teken(t), eind } terug; de achtergrond wordt één keer geladen.
 async function maakScene(o, W = 1600, H = 1200) {
   // De themaletters moeten geladen zijn vóór we op het canvas tekenen
@@ -123,6 +140,16 @@ async function maakScene(o, W = 1600, H = 1200) {
   const ox = (b.x0 + b.x1) / 2 - W / 2, oy = (b.y0 + b.y1) / 2 - kaartH / 2;
   const xy = (lat, lng) => { const p = wp(lat, lng, z); return [p.x - ox, p.y - oy + KOP]; };
   const sporen = o.sporen.map(s => Object.assign({}, s, { px: s.pts.map(p => xy(p[0], p[1])) }));
+  // snelheid in kleur: per stukje spoor een kleur (gemiddelde van de twee punten)
+  const sn = o.snelheid;
+  if (sn) sporen.forEach(s => {
+    const v = snelheidsSpoor(s.pts);
+    s.stukKleur = s.pts.map((_, i) => {
+      if (!i) return null;
+      const x = v[i] != null && v[i - 1] != null ? (v[i] + v[i - 1]) / 2 : (v[i] != null ? v[i] : v[i - 1]);
+      return x == null ? '#8e7550' : snelheidKleur((x - sn.lo) / Math.max(.1, sn.hi - sn.lo));
+    });
+  });
 
   // ---- Achtergrond (tegels + baan), één keer ----
   const bg = document.createElement('canvas'); bg.width = W; bg.height = H;
@@ -188,7 +215,16 @@ async function maakScene(o, W = 1600, H = 1200) {
       if (!p) return;
       const kop = xy(p.lat, p.lng);
       const deel = s.px.slice(0, p.i + 1).concat([kop]);
-      if (deel.length > 1) {
+      if (deel.length > 1 && s.stukKleur) {
+        // snelheid in kleur: de bootkleur als brede rand, daarop elk stukje in zijn snelheidskleur
+        g.lineWidth = 13; g.strokeStyle = 'rgba(0,0,0,.5)'; pad(g, deel);
+        g.lineWidth = 10; g.strokeStyle = s.kleur; pad(g, deel);
+        g.lineWidth = 5;
+        for (let i = 1; i < deel.length; i++) {
+          g.strokeStyle = s.stukKleur[Math.min(i, s.stukKleur.length - 1)] || '#8e7550';
+          pad(g, [deel[i - 1], deel[i]]);
+        }
+      } else if (deel.length > 1) {
         g.lineWidth = 9; g.strokeStyle = 'rgba(0,0,0,.5)'; pad(g, deel);
         g.lineWidth = 5; g.strokeStyle = s.kleur; pad(g, deel);
       }
@@ -216,6 +252,43 @@ async function maakScene(o, W = 1600, H = 1200) {
       g.fillStyle = r.kleur; g.fillRect(bx + 16, y - 12, 34, 8);
       g.fillStyle = '#efe3c6'; g.fillText(r.tekst, bx + 60, y);
     });
+    if (sn) tekenSnelheidLegenda();
+    if (o.wind) tekenWind(o.wind(t));
+  }
+  // Wind rechtsonder op de kaart: een pijl die met de wind meewijst, en kracht en richting
+  function tekenWind(w) {
+    if (!w) return;
+    const tekst = `${bft(w.kn)} Bft uit ${kompas(w.richting)}`, f = 'bold 19px "EB Garamond", Georgia, serif';
+    g.font = f; const bw = 70 + g.measureText(tekst).width + 18, bh = 54, bx = W - bw - 22, by = H - VOET - bh - 18;
+    g.fillStyle = 'rgba(26,18,11,.93)'; rondeRect(g, bx, by, bw, bh, 8); g.fill();
+    g.lineWidth = 2; g.strokeStyle = '#c9a24a'; g.stroke();
+    g.save(); g.translate(bx + 34, by + bh / 2); g.rotate((w.richting + 180) * Math.PI / 180);   // wijst met de wind mee
+    g.beginPath(); g.moveTo(0, -18); g.lineTo(9, 6); g.lineTo(2, 2); g.lineTo(2, 16); g.lineTo(-2, 16); g.lineTo(-2, 2); g.lineTo(-9, 6); g.closePath();
+    g.fillStyle = '#f0c75e'; g.fill(); g.restore();
+    g.fillStyle = '#efe3c6'; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(tekst, bx + 64, by + bh / 2);
+    g.textBaseline = 'alphabetic';
+  }
+  // Legenda van de snelheidskleuren, linksonder op de kaart (zelfde kleuren als op het scherm)
+  function tekenSnelheidLegenda() {
+    // breedtes uit de echte tekstmaten, zodat niets over elkaar valt
+    const titel = 'Snelheid', lo = sn.lo.toFixed(1) + ' kn', hi = sn.hi.toFixed(1) + ' kn';
+    const fTitel = 'bold 18px Cinzel, Georgia, serif', fGetal = 'bold 17px "EB Garamond", Georgia, serif';
+    g.font = fTitel; const wT = g.measureText(titel).width;
+    g.font = fGetal; const wLo = g.measureText(lo).width, wHi = g.measureText(hi).width;
+    const PAD = 16, GAT = 12, BALK = 170, bh = 54;
+    const bw = PAD + wT + 2 * GAT + wLo + GAT + BALK + GAT + wHi + PAD, bx = 22, by = H - VOET - bh - 18, my = by + bh / 2;
+    g.fillStyle = 'rgba(26,18,11,.93)'; rondeRect(g, bx, by, bw, bh, 8); g.fill();
+    g.lineWidth = 2; g.strokeStyle = '#c9a24a'; g.stroke();
+    g.textBaseline = 'middle'; g.textAlign = 'left';
+    let x = bx + PAD;
+    g.fillStyle = '#f0c75e'; g.font = fTitel; g.fillText(titel, x, my); x += wT + 2 * GAT;
+    g.fillStyle = '#efe3c6'; g.font = fGetal; g.fillText(lo, x, my); x += wLo + GAT;
+    const verloop = g.createLinearGradient(x, 0, x + BALK, 0);
+    [0, .25, .5, .75, 1].forEach(f => verloop.addColorStop(f, snelheidKleur(f)));
+    g.fillStyle = verloop; rondeRect(g, x, my - 7, BALK, 14, 7); g.fill();
+    g.lineWidth = 1.5; g.strokeStyle = '#8a6a2b'; g.stroke(); x += BALK + GAT;
+    g.fillStyle = '#efe3c6'; g.fillText(hi, x, my);
+    g.textBaseline = 'alphabetic';
   }
   return { canvas: cv, teken, eind };
 
