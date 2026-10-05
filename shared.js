@@ -361,7 +361,8 @@ function bootStatsHtml(d) {
 const TEGEL_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 function maakKaart(id) {
   const k = L.map(id).setView([52.4, 5.4], 12);
-  L.tileLayer(TEGEL_URL, { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(k);
+  // crossOrigin: de tegels mogen op een canvas getekend worden (opname van de replay als video/GIF)
+  L.tileLayer(TEGEL_URL, { maxZoom: 19, attribution: '© OpenStreetMap', crossOrigin: 'anonymous' }).addTo(k);
   zeemijlSchaal(k);
   return k;
 }
@@ -474,20 +475,6 @@ function schipSvg(boot, stijl = 'piraat', schaal = 1) {
   const pad = p => `<path d="${p.d}" fill="${p.fill || 'none'}"${p.stroke ? ` stroke="${p.stroke}" stroke-width="${p.lw}" stroke-linecap="round"` : ''}/>`;
   return `<svg class="schip-svg ${stijl}" viewBox="${-s.links} ${-s.boven} ${2 * s.links} ${s.boven + s.onder}" width="${b}" height="${h}" aria-hidden="true">` +
     s.delen.map(pad).join('') + '</svg>';
-}
-// Voor het canvas (export-video/foto): hetzelfde schip, pxPerM pixels per meter
-function tekenSchipCanvas(c, x, y, koers, boot, pxPerM, stijl = 'kaart') {
-  const s = schipOnderdelen(boot, stijl);
-  c.save(); c.translate(x, y); c.rotate((koers || 0) * Math.PI / 180); c.scale(pxPerM, pxPerM);
-  c.lineCap = 'round'; c.lineJoin = 'round';
-  s.delen.forEach(p => {
-    const pad = new Path2D(p.d);
-    if (p.schaduw) { c.shadowColor = 'rgba(0,0,0,.55)'; c.shadowBlur = 4; c.shadowOffsetY = 2; }
-    if (p.fill) { c.fillStyle = p.fill; c.fill(pad); }
-    c.shadowColor = 'transparent';
-    if (p.stroke) { c.strokeStyle = p.stroke; c.lineWidth = p.lw; c.stroke(pad); }
-  });
-  c.restore();
 }
 const schipLabelOffset = (boot, schaal = 1) => [0, -schipMaat(boot, undefined, schaal).ay + 4];
 // schaal: 1 = live op de kaart; kleiner voor de replay (daar moet het spoor zichtbaar blijven)

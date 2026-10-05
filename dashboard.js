@@ -605,6 +605,7 @@ function toonReplay(data, nr) {
   if (!rp) {
     rp = { kaart: maakKaart('replayKaart'), lagen: [], snelheid: 60, duurS: 30 };
     rp.kaart.options.zoomSnap = 0;             // traploos zoomen: het speelveld vult de kaart, en het inzoomen loopt vloeiend
+    rp.kaart._fadeAnimated = false;            // tegels meteen helemaal zichtbaar (ook in een opname)
     // de wind van dat moment (linksonder, zoals op de live kaart)
     const wind = L.control({ position: 'bottomleft' });
     wind.onAdd = () => {
@@ -670,16 +671,16 @@ function toonReplay(data, nr) {
   rp.kleur = null;                                    // snelheidsspoor: pas opbouwen als de schakelaar aan gaat
   const slider = el('replaySlider');
   slider.max = Math.ceil(rp.eind); slider.value = 0;
-  setTimeout(() => {
-    rp.kaart.invalidateSize();
-    // zeeslag: het hele speelveld in beeld; race: alle sporen
-    if (data.zeeslag) rp.kaart.fitBounds(speelveldVak(), { padding: [20, 20], animate: false });
-    else {
-      const alle = data.sporen.flatMap(s => s.pts.map(p => [p[0], p[1]]));
-      if (alle.length) rp.kaart.fitBounds(alle, { padding: [30, 30], maxZoom: 16, animate: false });
-    }
-  }, 60);
+  setTimeout(() => { rp.kaart.invalidateSize(); replayBeginBeeld(); }, 60);
   zetReplayTijd(data.gunS != null ? Math.max(0, data.gunS - 30) : 0);
+}
+// Het beginbeeld van de replay: zeeslag het hele speelveld, race alle sporen
+function replayBeginBeeld() {
+  if (rp.data.zeeslag) rp.kaart.fitBounds(speelveldVak(), { padding: [20, 20], animate: false });
+  else {
+    const alle = rp.data.sporen.flatMap(s => s.pts.map(p => [p[0], p[1]]));
+    if (alle.length) rp.kaart.fitBounds(alle, { padding: [30, 30], maxZoom: 16, animate: false });
+  }
 }
 // Koers op een punt in het spoor: richting vanaf een eerder punt dat minstens 8 m terug ligt
 function koersInSpoor(pts, p) {
@@ -892,14 +893,18 @@ function vliegZacht(kaart, vak, duur, maxZoom = 17, rand = 30) {
   const c0 = kaart.project(kaart.getCenter(), 0), c1 = kaart.project(vak.getCenter(), 0);   // wereldpixels op zoom 0
   const s0 = Math.pow(2, -vanZ), s1 = Math.pow(2, -naarZ);                                 // wereldpixels per schermpixel
   const zacht = f => f < .5 ? 4 * f * f * f : 1 - Math.pow(-2 * f + 2, 3) / 2;
+  // Zoals Leaflets eigen flyTo: met _move per beeld blijven de kaarttegels staan (ze worden
+  // geschaald tot de scherpere geladen zijn). setView per beeld wist alle tegels telkens,
+  // en dan zie je tijdens het zoomen alleen de (gele) achtergrond van de kaart.
+  kaart.stop(); kaart._moveStart(true, false);
   (function stap(nu) {
-    if (id !== vluchtId) return;
+    if (id !== vluchtId) { kaart._moveEnd(true); return; }
     const f = Math.min(1, (nu - t0) / duur), e = zacht(f), z = vanZ + (naarZ - vanZ) * e, s = Math.pow(2, -z);
     // midden zo dat de beweging een zuivere zoom rond het draaipunt is (bij gelijke zoom: gewoon schuiven)
     const deel = Math.abs(s0 - s1) > 1e-12 ? (s0 - s) / (s0 - s1) : e;
     const c = L.point(c0.x + (c1.x - c0.x) * deel, c0.y + (c1.y - c0.y) * deel);
-    kaart.setView(kaart.unproject(c, 0), z, { animate: false });
-    if (f < 1) requestAnimationFrame(stap);
+    kaart._move(kaart.unproject(c, 0), z, { flyTo: true });
+    if (f < 1) requestAnimationFrame(stap); else kaart._moveEnd(true);
   })(t0);
 }
 // Het hele speelveld in beeld (plus de sporen, als iemand erbuiten voer)
@@ -1027,79 +1032,173 @@ el('replaySnelheid').addEventListener('change', e => {
   if (rp.speelt) { pauzeReplay(); speelReplay(); }               // meteen in de nieuwe stand verder
 });
 el('replaySluit').addEventListener('click', () => { pauzeReplay(); el('replay').hidden = true; });
-// Wat de foto en de video krijgen: met 'snelheid in kleur' aan ook de kleuren en de legenda
-function exportData() {
-  const extra = { wind: rp.windUren && rp.windUren.length ? replayWindOp : null };     // windpijl in de foto/video
-  if (el('replaySnelheidKleur').checked) {
-    if (!rp.kleur) bouwSnelheidsSpoor();
-    extra.snelheid = { lo: rp.kleur.lo, hi: rp.kleur.hi };
+// =========================================================
+//  Foto, video en GIF van de replay: precies zoals ▶ Afspelen
+// =========================================================
+// Tijdens de opname krijgt de replaykaart een vaste maat (achter een 'opname'-scherm) en speelt
+// de replay met dezelfde snelheid, camera, animaties en schakelaars als Afspelen, maar op een
+// eigen klok: elk beeld klopt, ook als het tekenen langer duurt dan een beeld. Per beeld komen
+// de titel en de klok boven de kaart, de kaart zelf (tekenLeafletKaart) en de legenda eronder.
+const OPNAME_KOP = 80, OPNAME_REGEL = 30;
+function opnameMaat(M) {
+  const regels = Math.max(el('replayLegenda').children.length, rp.data.sporen.length + (rp.data.zeeslag ? 1 : 0));
+  return { W: M, H: OPNAME_KOP + M + regels * OPNAME_REGEL + 20 };
+}
+async function tekenOpname(c, M) {
+  const W = c.canvas.width, H = c.canvas.height;
+  c.save();
+  c.fillStyle = '#1a120b'; c.fillRect(0, 0, W, H);
+  c.textAlign = 'left'; c.textBaseline = 'alphabetic'; c.letterSpacing = '0px';
+  c.fillStyle = '#f0c75e'; c.font = `${Math.round(OPNAME_KOP * .44)}px "Pirata One", Georgia, serif`;
+  c.fillText(rp.data.titel, 20, OPNAME_KOP * .5);
+  c.fillStyle = '#bfae88'; c.font = `bold ${Math.round(OPNAME_KOP * .2)}px Cinzel, Georgia, serif`;
+  c.fillText(el('replayKlok').textContent, 22, OPNAME_KOP * .86);
+  c.fillStyle = '#c9a24a'; c.fillRect(0, OPNAME_KOP - 3, W, 3);
+  await tekenLeafletKaart(c, rp.kaart, 0, OPNAME_KOP, M);
+  c.fillStyle = '#c9a24a'; c.fillRect(0, OPNAME_KOP + M, W, 3);
+  // de legenda, zoals onder de replay (met de bolletjes in de bootkleur)
+  c.font = '20px "EB Garamond", Georgia, serif'; c.textBaseline = 'middle';
+  [...el('replayLegenda').children].forEach((d, i) => {
+    const y = OPNAME_KOP + M + 22 + i * OPNAME_REGEL, dot = d.querySelector('.dot');
+    let x = 22;
+    if (dot) { c.beginPath(); c.arc(x + 6, y, 6, 0, 2 * Math.PI); c.fillStyle = getComputedStyle(dot).backgroundColor; c.fill(); x += 20; }
+    c.fillStyle = '#efe3c6'; c.fillText(d.textContent.replace(/\s+/g, ' ').trim(), x, y);
+  });
+  c.restore();
+}
+// Wacht tot de kaarttegels van het huidige beeld binnen zijn (hooguit 3 s)
+async function tegelsKlaar(wacht) {
+  for (let i = 0; i < 120; i++) {
+    if (!rp.kaart.getPane('tilePane').querySelector('img.leaflet-tile:not(.leaflet-tile-loaded)')) return;
+    await wacht(25);
   }
-  if (rp.data.zeeslag) Object.assign(extra, zeeslagExport());
-  return Object.assign({}, rp.data, extra);
 }
-// Zeeslag in foto, video en GIF: het (krimpende) speelveld, de kogelwolk en 💥 bij elk salvo,
-// een rookwolkje op elke plek waar geschoten is, piratenschepen en de levens in de legenda
-function zeeslagExport() {
-  const d = rp.data, z = d.zeeslag, spel = z.spel || {}, v = spel.veld, eind = z.over || spel.eind;
-  const alleSalvos = Piraat.stand(Object.assign({}, spel, { eind }), d.posTs, Infinity).geldig;
-  const standOp = ms => Piraat.stand(Object.assign({}, spel, { eind: Math.min(eind || Infinity, ms) }), d.posTs, Infinity);
-  const uit = { schipStijl: 'piraat' };
-  if (v && v.r) { const vak = L.latLng(v.lat, v.lng).toBounds(v.r * 2); uit.extraPunten = [[vak.getSouth(), vak.getWest()], [vak.getNorth(), vak.getEast()]]; }
-  uit.tekenExtra = (g, xy, t) => {
-    const ms = d.t0 + t * 1000;
-    if (v && v.r) {
-      const r = Piraat.straal(v, z.start, Math.min(ms, eind || Infinity)), c = xy(v.lat, v.lng), n = xy(v.lat + r / 111320, v.lng);
-      g.beginPath(); g.arc(c[0], c[1], Math.abs(c[1] - n[1]), 0, 2 * Math.PI);
-      g.fillStyle = 'rgba(139,30,18,.05)'; g.fill();
-      g.setLineDash([14, 10]); g.lineWidth = 4; g.strokeStyle = '#8b1e12'; g.stroke(); g.setLineDash([]);
+// De kaart even op maat M zetten (achter het opnamescherm). behoud: hetzelfde stuk kaart in beeld houden.
+function opnameStart(M, behoud) {
+  const kaartEl = el('replayKaart'), k = rp.kaart, oud = { stijl: kaartEl.getAttribute('style'), c: k.getCenter(), z: k.getZoom(), w: k.getSize().x };
+  const scherm = document.createElement('div');
+  scherm.className = 'opname-scherm';
+  scherm.innerHTML = '<div>⏺ Opname…<br><span></span></div>';
+  document.body.appendChild(scherm);
+  kaartEl.style.cssText = `position:fixed;left:0;top:0;width:${M}px;height:${M}px;flex:none;z-index:2600`;
+  kaartEl.classList.add('opname');
+  k.invalidateSize(false);
+  if (behoud) k.setView(oud.c, oud.z + Math.log2(M / oud.w), { animate: false });
+  return {
+    tekst: t => { scherm.querySelector('span').textContent = t; },
+    klaar: () => {
+      scherm.remove();
+      kaartEl.classList.remove('opname');
+      if (oud.stijl == null) kaartEl.removeAttribute('style'); else kaartEl.setAttribute('style', oud.stijl);
+      k.invalidateSize(false);
+      k.setView(oud.c, oud.z, { animate: false });
     }
-    alleSalvos.forEach(sv => {
-      const s = sv.schot; if (s.ts > ms) return;
-      if (ms - s.ts < 20000) {                                      // net geschoten: de kogelwolk en de treffers
-        g.fillStyle = '#161616';
-        Piraat.kogels(s).forEach(k => { const e = xy(k.eind.lat, k.eind.lng); g.beginPath(); g.arc(e[0], e[1], 4.5, 0, 2 * Math.PI); g.fill(); });
-        g.font = '44px serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-        sv.raak.concat(sv.geblokt).forEach(b => { const q = replayPosOp(b, s.ts); if (q) { const p = xy(q.lat, q.lng); g.fillText(sv.raak.includes(b) ? '💥' : '🛡️', p[0], p[1]); } });
-        g.textBaseline = 'alphabetic';
-      }
-      const p = xy(s.lat, s.lng);                                    // rookwolkje: hier werd geschoten
-      g.beginPath(); g.arc(p[0], p[1], sv.raak.length ? 13 : 9, 0, 2 * Math.PI);
-      g.fillStyle = sv.raak.length ? '#8b1e12' : '#e6dcc6'; g.fill(); g.lineWidth = 5; g.strokeStyle = BOTEN[sv.boot].kleur; g.stroke();
-    });
   };
-  uit.legenda = t => {
-    const st = standOp(d.t0 + t * 1000);
-    return d.sporen.map(s => { const b = st.boten[s.boot];
-      return { kleur: s.kleur, tekst: `${s.naam} — ${b.levens ? Piraat.harten(b.levens) : '☠️ gezonken'} · ${b.hits}× raak` }; });
-  };
-  return uit;
 }
-el('replayFoto').addEventListener('click', async () => {
-  const k = el('replayFoto'); k.disabled = true; k.textContent = '⏳ Foto…';
+// De replay vanaf het begin afspelen op een eigen klok; per beeld opBeeld(i, laatste, wacht).
+// requestAnimationFrame, setTimeout en performance.now volgen tijdens de opname die klok
+// (de camera, de vliegende kogels en de ontploffingen lopen daarop); geluid staat uit.
+async function speelOp(fps, opBeeld, voortgang) {
+  const echt = { raf: window.requestAnimationFrame, nu: performance.now, st: window.setTimeout, ct: window.clearTimeout, speel: window.speel };
+  const wacht = ms => new Promise(r => echt.st.call(window, r, ms));
+  let klok = echt.nu.call(performance), raf = [], timers = [], volg = 1;
+  rp.camDoel = null; rp.camKlaar = null; vluchtId++;
+  if (rp.zs) { rp.zs.zoomSalvo = null; rp.zs.terugBeeld = null; rp.zs.vorigMs = null; }
+  replayBeginBeeld(); zetReplayTijd(0);
   try {
-    const blob = await maakKaartPNG(exportData(), rp.t);
-    if (blob) downloadBlob(blob, `zeilrace-${RACE_ID}-${rp.nr}.png`);
+    window.requestAnimationFrame = cb => { raf.push(cb); return raf.length; };
+    performance.now = () => klok;
+    window.setTimeout = (cb, ms, ...a) => { const id = volg++; timers.push({ id, t: klok + (+ms || 0), cb: () => { if (typeof cb === 'function') cb(...a); } }); return id; };
+    window.clearTimeout = id => { timers = timers.filter(x => x.id !== id); };
+    window.speel = () => {};
+    speelReplay();
+    for (let i = 0; ; i++) {
+      klok += 1000 / fps;
+      timers.sort((a, b) => a.t - b.t);
+      while (timers.length && timers[0].t <= klok) timers.shift().cb();
+      const nu = raf; raf = []; nu.forEach(cb => cb(klok));
+      await tegelsKlaar(wacht);
+      const laatste = !rp.speelt;
+      await opBeeld(i, laatste, wacht);
+      if (voortgang) voortgang(Math.min(1, rp.t / rp.eind));
+      if (laatste) break;
+    }
+  } finally {
+    window.requestAnimationFrame = echt.raf; window.setTimeout = echt.st; window.clearTimeout = echt.ct; window.speel = echt.speel;
+    delete performance.now;                                          // terug naar de echte (van het prototype)
+    pauzeReplay();
+  }
+}
+// Hoe lang het afspelen (in echte seconden) zou duren met de huidige snelheid
+function afspeelDuur() {
+  if (rp.dertig) return rp.duurS;
+  let s = 0;
+  for (let t = 0; t < rp.eind; t += 0.5) s += 0.5 / replaySnelheidOp(t);
+  return s;
+}
+const opnameNaam = ext => `zeilrace-${RACE_ID}-${rp.nr}.${ext}`;
+
+el('replayFoto').addEventListener('click', async () => {
+  const k = el('replayFoto'), M = 1200; pauzeReplay(); k.disabled = true; k.textContent = '⏳ Foto…';
+  const opname = opnameStart(M, true);
+  try {
+    await tegelsKlaar(ms => new Promise(r => setTimeout(r, ms)));
+    const { W, H } = opnameMaat(M), cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    await tekenOpname(cv.getContext('2d'), M);
+    downloadBlob(await new Promise(r => cv.toBlob(r, 'image/png')), opnameNaam('png'));
   } catch (e) { meldFout('Foto maken mislukt: ' + e.message); }
-  finally { k.disabled = false; k.textContent = '🖼 Foto'; }
+  finally { opname.klaar(); k.disabled = false; k.textContent = '🖼 Foto'; }
 });
 el('replayGif').addEventListener('click', async () => {
-  const k = el('replayGif');
-  pauzeReplay(); k.disabled = true; k.textContent = '🎞 0%';
+  const k = el('replayGif'), M = 560, duur = afspeelDuur();
+  if (duur > 75 && !confirm(`Met deze snelheid duurt de GIF ${Math.round(duur)} seconden en wordt hij groot. ` +
+    'Kies bij de snelheid ⏱ 30 s of ⏱ 1 min voor een kortere GIF. Toch doorgaan?')) return;
+  pauzeReplay(); k.disabled = true;
+  const fps = Math.max(4, Math.min(10, Math.round(200 / duur)));      // hooguit ~200 beelden (bestand blijft hanteerbaar)
+  const opname = opnameStart(M, false);
   try {
-    const gif = await maakRaceGif(exportData(), f => { k.textContent = `🎞 ${Math.round(f * 100)}%`; });
-    if (gif) downloadBlob(gif, `zeilrace-${RACE_ID}-${rp.nr}.gif`);
+    const { W, H } = opnameMaat(M), cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const c = cv.getContext('2d', { willReadFrequently: true });
+    const vaste = [[26, 18, 11], [240, 199, 94], [239, 227, 198], [191, 174, 136], [201, 162, 74], [139, 30, 18], [0, 0, 0], [255, 255, 255]]
+      .concat(Object.values(BOTEN).map(b => hexNaarRgb(b.kleur)), [0, .25, .5, .75, 1].map(f => snelheidKleur(f).match(/\d+/g).map(Number)));
+    let gif = null;
+    await speelOp(fps, async (i, laatste) => {
+      await tekenOpname(c, M);
+      const px = c.getImageData(0, 0, W, H).data;
+      if (!gif) gif = new GifSchrijver(W, H, px, vaste);
+      gif.beeld(px, laatste ? 300 : Math.round(100 / fps));            // eindbeeld 3 s laten staan
+    }, f => { const p = Math.round(f * 100) + '%'; k.textContent = '🎞 ' + p; opname.tekst(p); });
+    if (gif) downloadBlob(gif.blob(), opnameNaam('gif'));
   } catch (e) { meldFout('GIF maken mislukt: ' + e.message); }
-  finally { k.disabled = false; k.textContent = '🎞 GIF'; }
+  finally { opname.klaar(); k.disabled = false; k.textContent = '🎞 GIF'; }
 });
 el('replayVideo').addEventListener('click', async () => {
-  const k = el('replayVideo');
-  if (!videoFormaat()) { alert('Deze browser kan geen video opnemen. Probeer Chrome, Edge of Safari.'); return; }
+  const k = el('replayVideo'), mime = videoFormaat(), M = 1080, fps = 25;
+  if (!mime) { alert('Deze browser kan geen video opnemen. Probeer Chrome, Edge of Safari.'); return; }
   pauzeReplay(); k.disabled = true;
+  const opname = opnameStart(M, false);
   try {
-    const v = await maakRaceVideo(exportData(), f => { k.textContent = `🎬 ${Math.round(f * 100)}%`; });
-    if (v) downloadBlob(v.blob, `zeilrace-${RACE_ID}-${rp.nr}.${v.ext}`);
+    const { W, H } = opnameMaat(M), cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const c = cv.getContext('2d');
+    await tekenOpname(c, M);
+    // De recorder staat op pauze terwijl een beeld getekend wordt, en neemt elk beeld daarna precies
+    // 1/fps seconde op: zo duurt de video altijd even lang als het afspelen, hoe snel de computer ook is.
+    const stroom = cv.captureStream(0), spoor = stroom.getVideoTracks()[0];
+    const rec = new MediaRecorder(stroom, { mimeType: mime, videoBitsPerSecond: 8e6 }), stukken = [];
+    rec.ondataavailable = e => { if (e.data && e.data.size) stukken.push(e.data); };
+    const gestopt = new Promise(r => { rec.onstop = r; });
+    rec.start(500); rec.pause();
+    await speelOp(fps, async (i, laatste, wacht) => {
+      await tekenOpname(c, M);
+      rec.resume(); spoor.requestFrame();
+      await wacht(laatste ? 1500 : 1000 / fps);                     // eindbeeld 1,5 s laten staan
+      rec.pause();
+    }, f => { const p = Math.round(f * 100) + '%'; k.textContent = '🎬 ' + p; opname.tekst(p); });
+    rec.resume();
+    rec.stop(); await gestopt;
+    downloadBlob(new Blob(stukken, { type: mime.split(';')[0] }), opnameNaam(mime.includes('mp4') ? 'mp4' : 'webm'));
   } catch (e) { meldFout('Video maken mislukt: ' + e.message); }
-  finally { k.disabled = false; k.textContent = '🎬 Video'; }
+  finally { opname.klaar(); k.disabled = false; k.textContent = '🎬 Video'; }
 });
 
 // =========================================================

@@ -15,7 +15,7 @@ Realtime Database, gehost op Netlify.
 | `tracker.html` + `tracker.js` | De telefoonpagina op elke boot: GPS, navigatie, aftelklok en GPS-alarm |
 | `shared.js` | Gedeelde logica: inloggen, geometrie, rondingslijnen, wind, planning en geluid |
 | `config.js` | Firebase-config, de boten + ORC-ratings en `RACE_ID` |
-| `kaartexport.js` | Replay-scène, foto (PNG) en video (MP4/WebM) van een afgeronde race |
+| `kaartexport.js` | Sporen en replay-hulpmiddelen, en de export: de replaykaart op een canvas (foto, video, GIF-encoder) |
 | `piraat.js` | Het piratenspel: regels, stand, kogelwolken en de animatie op de kaart |
 | `feest.js` | Confetti (goudstukken), vuurwerk en knallend geluid bij de finish |
 | `polar.js` | De polars: snelheid per windhoek en windsterkte uit de gezeilde races |
@@ -127,7 +127,12 @@ wind van Open-Meteo, weergegeven in Beaufort.
    - Zolang er een voorstel open staat, telt het passeren van de startlijn nog niet.
 4. Na de race: **Race afronden & opslaan**. De uitslag, de baan en de sporen worden
    bewaard. In de tab *Uitslagen* staat per race een **▶ Replay** met een tijdslider,
-   afspelen, **🎬 Video** (MP4 of WebM) en **🖼 Foto**.
+   afspelen, **🎬 Video** (MP4 of WebM), **🎞 GIF** en **🖼 Foto**.
+   - Video en GIF zijn een opname van de replay zelf: dezelfde kaart, camera, snelheid (ook ⏱ 30 s / 1 min) en
+     schakelaars als **▶ Afspelen**, met de titel en de klok erboven en de legenda eronder. Tijdens de opname staat er
+     een opnamescherm voor; houd het tabblad open. De video duurt altijd even lang als het afspelen, ook als de
+     computer trager tekent. Een GIF heeft hooguit ~200 beelden; kies voor een korte GIF ⏱ 30 s of ⏱ 1 min.
+   - De foto is het beeld dat je op dat moment ziet, in hoge resolutie.
 
 **Boeironden:**
 - Bij elke boei hoort een onzichtbare rondingslijn aan de buitenkant van de bocht. Wie die oversteekt, heeft de boei gerond.

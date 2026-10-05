@@ -212,6 +212,12 @@
     .replay-titel { font-family: var(--font-titel); font-size: 1.6rem; color: var(--goud); flex: 1; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #replayKaart { flex: 1; min-height: 200px; }
+    /* Tijdens een opname (foto, video, GIF): de kaart staat erachter op vaste maat */
+    .opname-scherm { position: fixed; inset: 0; z-index: 2700; background: rgba(10,7,4,.94); display: flex;
+      align-items: center; justify-content: center; text-align: center; color: var(--goud); font-family: var(--font-kap);
+      font-size: 1.4rem; font-weight: 700; letter-spacing: .06em; line-height: 1.6; }
+    .opname-scherm span { font-size: 2.4rem; }
+    #replayKaart.opname * { transition: none !important; }   /* overgangen lopen op de echte klok, de opname niet */
     /* Replay (race en zeeslag): een vierkante kaart, zo groot als past */
     .replay { overflow-y: auto; }
     .replay #replayKaart { flex: 0 0 auto; width: min(100vw, 64vh); height: min(100vw, 64vh); align-self: center;
