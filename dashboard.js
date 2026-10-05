@@ -556,8 +556,8 @@ function raceWeergave(nr) {
   const lijnVak = l => L.latLngBounds([[l.a.lat, l.a.lng], [l.b.lat, l.b.lng]]);
   sporen.forEach(sp => {
     const b = sp.boot, tt = (res.tijden && res.tijden[b]) || {};
-    if (tt.start && lijnenR.start && lijnenR.start.a) doelen.push({ s: (Math.max(tt.start, res.gun || 0) - t0) / 1000, vak: lijnVak(lijnenR.start) });
-    if (tt.finish && lijnenR.finish && lijnenR.finish.a) doelen.push({ s: (tt.finish - t0) / 1000, vak: lijnVak(lijnenR.finish) });
+    if (tt.start && lijnenR.start && lijnenR.start.a) doelen.push({ s: (Math.max(tt.start, res.gun || 0) - t0) / 1000, vak: lijnVak(lijnenR.start), boot: b });
+    if (tt.finish && lijnenR.finish && lijnenR.finish.a) doelen.push({ s: (tt.finish - t0) / 1000, vak: lijnVak(lijnenR.finish), boot: b });
     baanVanBoot(marksR, res.lussen || null, b).forEach(bo => {
       const ts = res.rondingen && res.rondingen[b] && res.rondingen[b][bo.id];
       let s = ts ? (ts - t0) / 1000 : null;
@@ -565,7 +565,7 @@ function raceWeergave(nr) {
         let dichtst = 150;
         sp.pts.forEach(p => { const d = afstandMeter({ lat: p[0], lng: p[1] }, bo); if (d < dichtst) { dichtst = d; s = p[2]; } });
       }
-      if (s != null) doelen.push({ s, vak: L.latLng(bo.lat, bo.lng).toBounds(300) });
+      if (s != null) doelen.push({ s, vak: L.latLng(bo.lat, bo.lng).toBounds(300), boot: b });
     });
   });
   doelen.sort((a, c) => a.s - c.s);
@@ -630,7 +630,7 @@ function toonReplay(data, nr) {
   if (rp.zs) Object.values(rp.zs.richt || {}).forEach(l => l && rp.kaart.removeLayer(l));   // kanonbereik van de vorige zeeslag
   rp.lagen = []; rp.nr = nr; rp.data = data;
   rp.warp = null;                                // tabel voor de 30 s-stand: per replay opnieuw
-  rp.camDoel = null; rp.camKlaar = null;         // camera van de race-replay: begint met de hele baan
+  rp.camShot = null; rp.camPlan = null;          // camera van de race-replay: begint met de hele baan
   // wind per uur ophalen; de windwidget volgt de replaytijd
   rp.windUren = null;
   rp.windEl.querySelector('.windsub').textContent = 'laden…';
@@ -955,8 +955,11 @@ function dertigTijd(echt) {
   return Math.min(rp.eind, (lo + f) * DERTIG_STAP);
 }
 // ---- Race-replay: de camera zoomt in bij elke doelovergang en uit naar de hele baan ----
-// Venster rond een overgang: minstens een minuut racetijd, en bij hoge snelheid zo lang dat het
-// ongeveer 2,5 s echte tijd in beeld is. Overgangen op dezelfde plek (de hele start) blijven één shot.
+// Een vast draaiboek ('shots'), één keer uitgerekend per afspeelsnelheid: rond elke overgang
+// (start, boeironding, finish) een shot van het doel en de boot(en) die het passeren, van ~2,5 s
+// echte tijd ervoor tot ~2 s erna. Overgangen op dezelfde plek vlak na elkaar worden één shot.
+// Volgt een shot vlak op het vorige, dan gaat de camera er direct heen (zonder tussendoor uit te
+// zoomen); anders tussendoor de hele baan.
 function heleBaanVak() {
   const d = rp.data, l = (d.baan && d.baan.lines) || {}, vak = L.latLngBounds([]);
   d.sporen.forEach(s => s.pts.forEach(p => vak.extend([p[0], p[1]])));
@@ -964,39 +967,42 @@ function heleBaanVak() {
   alsBoeien(d.baan && d.baan.marks).forEach(b => vak.extend([b.lat, b.lng]));
   return vak;
 }
+const SHOT_VOOR = 2.5, SHOT_NA = 2, SHOT_SAMEN = 3, SHOT_MIN_M = 500;   // echte seconden; kleinste beeld (m)
+function cameraPlan() {
+  const d = rp.data, v = rp.dertig ? rp.eind / rp.duurS : rp.snelheid, sleutel = `${v}|${rp.eind}`;
+  if (rp.camPlan && rp.camPlan.sleutel === sleutel) return rp.camPlan.shots;
+  const voor = SHOT_VOOR * v, na = SHOT_NA * v, samen = SHOT_SAMEN * v, shots = [];
+  [...(d.doelen || [])].sort((a, b) => a.s - b.s).forEach(x => {
+    const vorige = shots[shots.length - 1];
+    if (vorige && vorige.doel.equals(x.vak) && x.s - voor <= vorige.tot + samen) { vorige.tot = Math.max(vorige.tot, x.s + na); vorige.momenten.push(x); }
+    else shots.push({ van: x.s - voor, tot: x.s + na, doel: x.vak, momenten: [x] });
+  });
+  shots.forEach((sh, i) => {
+    // het doel, plus elke passerende boot rond zijn eigen passage; minstens SHOT_MIN_M breed
+    const vak = L.latLngBounds(sh.doel.getSouthWest(), sh.doel.getNorthEast());
+    sh.momenten.forEach(x => {
+      const s = d.sporen.find(z => z.boot === x.boot); if (!s) return;
+      for (let j = 0; j <= 8; j++) { const p = positieOp(s.pts, x.s - voor + (voor + na) * j / 8); if (p) vak.extend([p.lat, p.lng]); }
+    });
+    vak.extend(vak.getCenter().toBounds(SHOT_MIN_M));
+    sh.vak = vak;
+    sh.direct = i > 0 && sh.van - shots[i - 1].tot < samen;            // vlak na het vorige: er direct heen
+  });
+  rp.camPlan = { sleutel, shots };
+  return shots;
+}
 function cameraRace(t) {
-  const d = rp.data;
-  if (!d.doelen || !d.doelen.length) return;
-  const v = rp.dertig ? rp.eind / rp.duurS : rp.snelheid, W = Math.max(60, 2.5 * v);
-  let doel = null, best = Infinity;
-  d.doelen.forEach(x => { const a = Math.abs(t - x.s); if (a < best) { best = a; doel = x; } });
-  if (rp.camDoel) {
-    // Ingezoomd: kijk ~2,5 s echte tijd vooruit. Zou een boot dan buiten het zoombeeld varen, of is het
-    // zoommoment voorbij, dan nu uitzoomen (dat duurt 1,8 s: klaar voordat iemand het scherm uit vaart).
-    const vooruit = Math.min(rp.eind, t + 2.5 * v), binnen = rp.camVak.pad(-0.04);
-    const eruit = d.sporen.some(s => { const p = positieOp(s.pts, vooruit); return p && !binnen.contains([p.lat, p.lng]); });
-    if (eruit || t > rp.camTot) {
-      rp.camKlaar = { vak: rp.camDoel.vak, tot: rp.camTot };            // dit moment niet nog een keer inzoomen
-      rp.camDoel = null;
-      vliegZacht(rp.kaart, heleBaanVak(), 1800, 16, 30);
-    }
-    return;
+  const shots = cameraPlan();
+  if (!shots.length) return;
+  const sh = shots.find(x => t >= x.van && t <= x.tot) || null;
+  if (sh === rp.camShot) return;
+  if (!sh && rp.camShot) {                                           // tussen twee shots die vlak na elkaar komen: blijven staan
+    const volgende = shots.find(x => x.van > t);
+    if (volgende && volgende.direct && shots.indexOf(volgende) === shots.indexOf(rp.camShot) + 1) return;
   }
-  if (best > W) return;
-  if (rp.camKlaar && rp.camKlaar.vak.equals(doel.vak) && t <= rp.camKlaar.tot) return;
-  // in één keer het goede beeld: het doel plus alle boten op de momenten van de overgang(en)
-  // (bijv. alle starts) en nu. Vaart er later een boot uit beeld, dan zoomt de camera op tijd uit (hierboven).
-  const vak = L.latLngBounds(doel.vak.getSouthWest(), doel.vak.getNorthEast());
-  const groep = d.doelen.filter(x => x.vak.equals(doel.vak) && Math.abs(x.s - doel.s) <= 3 * W);
-  const tot = Math.max(...groep.map(x => x.s)) + W;
-  groep.map(x => x.s).concat([t]).forEach(ts => d.sporen.forEach(s => { const p = positieOp(s.pts, ts); if (p) vak.extend([p.lat, p.lng]); }));
-  // Levert inzoomen bijna niets op (minder dan een halve zoomstap), dan niet zoomen: een heel
-  // kleine zoom ziet eruit als trillen. Dit moment overslaan.
-  if (Math.min(16, rp.kaart.getBoundsZoom(vak, false, L.point(80, 80))) - rp.kaart.getZoom() < 0.5) {
-    rp.camKlaar = { vak: doel.vak, tot }; return;
-  }
-  rp.camDoel = doel; rp.camVak = vak; rp.camTot = tot;
-  vliegZacht(rp.kaart, vak, 1500, 16, 40);
+  rp.camShot = sh;
+  if (sh) vliegZacht(rp.kaart, sh.vak, 1400, 16, 40);
+  else vliegZacht(rp.kaart, heleBaanVak(), 1600, 16, 30);
 }
 function speelReplay() {
   if (rp.speelt) { pauzeReplay(); return; }
@@ -1027,7 +1033,7 @@ function pauzeReplay() {
   rp.speelt = false;
   el('replayPlay').textContent = '▶ Afspelen';
 }
-el('replaySlider').addEventListener('input', e => { pauzeReplay(); rp.camKlaar = null; zetReplayTijd(Number(e.target.value)); });
+el('replaySlider').addEventListener('input', e => { pauzeReplay(); zetReplayTijd(Number(e.target.value)); });
 el('replayPlay').addEventListener('click', speelReplay);
 // '30s' / '60s' = de hele replay duurt precies 30 seconden of een minuut (zie dertigTijd); anders een vaste snelheid
 el('replaySnelheid').addEventListener('change', e => {
@@ -1107,7 +1113,7 @@ async function speelOp(fps, opBeeld, voortgang) {
   const echt = { raf: window.requestAnimationFrame, nu: performance.now, st: window.setTimeout, ct: window.clearTimeout, speel: window.speel };
   const wacht = ms => new Promise(r => echt.st.call(window, r, ms));
   let klok = echt.nu.call(performance), raf = [], timers = [], volg = 1;
-  rp.camDoel = null; rp.camKlaar = null; vluchtId++;
+  rp.camShot = null; vluchtId++;
   if (rp.zs) { rp.zs.zoomSalvo = null; rp.zs.terugBeeld = null; rp.zs.vorigMs = null; }
   replayBeginBeeld(); zetReplayTijd(0);
   try {
