@@ -576,10 +576,12 @@ function openReplay(nr) { const data = raceWeergave(nr); if (data) toonReplay(da
 function openZeeslagReplay(key) { const data = zeeslagWeergave(key); if (data) toonReplay(data, 'zeeslag-' + key); }
 function toonReplay(data, nr) {
   el('replay').hidden = false;
+  el('replay').classList.toggle('zeeslag', !!data.zeeslag);              // zeeslag: vierkante kaart
   el('replayFoto').hidden = el('replayVideo').hidden = !!data.zeeslag;     // foto en video: alleen voor races
   el('replayTitel').textContent = data.titel;
   if (!rp) {
     rp = { kaart: maakKaart('replayKaart'), lagen: [], snelheid: 60 };
+    rp.kaart.options.zoomSnap = 0.25;          // fijner zoomen: het speelveld vult de kaart beter
     rp.kaart.on('dragstart', () => {});
     kaartKnoppen(rp.kaart, [meetKnop('knopMeetReplay', () => rp.meetlat)]);
     rp.meetlat = maakMeetlat(rp.kaart, 'knopMeetReplay');
@@ -623,7 +625,7 @@ function toonReplay(data, nr) {
   setTimeout(() => {
     rp.kaart.invalidateSize();
     // zeeslag: het hele speelveld in beeld; race: alle sporen
-    if (data.zeeslag) rp.kaart.fitBounds(speelveldVak(), { padding: [20, 20] });
+    if (data.zeeslag) rp.kaart.fitBounds(speelveldVak(), { padding: [20, 20], animate: false });
     else {
       const alle = data.sporen.flatMap(s => s.pts.map(p => [p[0], p[1]]));
       if (alle.length) rp.kaart.fitBounds(alle, { padding: [30, 30], maxZoom: 16 });

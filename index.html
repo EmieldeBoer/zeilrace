@@ -212,6 +212,10 @@
     .replay-titel { font-family: var(--font-titel); font-size: 1.6rem; color: var(--goud); flex: 1; min-width: 0;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #replayKaart { flex: 1; min-height: 200px; }
+    /* Zeeslag: een vierkante kaart, zodat de hele cirkel van het speelveld er goed op past */
+    .replay.zeeslag { overflow-y: auto; }
+    .replay.zeeslag #replayKaart { flex: 0 0 auto; width: min(100vw, 64vh); height: min(100vw, 64vh); align-self: center;
+      border-left: 2px solid var(--messing-donker); border-right: 2px solid var(--messing-donker); }
     .replay-bediening { padding: 10px 14px 14px; background: linear-gradient(180deg, #1a120b, #0f0a06); border-top: 2px solid var(--messing-donker); }
     .replay-klok { font-family: var(--font-kap); font-size: 1.15rem; font-weight: 700; text-align: center; color: var(--goud); }
     #replaySlider { width: 100%; height: 36px; margin: 6px 0; accent-color: var(--messing); }
