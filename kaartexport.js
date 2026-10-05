@@ -107,7 +107,10 @@ function snelheidKleur(f) {
 }
 
 // o = { titel, klok(t) → tekst, sporen: [{kleur, naam, pts, finishS}], baan: {lines, marks}, lussen,
-//       snelheid?: { lo, hi } (kn) → sporen in snelheidskleur, met de legenda linksonder }
+//       snelheid?: { lo, hi } (kn) → sporen in snelheidskleur, met de legenda linksonder,
+//       wind?: t → { kn, richting }, schipStijl?: 'kaart' | 'piraat',
+//       extraPunten?: [[lat, lng]] (moeten ook in beeld), tekenExtra?: (g, xy, t) onder de schepen,
+//       legenda?: t → [{ kleur, tekst }] (in plaats van de vaste legenda) }
 // Geeft { canvas, teken(t), eind } terug; de achtergrond wordt één keer geladen.
 async function maakScene(o, W = 1600, H = 1200) {
   // De themaletters moeten geladen zijn vóór we op het canvas tekenen
@@ -122,6 +125,7 @@ async function maakScene(o, W = 1600, H = 1200) {
   ['start', 'finish'].forEach(t => { const l = lijnen[t]; if (l && l.a) alle.push([l.a.lat, l.a.lng], [l.b.lat, l.b.lng]); });
   boeien.forEach(b => alle.push([b.lat, b.lng]));
   lusPaden.forEach(x => x.pad.forEach(p => alle.push([p.lat, p.lng])));
+  (o.extraPunten || []).forEach(p => alle.push(p));
   if (!alle.length) return null;
   const eind = Math.max(0, ...o.sporen.map(s => s.pts.length ? s.pts[s.pts.length - 1][2] : 0));
 
@@ -210,6 +214,7 @@ async function maakScene(o, W = 1600, H = 1200) {
     g.drawImage(bg, 0, 0);
     g.save(); g.beginPath(); g.rect(0, KOP, W, kaartH); g.clip();
     g.lineJoin = 'round'; g.lineCap = 'round';
+    if (o.tekenExtra) { g.save(); o.tekenExtra(g, xy, t); g.restore(); g.lineJoin = 'round'; g.lineCap = 'round'; }
     sporen.forEach(s => {
       const p = positieOp(s.pts, t);
       if (!p) return;
@@ -230,7 +235,7 @@ async function maakScene(o, W = 1600, H = 1200) {
       }
       // rustige koers (zie koersOp), en een kleiner schip dan live: het spoor moet zichtbaar blijven
       s.laatsteKoers = koersOp(s.pts, t, s.laatsteKoers);
-      tekenSchipCanvas(g, kop[0], kop[1], s.laatsteKoers || 0, s.boot, 3);
+      tekenSchipCanvas(g, kop[0], kop[1], s.laatsteKoers || 0, s.boot, 3, o.schipStijl || 'kaart');
       omlijnd(g, s.naam, kop[0] + 22, kop[1] - 14, '#fff', 'bold 21px "EB Garamond", Georgia, serif', 'left');
     });
     g.restore();
@@ -242,7 +247,8 @@ async function maakScene(o, W = 1600, H = 1200) {
     g.fillText(o.klok ? o.klok(t) : '', 32, KOP * 0.86);
     // Legenda rechtsboven op de kaart
     g.font = 'bold 22px "EB Garamond", Georgia, serif';
-    const regels = sporen.map(s => ({ kleur: s.kleur, tekst: (s.finishS != null && t >= s.finishS ? '🏁 ' : '') + s.legenda }));
+    const regels = o.legenda ? o.legenda(t)
+      : sporen.map(s => ({ kleur: s.kleur, tekst: (s.finishS != null && t >= s.finishS ? '🏁 ' : '') + s.legenda }));
     const bw = Math.max(...regels.map(r => g.measureText(r.tekst).width)) + 74;
     const bh = regels.length * 34 + 20, bx = W - bw - 22, by = KOP + 18;
     g.fillStyle = 'rgba(26,18,11,.93)'; rondeRect(g, bx, by, bw, bh, 8); g.fill();
@@ -344,6 +350,116 @@ async function maakRaceVideo(o, voortgang) {
   rec.stop();
   await gestopt;
   return { blob: new Blob(stukken, { type: mime.split(';')[0] }), ext: mime.includes('mp4') ? 'mp4' : 'webm' };
+}
+
+// ---- Geanimeerde GIF (eigen encoder: geen extra bibliotheek nodig) ----
+// Eén kleurenpalet voor de hele GIF (uit het eerste beeld, plus de bootkleuren), en elk volgend
+// beeld bevat alleen het stukje dat veranderde: zo blijft het bestand klein. Loopt eindeloos rond.
+// duurS = lengte van de animatie, fps = beelden per seconde. voortgang(f) met f = 0…1.
+async function maakRaceGif(o, voortgang, duurS = 15, fps = 10) {
+  // op de gewone maat tekenen (dan klopt de opmaak) en verkleinen tot 800 × 600
+  const s = await maakScene(o);
+  if (!s) return null;
+  const W = 800, H = 600, klein = document.createElement('canvas'); klein.width = W; klein.height = H;
+  const ctx = klein.getContext('2d', { willReadFrequently: true });
+  ctx.imageSmoothingQuality = 'high';
+  const n = Math.max(2, Math.round(duurS * fps)), vertraging = Math.round(100 / fps);
+  const beeld = t => { s.teken(t); ctx.drawImage(s.canvas, 0, 0, W, H); return ctx.getImageData(0, 0, W, H).data; };
+
+  // Palet: median cut over het eerste en het laatste beeld (de meeste kleuren), plus de bootkleuren exact
+  const vaste = [[26, 18, 11], [240, 199, 94], [239, 227, 198], [0, 0, 0], [255, 255, 255]]
+    .concat(Object.values(BOTEN).map(b => hexNaarRgb(b.kleur)));
+  // kleur 255 is 'doorzichtig': een pixel die niet veranderde (comprimeert heel goed)
+  const DOOR = 255;
+  const palet = medianCut([beeld(s.eind), beeld(0)], DOOR - vaste.length).concat(vaste).slice(0, DOOR);
+  while (palet.length < 256) palet.push([0, 0, 0]);
+  const cache = new Int16Array(32768).fill(-1);
+  const index = (r, g, b) => {
+    const k = (r >> 3) << 10 | (g >> 3) << 5 | (b >> 3);
+    if (cache[k] >= 0) return cache[k];
+    let beste = 0, bd = Infinity;
+    for (let i = 0; i < DOOR; i++) { const p = palet[i], d = (p[0] - r) ** 2 + (p[1] - g) ** 2 + (p[2] - b) ** 2; if (d < bd) { bd = d; beste = i; } }
+    return (cache[k] = beste);
+  };
+
+  const uit = [];
+  const bytes = a => a.forEach(x => uit.push(x));
+  const woord = v => bytes([v & 255, (v >> 8) & 255]);
+  bytes([...'GIF89a'].map(c => c.charCodeAt(0))); woord(W); woord(H); bytes([0xF7, 0, 0]);
+  palet.forEach(p => bytes(p));
+  bytes([0x21, 0xFF, 0x0B, ...[...'NETSCAPE2.0'].map(c => c.charCodeAt(0)), 0x03, 0x01, 0, 0, 0]);   // eindeloos herhalen
+
+  let vorige = null;
+  for (let f = 0; f < n; f++) {
+    const px = beeld(f / (n - 1) * s.eind), idx = new Uint8Array(W * H);
+    for (let i = 0, j = 0; i < idx.length; i++, j += 4) idx[i] = index(px[j], px[j + 1], px[j + 2]);
+    // alleen het veranderde stukje (het eerste beeld helemaal)
+    let x0 = 0, y0 = 0, x1 = W - 1, y1 = H - 1;
+    if (vorige) {
+      x0 = W; y0 = H; x1 = -1; y1 = -1;
+      for (let y = 0; y < H; y++) for (let x = 0, i = y * W; x < W; x++, i++)
+        if (idx[i] !== vorige[i]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      if (x1 < 0) { x0 = y0 = x1 = y1 = 0; }                        // niets veranderd: één pixel
+    }
+    const w = x1 - x0 + 1, h = y1 - y0 + 1, deel = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y0 + y) * W + x0 + x;
+      deel[y * w + x] = vorige && idx[i] === vorige[i] ? DOOR : idx[i];   // onveranderd: doorzichtig
+    }
+    const laatste = f === n - 1;
+    // beeld laten staan (disposal 1) met doorzichtige kleur 255; eindbeeld 3 s
+    bytes([0x21, 0xF9, 0x04, vorige ? 0x05 : 0x04]); woord(laatste ? 300 : vertraging); bytes([DOOR, 0]);
+    bytes([0x2C]); woord(x0); woord(y0); woord(w); woord(h); bytes([0]);
+    bytes([8]);
+    const data = gifLzw(deel, 8);
+    for (let i = 0; i < data.length; i += 255) { const blok = data.slice(i, i + 255); uit.push(blok.length); bytes(blok); }
+    uit.push(0);
+    vorige = idx;
+    if (voortgang) voortgang((f + 1) / n);
+    await new Promise(r => setTimeout(r, 0));                       // de pagina laten ademen
+  }
+  uit.push(0x3B);
+  return new Blob([new Uint8Array(uit)], { type: 'image/gif' });
+}
+function hexNaarRgb(h) { const v = parseInt(h.replace('#', ''), 16); return [v >> 16 & 255, v >> 8 & 255, v & 255]; }
+// Median cut: de kleuren van een paar beelden in 'aantal' groepen, het gemiddelde per groep
+function medianCut(beelden, aantal) {
+  const px = [];
+  beelden.forEach(d => { for (let i = 0; i < d.length; i += 4 * 7) px.push([d[i], d[i + 1], d[i + 2]]); });
+  let dozen = [px];
+  while (dozen.length < aantal) {
+    let bi = -1, bk = 0, br = -1;
+    dozen.forEach((d, i) => {
+      if (d.length < 2) return;
+      for (let k = 0; k < 3; k++) {
+        let lo = 255, hi = 0; d.forEach(p => { if (p[k] < lo) lo = p[k]; if (p[k] > hi) hi = p[k]; });
+        if (hi - lo > br) { br = hi - lo; bi = i; bk = k; }
+      }
+    });
+    if (bi < 0 || br <= 0) break;
+    const d = dozen[bi].sort((a, b) => a[bk] - b[bk]), m = d.length >> 1;
+    dozen.splice(bi, 1, d.slice(0, m), d.slice(m));
+  }
+  return dozen.filter(d => d.length).map(d => [0, 1, 2].map(k => Math.round(d.reduce((s, p) => s + p[k], 0) / d.length)));
+}
+// LZW-compressie voor GIF (variabele codelengte, wissen bij een volle tabel)
+function gifLzw(index, minCode) {
+  const wis = 1 << minCode, einde = wis + 1, uit = [];
+  let volgende = einde + 1, lengte = minCode + 1, buf = 0, bits = 0, tabel = new Map();
+  const schrijf = c => { buf |= c << bits; bits += lengte; while (bits >= 8) { uit.push(buf & 255); buf >>>= 8; bits -= 8; } };
+  schrijf(wis);
+  let voor = index[0];
+  for (let i = 1; i < index.length; i++) {
+    const k = index[i], sleutel = voor << 8 | k, c = tabel.get(sleutel);
+    if (c !== undefined) { voor = c; continue; }
+    schrijf(voor);
+    if (volgende === 4096) { schrijf(wis); volgende = einde + 1; lengte = minCode + 1; tabel = new Map(); }
+    else { if (volgende >= (1 << lengte)) lengte++; tabel.set(sleutel, volgende++); }
+    voor = k;
+  }
+  schrijf(voor); schrijf(einde);
+  if (bits > 0) uit.push(buf & 255);
+  return uit;
 }
 
 function laadTegel(z, x, y) {
