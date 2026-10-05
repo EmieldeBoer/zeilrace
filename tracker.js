@@ -52,7 +52,9 @@ const mijnBaan = () => baanVan(mijnBoot());
 const kaart = maakKaart('kaart');
 const kMarkers = {}, kSporen = {}, kSpoorPunten = {}, botStatus = {};
 let kBaan = [], kGefit = false, doelLijn = null;
-maakWindWidget(kaart);
+const windWidget = maakWindWidget(kaart);
+// de windwidget wijkt uit naar een andere hoek als er een schip onder ligt
+setInterval(() => wijkUit(kaart, windWidget, FLEET.map(b => kMarkers[b] && kaart.hasLayer(kMarkers[b]) && kMarkers[b].getLatLng())), 1000);
 kaartKnoppen(kaart, [
   { id: 'knopVolg', tekst: '🎯', titel: 'Zoom naar mijn boot en volg hem', klik: volgEigenBoot },
   { id: 'knopOverzicht', tekst: '⛶', titel: 'Hele baan tonen', klik: overzicht },
@@ -641,7 +643,8 @@ function onPositie(p) {
   // Positie altijd (live stip); spoor alleen tijdens een race (er staat een startsein)
   // of een zeeslag (aftellen of bezig), voor de replay achteraf
   schrijf(db.ref(`${P}/positions/${mijnBoot()}`).set(data));
-  const zeeslag = spelStand && (spelStand.wacht || spelStand.bezig);
+  // (tot een halve minuut na het einde, zodat het laatste salvo in de replay mooi uitloopt)
+  const zeeslag = spelStand && (spelStand.wacht || spelStand.bezig || (spelStand.over && Date.now() - spelStand.over < 30000));
   if (raceStart != null || zeeslag) schrijf(db.ref(`${P}/tracks/${mijnBoot()}`).push({ lat: latitude, lng: longitude, ts: nu }));
 }
 

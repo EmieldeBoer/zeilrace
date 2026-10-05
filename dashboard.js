@@ -33,7 +33,9 @@ const baanVan = b => baanVanBoot(boeien, lussenVan(startPlan), b);
 // =========================================================
 const kaart = maakKaart('kaart');
 const baanLagen = [];   // start/finish, boeien, route, rondingslijnen
-maakWindWidget(kaart);
+const windWidget = maakWindWidget(kaart);
+// de windwidget wijkt uit naar een andere hoek als er een schip onder ligt
+setInterval(() => wijkUit(kaart, windWidget, FLEET.map(b => markers[b] && kaart.hasLayer(markers[b]) && markers[b].getLatLng())), 1000);
 kaartKnoppen(kaart, [{ id: 'knopOverzicht', tekst: '⛶', titel: 'Hele baan tonen', klik: overzicht }, meetKnop('knopMeet', () => meetlat)]);
 const meetlat = maakMeetlat(kaart, 'knopMeet');
 kaart.on('dragstart', () => { if (geselecteerd) { geselecteerd = null; verversLijst(); } });
@@ -593,6 +595,7 @@ function toonReplay(data, nr) {
       rp.windEl = d; return d;
     };
     wind.addTo(rp.kaart);
+    rp.windCtl = wind;
     // de legenda van 'snelheid in kleur' staat op de kaart zelf (linksonder)
     const schaal = L.control({ position: 'bottomleft' });
     schaal.onAdd = () => { const d = L.DomUtil.create('div', ''); d.appendChild(el('snelheidSchaal')); return d; };
@@ -606,6 +609,7 @@ function toonReplay(data, nr) {
   rp.lagen.forEach(l => rp.kaart.removeLayer(l));
   if (rp.zs) Object.values(rp.zs.richt || {}).forEach(l => l && rp.kaart.removeLayer(l));   // kanonbereik van de vorige zeeslag
   rp.lagen = []; rp.nr = nr; rp.data = data;
+  rp.warp = null;                                // tabel voor de 30 s-stand: per replay opnieuw
   // wind per uur ophalen; de windwidget volgt de replaytijd
   rp.windUren = null;
   rp.windEl.querySelector('.windsub').textContent = 'laden…';
@@ -637,6 +641,9 @@ function toonReplay(data, nr) {
     return { s, lijn, stip };
   });
   rp.eind = Math.max(0, ...data.sporen.map(s => s.pts.length ? s.pts[s.pts.length - 1][2] : 0));
+  // zeeslag: minstens tot 10 s na het einde, zodat het laatste salvo (en de klap) ook te zien is,
+  // ook als de sporen net daarvoor ophouden (de schepen blijven dan op hun laatste plek)
+  if (data.zeeslag && data.zeeslag.over) rp.eind = Math.max(rp.eind, (data.zeeslag.over - data.t0) / 1000 + 10);
   // Overstagmomenten per boot (van het startschot tot de eigen finish); labels pas tonen met de schakelaar
   rp.overstag = data.sporen.map(s => ({ s, lijst: overstagHoeken(s.pts, data.gunS != null ? data.gunS : 0,
     s.finishS != null ? s.finishS : Infinity).map(o => Object.assign(o, { marker: null })) }));
@@ -725,6 +732,12 @@ function zetReplayWind(t) {
 function zetReplayTijd(t) {
   rp.t = t;
   zetReplayWind(t);
+  // windwidget uit de weg als er een schip onder komt (hooguit 3× per seconde kijken)
+  const nuEcht = performance.now();
+  if (!rp.wijkTijd || nuEcht - rp.wijkTijd > 300) {
+    rp.wijkTijd = nuEcht;
+    wijkUit(rp.kaart, rp.windCtl, rp.boten.filter(x => rp.kaart.hasLayer(x.stip)).map(x => x.stip.getLatLng()));
+  }
   el('replaySlider').value = t;
   const kleurAan = el('replaySnelheidKleur').checked;
   rp.boten.forEach(({ s, lijn, stip }) => {
@@ -881,21 +894,47 @@ function actieZoom(t) {
     zs.terugBeeld = null; zs.zoomSalvo = null;
   }
 }
+// ---- '⏱ 30 s': de hele replay in precies 30 seconden ----
+// Elk stukje replaytijd krijgt echte tijd naar verhouding van hoe traag het normaal (op 60×)
+// zou lopen: bij een zeeslag krijgen de salvo's dus relatief meer tijd, bij een race loopt het
+// gelijkmatig. Tabel: G[i] = opgetelde 'traagheid' tot replaytijd i × DERTIG_STAP.
+const DERTIG_S = 30, DERTIG_STAP = 0.5;
+function dertigTabel() {
+  if (rp.warp && rp.warp.eind === rp.eind) return rp.warp;
+  const G = [0], n = Math.ceil(rp.eind / DERTIG_STAP);
+  const traag = t => 1 / (rp.zs ? Math.max(1, Math.min(60, 1 + SALVO_REM * salvoAfstand(t).d)) : 60);
+  for (let i = 1; i <= n; i++) G.push(G[i - 1] + traag((i - .5) * DERTIG_STAP) * DERTIG_STAP);
+  return (rp.warp = { eind: rp.eind, G, totaal: G[n] });
+}
+// replaytijd t → echte seconden vanaf het begin (0…30), en terug
+function dertigEcht(t) {
+  const w = dertigTabel(), x = Math.min(t, rp.eind) / DERTIG_STAP, i = Math.min(w.G.length - 2, Math.floor(x));
+  return (w.G[i] + (w.G[i + 1] - w.G[i]) * (x - i)) / w.totaal * DERTIG_S;
+}
+function dertigTijd(echt) {
+  const w = dertigTabel(), doel = Math.max(0, Math.min(1, echt / DERTIG_S)) * w.totaal;
+  let lo = 0, hi = w.G.length - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (w.G[m] <= doel) lo = m; else hi = m; }
+  const f = w.G[hi] > w.G[lo] ? (doel - w.G[lo]) / (w.G[hi] - w.G[lo]) : 0;
+  return Math.min(rp.eind, (lo + f) * DERTIG_STAP);
+}
 function speelReplay() {
   if (rp.speelt) { pauzeReplay(); return; }
   if (rp.t >= rp.eind) zetReplayTijd(0);
   rp.speelt = true;
   el('replayPlay').textContent = '⏸ Pauze';
   let vorig = performance.now();
+  const echt0 = rp.dertig ? dertigEcht(rp.t) : 0, begin = vorig;     // 30 s-stand: verder vanaf hier
   const stap = nu => {
     if (!rp.speelt) return;
-    const snelheid = replaySnelheidOp(rp.t);
-    const t = Math.min(rp.eind, rp.t + (nu - vorig) / 1000 * snelheid);
+    const snelheid = rp.dertig ? null : replaySnelheidOp(rp.t);
+    const t = rp.dertig ? dertigTijd(echt0 + (nu - begin) / 1000)
+      : Math.min(rp.eind, rp.t + (nu - vorig) / 1000 * snelheid);
     vorig = nu;
     zetReplayTijd(t);
     if (rp.zs) {
       actieZoom(t);
-      if (snelheid < rp.snelheid) el('replayKlok').textContent += ` · ⏱ ${Math.round(snelheid)}×`;
+      if (snelheid != null && snelheid < rp.snelheid) el('replayKlok').textContent += ` · ⏱ ${Math.round(snelheid)}×`;
     }
     if (t >= rp.eind) pauzeReplay(); else requestAnimationFrame(stap);
   };
@@ -908,7 +947,12 @@ function pauzeReplay() {
 }
 el('replaySlider').addEventListener('input', e => { pauzeReplay(); zetReplayTijd(Number(e.target.value)); });
 el('replayPlay').addEventListener('click', speelReplay);
-el('replaySnelheid').addEventListener('change', e => { rp.snelheid = Number(e.target.value); });
+// '30s' = de hele replay duurt precies 30 seconden (zie dertigTijd); anders een vaste snelheid
+el('replaySnelheid').addEventListener('change', e => {
+  rp.dertig = e.target.value === '30s';
+  if (!rp.dertig) rp.snelheid = Number(e.target.value);
+  if (rp.speelt) { pauzeReplay(); speelReplay(); }               // meteen in de nieuwe stand verder
+});
 el('replaySluit').addEventListener('click', () => { pauzeReplay(); el('replay').hidden = true; });
 // Wat de foto en de video krijgen: met 'snelheid in kleur' aan ook de kleuren en de legenda
 function exportData() {
@@ -1475,8 +1519,9 @@ function renderSpel() {
     if (markers[b]) { const l = schipLabel(b); if (labelCache[b] !== l) { markers[b].setTooltipContent(l); labelCache[b] = l; } }
     tekenRichtlijnen(b);
   });
-  // een afgelopen zeeslag vanzelf bewaren (alleen een ingelogde wedstrijdleider kan dat)
-  if (admin && st.start && st.over && !st.wacht) archiveerZeeslag();
+  // een afgelopen zeeslag vanzelf bewaren (alleen een ingelogde wedstrijdleider kan dat), 35 s na het
+  // einde: de trackers sturen tot een halve minuut na het laatste salvo nog hun spoor
+  if (admin && st.start && st.over && !st.wacht && Date.now() - st.over > 35000) archiveerZeeslag();
   el('spelSectie').hidden = !st.start;
   if (!st.start) return;
   el('spelStatusDash').textContent = Piraat.statusTekst(st, naamVan);

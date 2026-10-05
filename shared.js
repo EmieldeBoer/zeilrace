@@ -658,6 +658,29 @@ function maakWindWidget(kaart) {
     return div;
   };
   c.addTo(kaart);
+  return c;
+}
+// Een kaartwidget (Leaflet-control) uit de weg: ligt er een schip onder (of vlak naast), dan
+// verhuist hij naar de hoek met de minste schepen. Voorkeur: linksonder, rechtsonder, linksboven,
+// rechtsboven. Hij blijft staan zolang er niets onder ligt (geen heen-en-weer gespring).
+// Het element zelf wordt verplaatst (niet opnieuw gemaakt), zodat de inhoud blijft staan.
+const WIDGET_HOEKEN = ['bottomleft', 'bottomright', 'topleft', 'topright'];
+function wijkUit(kaart, control, latlngs, marge = 24) {
+  const el = control && control.getContainer && control.getContainer();
+  if (!el || !el.offsetWidth || !kaart._loaded || !kaart._controlCorners) return;
+  const k = kaart.getContainer().getBoundingClientRect();
+  const pts = latlngs.filter(Boolean).map(ll => kaart.latLngToContainerPoint(ll)).map(p => ({ x: p.x + k.left, y: p.y + k.top }));
+  const onder = () => { const r = el.getBoundingClientRect();
+    return pts.filter(p => p.x > r.left - marge && p.x < r.right + marge && p.y > r.top - marge && p.y < r.bottom + marge).length; };
+  const zet = h => { const c = kaart._controlCorners[h];
+    if (h.startsWith('bottom')) c.insertBefore(el, c.firstChild); else c.appendChild(el);
+    control.options.position = h; };
+  let minst = onder();
+  if (!minst) return;
+  const huidig = control.getPosition();
+  let beste = huidig;
+  WIDGET_HOEKEN.forEach(h => { if (h === huidig) return; zet(h); const n = onder(); if (n < minst) { minst = n; beste = h; } });
+  zet(beste);
 }
 async function toonWind(pos) {
   const w = document.getElementById('windwidget');
