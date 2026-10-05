@@ -768,8 +768,13 @@ function zetZeeslagTijd(t) {
     st.geldig.filter(g => g.schot.ts > zs.vorigMs && g.schot.ts <= nuMs)
       .forEach(g => { Piraat.animeer(rp.kaart, g.schot, g.raak, b => posOp(b, g.schot.ts), g.geblokt); speel(() => kanonschot()); });
   zs.vorigMs = nuMs;
-  // gezonken schepen worden een wrak
-  rp.boten.forEach(({ s, stip }) => zetSchipStaat(stip, { spel: true, wrak: st.boten[s.boot].levens <= 0 }));
+  // gezonken schepen worden een wrak; het label boven het schip toont de levens (zoals live)
+  rp.boten.forEach(x => {
+    const b = st.boten[x.s.boot];
+    zetSchipStaat(x.stip, { spel: true, wrak: b.levens <= 0 });
+    const label = `${esc(x.s.naam)} ${b.levens > 0 ? Piraat.levensTekst(b) : '☠️'}`;
+    if (x.label !== label) { x.stip.setTooltipContent(label); x.label = label; }
+  });
   // legenda: de stand op dit moment
   const rest = b => SPEL.schoten - b.gebruikt;
   el('replayLegenda').innerHTML = d.sporen.map(s => {
