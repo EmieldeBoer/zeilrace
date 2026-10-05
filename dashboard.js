@@ -244,9 +244,34 @@ function zeeslagHtml(key) {
       `<th class="tijd">Raak</th><th class="tijd">Salvo's over</th></tr></thead><tbody>${rijen}</tbody></table></div>` : '') +
     journaal + '</div>';
 }
+// Leaderboard over alle bewaarde zeeslagen: overwinningen, dan treffers, dan het minst gezonken
+function zeeslagLeaderboardHtml(keys) {
+  const tel = {};
+  FLEET.forEach(b => { tel[b] = { boot: b, slagen: 0, winst: 0, raak: 0, gezonken: 0, kisten: 0, levens: 0 }; });
+  keys.forEach(k => {
+    const z = zeeslagenData[k];
+    (z.stand || []).forEach(r => {
+      const t = tel[r.boot]; if (!t) return;
+      t.slagen++; t.raak += r.hits || 0; t.kisten += r.kisten || 0; t.levens += r.levens || 0;
+      if (!r.levens) t.gezonken++;
+    });
+    if (z.winnaar && tel[z.winnaar]) tel[z.winnaar].winst++;
+  });
+  const lijst = Object.values(tel).filter(t => t.slagen)
+    .sort((a, c) => c.winst - a.winst || c.raak - a.raak || a.gezonken - c.gezonken || c.levens - a.levens);
+  if (!lijst.length) return '';
+  const rijen = lijst.map((t, i) => `<tr${i === 0 && t.winst ? ' class="winnaar"' : ''}><td class="pos">${i + 1}</td>` +
+    `<td class="boot-cel">${dotHtml(t.boot)}${esc(naamVan(t.boot))}</td><td class="pos">${t.slagen}</td>` +
+    `<td class="pos"><b>${t.winst}</b></td><td class="pos">${t.raak}</td><td class="pos">${t.gezonken}</td><td class="pos">${t.kisten}</td></tr>`).join('');
+  return '<div class="u-tabel"><h3>🏴‍☠️ Leaderboard — de schrik van de zeven zeeën</h3>' +
+    `<div class="sub">Over ${keys.length} zeeslag${keys.length === 1 ? '' : 'en'} · eerst de meeste overwinningen, dan de meeste treffers, dan het minst gezonken</div>` +
+    '<div class="tabelscroll"><table><thead><tr><th class="pos">#</th><th>Schip</th><th class="pos" title="Zeeslagen">⚔️</th>' +
+    '<th class="pos" title="Gewonnen">🏆</th><th class="pos" title="Treffers">💥</th><th class="pos" title="Gezonken">☠️</th>' +
+    `<th class="pos" title="Schatkisten">📦</th></tr></thead><tbody>${rijen}</tbody></table></div></div>`;
+}
 function zeeslagenHtml() {
   const keys = Object.keys(zeeslagenData).filter(k => zeeslagenData[k]).sort((a, b) => b - a);
-  return keys.length ? '<h2 class="u-kop">🏴‍☠️ Zeeslagen</h2>' + keys.map(zeeslagHtml).join('') : '';
+  return keys.length ? '<h2 class="u-kop">🏴‍☠️ Zeeslagen</h2>' + zeeslagLeaderboardHtml(keys) + keys.map(zeeslagHtml).join('') : '';
 }
 // ---- Finish achteraf uit het spoor (bijv. als de finishlijn tijdens de race is verlengd) ----
 // De eerste kruising van de finishlijn (zoals die in de opgeslagen race staat) na de eigen

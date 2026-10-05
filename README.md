@@ -219,6 +219,8 @@ ervoor en erna. Zonder winddata is een gijp daar niet van te onderscheiden.
    (ook vóór een nieuwe zeeslag of het wissen van de uitslag). Onder *🏴‍☠️ Zeeslagen* staan dan de eindstand, een
    **▶ Replay** (sporen, krimpend speelveld, schatkisten, mijnen, een rookwolkje bij elk salvo en vliegende kogels tijdens
    het afspelen, met de levens per schip) en een **📜 Scheepsjournaal**. Zonder race worden de sporen daarna gewist.
+   Bovenaan staat een **leaderboard** over alle zeeslagen: overwinningen, dan treffers, dan het minst gezonken
+   (met ook het aantal zeeslagen en schatkisten).
 Instellingen (bereik, levens, herladen, aftellen, krimpen, schatkisten en wat erin zit) staan bovenaan `piraat.js`. **Let op:** publiceer na deze update de nieuwe
 `database.rules.json`, anders weigert de database de schoten en het opslaan van zeeslagen.
 
