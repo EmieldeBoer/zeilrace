@@ -904,6 +904,9 @@ function vliegZacht(kaart, vak, duur, maxZoom = 17, rand = 30) {
     const deel = Math.abs(s0 - s1) > 1e-12 ? (s0 - s) / (s0 - s1) : e;
     const c = L.point(c0.x + (c1.x - c0.x) * deel, c0.y + (c1.y - c0.y) * deel);
     kaart._move(kaart.unproject(c, 0), z, { flyTo: true });
+    // de lijnen (sporen, waaiers, cirkels) per beeld opnieuw plaatsen, zodat ze gelijk met de kaart
+    // meebewegen (anders worden ze pas na de zoom bijgewerkt en lopen ze achter)
+    Object.values(kaart._layers).forEach(l => { if (l instanceof L.Renderer) l._reset(); });
     if (f < 1) requestAnimationFrame(stap); else kaart._moveEnd(true);
   })(t0);
 }
@@ -981,16 +984,18 @@ function cameraRace(t) {
   }
   if (best > W) return;
   if (rp.camKlaar && rp.camKlaar.vak.equals(doel.vak) && t <= rp.camKlaar.tot) return;
-  rp.camDoel = doel;
-  // in één keer het goede beeld: het doel plus álle boten, over het hele zoommoment (zodat
-  // niemand uit beeld vaart en er halverwege niet opnieuw gezoomd hoeft te worden)
+  // in één keer het goede beeld: het doel plus alle boten op de momenten van de overgang(en)
+  // (bijv. alle starts) en nu. Vaart er later een boot uit beeld, dan zoomt de camera op tijd uit (hierboven).
   const vak = L.latLngBounds(doel.vak.getSouthWest(), doel.vak.getNorthEast());
-  const groep = d.doelen.filter(x => x.vak.equals(doel.vak) && Math.abs(x.s - doel.s) <= 3 * W);   // bijv. alle starts
-  const van = Math.min(...groep.map(x => x.s)) - W, tot = Math.max(...groep.map(x => x.s)) + W;
-  d.sporen.forEach(s => {
-    for (let i = 0; i <= 10; i++) { const p = positieOp(s.pts, van + (tot - van) * i / 10); if (p) vak.extend([p.lat, p.lng]); }
-  });
-  rp.camVak = vak; rp.camTot = tot;
+  const groep = d.doelen.filter(x => x.vak.equals(doel.vak) && Math.abs(x.s - doel.s) <= 3 * W);
+  const tot = Math.max(...groep.map(x => x.s)) + W;
+  groep.map(x => x.s).concat([t]).forEach(ts => d.sporen.forEach(s => { const p = positieOp(s.pts, ts); if (p) vak.extend([p.lat, p.lng]); }));
+  // Levert inzoomen bijna niets op (minder dan een halve zoomstap), dan niet zoomen: een heel
+  // kleine zoom ziet eruit als trillen. Dit moment overslaan.
+  if (Math.min(16, rp.kaart.getBoundsZoom(vak, false, L.point(80, 80))) - rp.kaart.getZoom() < 0.5) {
+    rp.camKlaar = { vak: doel.vak, tot }; return;
+  }
+  rp.camDoel = doel; rp.camVak = vak; rp.camTot = tot;
   vliegZacht(rp.kaart, vak, 1500, 16, 40);
 }
 function speelReplay() {
