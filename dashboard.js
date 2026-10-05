@@ -549,7 +549,26 @@ function raceWeergave(nr) {
     const r = t - gunS;
     return `${s} · racetijd ${r < 0 ? '−' + formatDuur(-r * 1000) : formatDuur(r * 1000)}`;
   };
-  return { titel: `Race ${nr}${res.naam ? ': ' + res.naam : ''}`, klok, sporen, baan: res.baan, lussen: res.lussen || null, gunS, t0,
+  // Doelovergangen voor de camera: elke start, elke boeironding en elke finish (replay-seconden).
+  // Rondingen uit de bewaarde rondingstijden, anders het moment dat de boot het dichtst langs de boei voer.
+  const lijnenR = (res.baan && res.baan.lines) || {}, marksR = alsBoeien(res.baan && res.baan.marks), doelen = [];
+  const lijnVak = l => L.latLngBounds([[l.a.lat, l.a.lng], [l.b.lat, l.b.lng]]);
+  sporen.forEach(sp => {
+    const b = sp.boot, tt = (res.tijden && res.tijden[b]) || {};
+    if (tt.start && lijnenR.start && lijnenR.start.a) doelen.push({ s: (Math.max(tt.start, res.gun || 0) - t0) / 1000, vak: lijnVak(lijnenR.start) });
+    if (tt.finish && lijnenR.finish && lijnenR.finish.a) doelen.push({ s: (tt.finish - t0) / 1000, vak: lijnVak(lijnenR.finish) });
+    baanVanBoot(marksR, res.lussen || null, b).forEach(bo => {
+      const ts = res.rondingen && res.rondingen[b] && res.rondingen[b][bo.id];
+      let s = ts ? (ts - t0) / 1000 : null;
+      if (s == null) {
+        let dichtst = 150;
+        sp.pts.forEach(p => { const d = afstandMeter({ lat: p[0], lng: p[1] }, bo); if (d < dichtst) { dichtst = d; s = p[2]; } });
+      }
+      if (s != null) doelen.push({ s, vak: L.latLng(bo.lat, bo.lng).toBounds(300) });
+    });
+  });
+  doelen.sort((a, c) => a.s - c.s);
+  return { titel: `Race ${nr}${res.naam ? ': ' + res.naam : ''}`, klok, sporen, baan: res.baan, lussen: res.lussen || null, gunS, t0, doelen,
     // wind per uur: bewaard bij het afronden, anders achteraf ophalen (Open-Meteo)
     windUren: () => res.wind ? Promise.resolve(res.wind)
       : racePlek(res) && res.gun ? Polar.windUren(racePlek(res), res.gun - 3600e3, raceEinde(res) + 3600e3) : Promise.resolve([]) };
@@ -584,7 +603,7 @@ function toonReplay(data, nr) {
   el('replayFoto').hidden = el('replayVideo').hidden = !!data.zeeslag;     // foto en video: alleen voor races
   el('replayTitel').textContent = data.titel;
   if (!rp) {
-    rp = { kaart: maakKaart('replayKaart'), lagen: [], snelheid: 60 };
+    rp = { kaart: maakKaart('replayKaart'), lagen: [], snelheid: 60, duurS: 30 };
     rp.kaart.options.zoomSnap = 0;             // traploos zoomen: het speelveld vult de kaart, en het inzoomen loopt vloeiend
     // de wind van dat moment (linksonder, zoals op de live kaart)
     const wind = L.control({ position: 'bottomleft' });
@@ -610,6 +629,7 @@ function toonReplay(data, nr) {
   if (rp.zs) Object.values(rp.zs.richt || {}).forEach(l => l && rp.kaart.removeLayer(l));   // kanonbereik van de vorige zeeslag
   rp.lagen = []; rp.nr = nr; rp.data = data;
   rp.warp = null;                                // tabel voor de 30 s-stand: per replay opnieuw
+  rp.camDoel = null;                             // camera van de race-replay: begint met de hele baan
   // wind per uur ophalen; de windwidget volgt de replaytijd
   rp.windUren = null;
   rp.windEl.querySelector('.windsub').textContent = 'laden…';
@@ -894,11 +914,11 @@ function actieZoom(t) {
     zs.terugBeeld = null; zs.zoomSalvo = null;
   }
 }
-// ---- '⏱ 30 s': de hele replay in precies 30 seconden ----
+// ---- '⏱ 30 s' / '⏱ 1 min': de hele replay in precies die tijd (rp.duurS) ----
 // Elk stukje replaytijd krijgt echte tijd naar verhouding van hoe traag het normaal (op 60×)
 // zou lopen: bij een zeeslag krijgen de salvo's dus relatief meer tijd, bij een race loopt het
 // gelijkmatig. Tabel: G[i] = opgetelde 'traagheid' tot replaytijd i × DERTIG_STAP.
-const DERTIG_S = 30, DERTIG_STAP = 0.5;
+const DERTIG_STAP = 0.5;
 function dertigTabel() {
   if (rp.warp && rp.warp.eind === rp.eind) return rp.warp;
   const G = [0], n = Math.ceil(rp.eind / DERTIG_STAP);
@@ -909,14 +929,41 @@ function dertigTabel() {
 // replaytijd t → echte seconden vanaf het begin (0…30), en terug
 function dertigEcht(t) {
   const w = dertigTabel(), x = Math.min(t, rp.eind) / DERTIG_STAP, i = Math.min(w.G.length - 2, Math.floor(x));
-  return (w.G[i] + (w.G[i + 1] - w.G[i]) * (x - i)) / w.totaal * DERTIG_S;
+  return (w.G[i] + (w.G[i + 1] - w.G[i]) * (x - i)) / w.totaal * rp.duurS;
 }
 function dertigTijd(echt) {
-  const w = dertigTabel(), doel = Math.max(0, Math.min(1, echt / DERTIG_S)) * w.totaal;
+  const w = dertigTabel(), doel = Math.max(0, Math.min(1, echt / rp.duurS)) * w.totaal;
   let lo = 0, hi = w.G.length - 1;
   while (hi - lo > 1) { const m = (lo + hi) >> 1; if (w.G[m] <= doel) lo = m; else hi = m; }
   const f = w.G[hi] > w.G[lo] ? (doel - w.G[lo]) / (w.G[hi] - w.G[lo]) : 0;
   return Math.min(rp.eind, (lo + f) * DERTIG_STAP);
+}
+// ---- Race-replay: de camera zoomt in bij elke doelovergang en uit naar de hele baan ----
+// Venster rond een overgang: minstens een minuut racetijd, en bij hoge snelheid zo lang dat het
+// ongeveer 2,5 s echte tijd in beeld is. Overgangen op dezelfde plek (de hele start) blijven één shot.
+function heleBaanVak() {
+  const d = rp.data, l = (d.baan && d.baan.lines) || {}, vak = L.latLngBounds([]);
+  d.sporen.forEach(s => s.pts.forEach(p => vak.extend([p[0], p[1]])));
+  ['start', 'finish'].forEach(t => { if (l[t] && l[t].a) vak.extend([[l[t].a.lat, l[t].a.lng], [l[t].b.lat, l[t].b.lng]]); });
+  alsBoeien(d.baan && d.baan.marks).forEach(b => vak.extend([b.lat, b.lng]));
+  return vak;
+}
+function cameraRace(t) {
+  const d = rp.data;
+  if (!d.doelen || !d.doelen.length) return;
+  const v = rp.dertig ? rp.eind / rp.duurS : rp.snelheid, W = Math.max(60, 2.5 * v);
+  let doel = null, best = Infinity;
+  d.doelen.forEach(x => { const a = Math.abs(t - x.s); if (a < best) { best = a; doel = x; } });
+  if (best <= W) {
+    if (rp.camDoel && rp.camDoel.vak.equals(doel.vak)) { rp.camDoel = doel; return; }   // zelfde plek: blijven staan
+    rp.camDoel = doel;
+    const vak = L.latLngBounds(doel.vak.getSouthWest(), doel.vak.getNorthEast()), om = doel.vak.pad(1.5);
+    rp.boten.forEach(({ stip }) => { if (rp.kaart.hasLayer(stip) && om.contains(stip.getLatLng())) vak.extend(stip.getLatLng()); });
+    vliegZacht(rp.kaart, vak, 1500, 16, 40);
+  } else if (rp.camDoel && best > W * 1.5) {
+    rp.camDoel = null;
+    vliegZacht(rp.kaart, heleBaanVak(), 1800, 16, 30);
+  }
 }
 function speelReplay() {
   if (rp.speelt) { pauzeReplay(); return; }
@@ -932,8 +979,10 @@ function speelReplay() {
       : Math.min(rp.eind, rp.t + (nu - vorig) / 1000 * snelheid);
     vorig = nu;
     zetReplayTijd(t);
+    const camera = el('replayCamera').checked;
+    if (!rp.zs && camera) cameraRace(t);
     if (rp.zs) {
-      actieZoom(t);
+      if (camera) actieZoom(t);
       if (snelheid != null && snelheid < rp.snelheid) el('replayKlok').textContent += ` · ⏱ ${Math.round(snelheid)}×`;
     }
     if (t >= rp.eind) pauzeReplay(); else requestAnimationFrame(stap);
@@ -947,10 +996,11 @@ function pauzeReplay() {
 }
 el('replaySlider').addEventListener('input', e => { pauzeReplay(); zetReplayTijd(Number(e.target.value)); });
 el('replayPlay').addEventListener('click', speelReplay);
-// '30s' = de hele replay duurt precies 30 seconden (zie dertigTijd); anders een vaste snelheid
+// '30s' / '60s' = de hele replay duurt precies 30 seconden of een minuut (zie dertigTijd); anders een vaste snelheid
 el('replaySnelheid').addEventListener('change', e => {
-  rp.dertig = e.target.value === '30s';
-  if (!rp.dertig) rp.snelheid = Number(e.target.value);
+  rp.dertig = /s$/.test(e.target.value);
+  if (rp.dertig) rp.duurS = parseInt(e.target.value, 10);
+  else rp.snelheid = Number(e.target.value);
   if (rp.speelt) { pauzeReplay(); speelReplay(); }               // meteen in de nieuwe stand verder
 });
 el('replaySluit').addEventListener('click', () => { pauzeReplay(); el('replay').hidden = true; });

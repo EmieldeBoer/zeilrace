@@ -563,11 +563,12 @@
         <select id="replaySnelheid" aria-label="Afspeelsnelheid">
           <option value="10">10×</option><option value="30">30×</option>
           <option value="60" selected>60×</option><option value="120">120×</option><option value="300">300×</option>
-          <option value="30s">⏱ 30 s</option>
+          <option value="30s">⏱ 30 s</option><option value="60s">⏱ 1 min</option>
         </select>
         <button type="button" class="btn" id="replayVideo">🎬 Video</button>
         <button type="button" class="btn stil" id="replayFoto">🖼 Foto</button>
       </div>
+      <label class="replay-optie"><input type="checkbox" id="replayCamera" checked> 🎥 Camera volgt de actie</label>
       <label class="replay-optie"><input type="checkbox" id="replayOverstag"> ⤢ Overstaghoeken tonen</label>
       <label class="replay-optie"><input type="checkbox" id="replaySnelheidKleur"> 🌈 Snelheid in kleur</label>
       <div class="snelheid-schaal" id="snelheidSchaal" hidden>
